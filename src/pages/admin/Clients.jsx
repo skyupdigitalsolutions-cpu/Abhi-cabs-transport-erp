@@ -131,6 +131,7 @@ export default function Clients() {
         total={meta?.total}
         totalPages={meta?.totalPages}
         onPageChange={setPage}
+        rowKey="userId"
         onRowClick={(r) => navigate(`/admin/clients/${r.userId}`)}
         emptyTitle="No customers yet"
         emptyDescription="Customers who sign up through the app will appear here."

@@ -1,92 +1,176 @@
-import { useState, useCallback } from 'react';
-import { Bell, CheckCheck } from 'lucide-react';
-import PageHeader from '../../components/ui/PageHeader';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
-import EmptyState from '../../components/ui/EmptyState';
-import LoadingState from '../../components/ui/LoadingState';
-import ErrorState from '../../components/ui/ErrorState';
-import Pagination from '../../components/ui/Pagination';
-import { useApi } from '../../hooks/useApi';
-import { notificationsService } from '../../services';
-import { timeAgo } from '../../utils/formatters';
+/**
+ * Notifications page — uses the live Socket.IO feed from AdminRealtimeContext
+ * as its data source, since the backend has no /admin/notifications REST
+ * endpoint yet. Events arrive in real-time via the shared socket connection
+ * established in AdminRealtimeProvider (wired in AdminLayout).
+ *
+ * Feed events:
+ *   booking:created    — new booking made
+ *   booking:attempted  — booking attempt
+ *   admin:alert        — booking attempt failed — needs attention
+ *   trip:status        — booking status changed
+ *   booking:allocated  — vehicle/driver assigned
+ *   payment:received   — payment captured
+ */
+import { useState } from 'react';
+import { Bell, CheckCheck, Trash2, Car, CreditCard, AlertTriangle, Info, Radio } from 'lucide-react';
+import PageHeader   from '../../components/ui/PageHeader';
+import Card         from '../../components/ui/Card';
+import Button       from '../../components/ui/Button';
+import EmptyState   from '../../components/ui/EmptyState';
+import Badge        from '../../components/ui/Badge';
+import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
+import { timeAgo }  from '../../utils/formatters';
+
+// Map socket event kind → display config
+const KIND_CONFIG = {
+  'booking:created':   { label: 'New Booking',       tone: 'green', Icon: Car },
+  'booking:attempted': { label: 'Booking Attempt',   tone: 'slate', Icon: Info },
+  'admin:alert':       { label: 'Attempt Failed',    tone: 'red',   Icon: AlertTriangle },
+  'trip:status':       { label: 'Status Changed',    tone: 'blue',  Icon: Car },
+  'booking:allocated': { label: 'Vehicle Allocated', tone: 'purple',Icon: Car },
+  'payment:received':  { label: 'Payment Received',  tone: 'green', Icon: CreditCard },
+};
+
+function kindConfig(kind) {
+  return KIND_CONFIG[kind] || { label: kind, tone: 'slate', Icon: Info };
+}
+
+function NotificationRow({ item, isNew }) {
+  const { label, tone, Icon } = kindConfig(item.kind);
+
+  // Build a human-readable summary from the payload
+  let summary = '';
+  if (item.bookingNumber) summary += `Booking ${item.bookingNumber}`;
+  if (item.vehicleClass)  summary += summary ? ` · ${item.vehicleClass}` : item.vehicleClass;
+  if (item.status)        summary += summary ? ` · ${item.status}` : item.status;
+  if (item.amount)        summary += summary ? ` · ₹${item.amount}` : `₹${item.amount}`;
+  if (item.reason)        summary += summary ? ` · ${item.reason}` : item.reason;
+  if (!summary)           summary = label;
+
+  return (
+    <div
+      className="flex items-start gap-3 px-5 py-4"
+      style={{
+        borderBottom: '1px solid #F7F8FC',
+        backgroundColor: isNew ? '#fffbea' : 'transparent',
+      }}
+    >
+      {/* Icon */}
+      <div
+        className="h-8 w-8 rounded-lg grid place-items-center shrink-0 mt-0.5"
+        style={{ backgroundColor: '#F7F8FC' }}
+      >
+        <Icon size={16} style={{ color: tone === 'red' ? '#DC2626' : tone === 'green' ? '#16a34a' : '#3B65DB' }} />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <Badge tone={tone}>{label}</Badge>
+          {isNew && (
+            <span
+              className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: '#FFC107', color: '#111' }}
+            >
+              NEW
+            </span>
+          )}
+        </div>
+        <p className="text-sm" style={{ color: '#1F2937' }}>{summary}</p>
+      </div>
+
+      {/* Time */}
+      <span className="text-xs shrink-0 mt-1" style={{ color: '#9CA3AF' }}>
+        {timeAgo(item.at)}
+      </span>
+    </div>
+  );
+}
 
 export default function Notifications() {
-  const [page, setPage] = useState(1);
-  const fetchPage = useCallback(() => notificationsService.list({ page, limit: 20 }), [page]);
-  const { data, status, error, refetch } = useApi(fetchPage, [page]);
-  const [markingAll, setMarkingAll] = useState(false);
+  const { connected, feed } = useAdminRealtimeContext();
+  const [cleared, setCleared] = useState(false);
+  const [localFeed, setLocalFeed] = useState(null);
 
-  const rows = data?.data || [];
-  const unreadCount = data?.unreadCount ?? 0;
+  // Allow clearing the in-memory feed
+  const displayFeed = localFeed ?? feed;
+  const handleClear = () => setLocalFeed([]);
 
-  const handleMarkRead = async (id) => {
-    try {
-      await notificationsService.markRead(id);
-      refetch();
-    } catch { /* non-critical — the item just stays unread visually */ }
-  };
-
-  const handleMarkAllRead = async () => {
-    setMarkingAll(true);
-    try {
-      await notificationsService.markAllRead();
-      refetch();
-    } finally {
-      setMarkingAll(false);
-    }
-  };
-
-  if (status === 'loading') return <LoadingState label="Loading notifications…" />;
-  if (status === 'error')   return <ErrorState message={error?.message} onRetry={refetch} />;
+  // Mark first 5 as "new" (arrived in this session)
+  const newIds = new Set(displayFeed.slice(0, 5).map((f) => f.id));
 
   return (
     <div>
       <PageHeader
         title="Notifications"
-        description={unreadCount > 0 ? `${unreadCount} unread` : "System updates across bookings, trips and payments."}
+        description={
+          connected
+            ? `${displayFeed.length} events this session · live updates connected`
+            : 'Live updates not connected — go online to receive events'
+        }
         actions={
-          <Button variant="secondary" size="sm" icon={CheckCheck} loading={markingAll} disabled={unreadCount === 0} onClick={handleMarkAllRead}>
-            Mark all as read
-          </Button>
+          displayFeed.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Trash2}
+              onClick={handleClear}
+            >
+              Clear session
+            </Button>
+          )
         }
       />
-      {rows.length === 0 ? (
-        <Card><EmptyState icon={Bell} title="You're all caught up" /></Card>
+
+      {/* Connection status banner */}
+      <div
+        className="flex items-center gap-2 rounded-xl px-4 py-2.5 mb-4 text-xs font-semibold"
+        style={{
+          backgroundColor: connected ? '#f0fdf4' : '#fef2f2',
+          color: connected ? '#166534' : '#991B1B',
+          border: `1px solid ${connected ? '#bbf7d0' : '#fecaca'}`,
+        }}
+      >
+        <Radio size={13} />
+        {connected
+          ? 'Socket.IO connected — receiving live booking, trip and payment events'
+          : 'Socket.IO disconnected — log in and navigate to any page to reconnect'
+        }
+      </div>
+
+      {/* Feed */}
+      {displayFeed.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Bell}
+            title="No events yet"
+            description={
+              connected
+                ? 'Events will appear here as bookings, trips and payments happen in real time.'
+                : 'Connect to the live socket to start receiving events.'
+            }
+          />
+        </Card>
       ) : (
-        <>
-          <Card padded={false}>
-            <div>
-              {rows.map((n, i) => (
-                <button
-                  key={n.id}
-                  onClick={() => !n.isRead && handleMarkRead(n.id)}
-                  className="w-full text-left flex items-start gap-3 px-5 py-3.5 focus-ring"
-                  style={{
-                    borderBottom: i < rows.length - 1 ? '1px solid #F7F8FC' : 'none',
-                    backgroundColor: !n.isRead ? '#f0f4ff' : 'transparent',
-                  }}
-                >
-                  <span
-                    className="h-2 w-2 rounded-full mt-1.5 shrink-0"
-                    style={{ backgroundColor: n.isRead ? '#E5E7EB' : '#3B65DB' }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>{n.title}</p>
-                    <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{n.body}</p>
-                  </div>
-                  <span className="text-xs shrink-0" style={{ color: '#6B7280' }}>{timeAgo(n.createdAt)}</span>
-                </button>
-              ))}
-            </div>
-          </Card>
-          {data?.meta?.totalPages > 1 && (
-            <div className="mt-4">
-              <Pagination page={page} totalPages={data.meta.totalPages} onChange={setPage} />
-            </div>
-          )}
-        </>
+        <Card padded={false}>
+          <div>
+            {displayFeed.map((item) => (
+              <NotificationRow
+                key={item.id}
+                item={item}
+                isNew={newIds.has(item.id)}
+              />
+            ))}
+          </div>
+        </Card>
       )}
+
+      {/* Note about persistence */}
+      <p className="text-xs mt-4 text-center" style={{ color: '#9CA3AF' }}>
+        Events shown here are from the current session only and reset on page refresh.
+        Persistent push notifications require Firebase configuration in <code>.env</code>.
+      </p>
     </div>
   );
 }

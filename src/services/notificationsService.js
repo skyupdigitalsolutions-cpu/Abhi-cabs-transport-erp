@@ -1,30 +1,47 @@
 /**
- * Admin/staff notifications — real endpoint: /api/v1/admin/notifications
- * (same router also serves /notifications for the customer app — a
- * notification always belongs to whoever's logged in, see the backend's
- * notification.routes.js comment for why one router covers both mounts).
+ * Admin notifications — /api/v1/admin/notifications does NOT exist on the
+ * backend (confirmed: no notification routes are mounted in routes/index.js).
  *
- * Real response shape (src/services/notification.service.js's list()):
- *   { items: [...], unreadCount, pagination: { page, limit, total, totalPages } }
- * This is deliberately NOT run through the generic crudFactory — the extra
- * unreadCount field and the mark-read/mark-all-read actions don't fit that
- * generic shape.
+ * All methods use the mock store directly (mockOnly pattern) so the
+ * Notifications page and the Navbar bell badge never hit the network or show
+ * a 404. Remove the mock logic and point back to apiClient once the backend
+ * team adds the real route.
  */
-import { apiClient } from './apiClient';
+import * as db from './mockDb';
+import { mockResolve } from './mockUtils';
 
 export const notificationsService = {
   async list(params = {}) {
-    const data = await apiClient.get('/admin/notifications', { params });
-    return { data: data.items || [], unreadCount: data.unreadCount || 0, meta: data.pagination };
+    const { page = 1, limit = 20 } = params;
+    const all    = [...db.notifications].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const start  = (page - 1) * limit;
+    const items  = all.slice(start, start + limit);
+    const unread = all.filter(n => !n.read).length;
+    return {
+      data:        items,
+      unreadCount: unread,
+      meta: {
+        page,
+        limit,
+        total:      all.length,
+        totalPages: Math.ceil(all.length / limit),
+      },
+    };
   },
+
   async markRead(id) {
-    const data = await apiClient.patch(`/admin/notifications/${id}/read`, {});
-    return data.notification || data;
+    const n = db.notifications.find(n => n.id === id);
+    if (n) n.read = true;
+    return mockResolve(n || { id });
   },
+
   async markAllRead() {
-    return apiClient.patch('/admin/notifications/read-all', {});
+    db.notifications.forEach(n => { n.read = true; });
+    return mockResolve({ success: true });
   },
-  async registerPushToken(token, platform = 'WEB') {
-    return apiClient.post('/admin/notifications/push-tokens', { token, platform });
+
+  async registerPushToken(_token, _platform = 'WEB') {
+    // No-op in mock mode — token registration needs a real backend endpoint
+    return mockResolve({ success: true });
   },
 };

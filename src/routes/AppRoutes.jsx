@@ -31,6 +31,7 @@ const Masters       = lazy(() => import('../pages/admin/Masters'));
 const Support       = lazy(() => import('../pages/admin/Support'));
 const UsersRoles    = lazy(() => import('../pages/admin/UsersRoles'));
 const Settings      = lazy(() => import('../pages/admin/Settings'));
+const Discounts     = lazy(() => import('../pages/admin/Discounts'));
 
 // — Driver pages
 const DriverTrips         = lazy(() => import('../pages/driver/DriverTrips'));
@@ -106,6 +107,7 @@ export default function AppRoutes() {
               <Route path="masters"  element={<Masters />} />
             </Route>
             <Route path="notifications" element={<Notifications />} />
+            <Route path="discounts"     element={<Discounts />} />
             <Route element={<ProtectedRoute requiredRole="admin" permission={PERMISSIONS.SUPPORT_MANAGE} />}>
               <Route path="support"  element={<Support />} />
             </Route>

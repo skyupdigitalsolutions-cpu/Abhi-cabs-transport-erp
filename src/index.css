@@ -1,80 +1,92 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── ABHI CABS Official Brand Palette ── */
-  --color-brand-black:   #111111;
-  --color-brand-yellow:  #FFC107;
-  --color-brand-white:   #FFFFFF;
+  /* ── ABHI CABS Brand Palette ── */
+  --color-brand-black:    #111111;
+  --color-brand-yellow:   #FFC107;
+  --color-brand-white:    #FFFFFF;
 
-  /* Yellow scale */
-  --color-primary-50:    #fffef0;
-  --color-primary-100:   #fff8cc;
-  --color-primary-200:   #ffef80;
-  --color-primary-300:   #ffe033;
-  --color-primary-400:   #FFC107;
-  --color-primary-500:   #f0a800;
-  --color-primary-600:   #d69200;
-  --color-primary-700:   #b37800;
-  --color-primary-800:   #8a5d00;
-  --color-primary-900:   #664600;
+  --color-primary-50:     #fffef0;
+  --color-primary-100:    #fff8cc;
+  --color-primary-200:    #ffef80;
+  --color-primary-300:    #ffe033;
+  --color-primary-400:    #FFC107;
+  --color-primary-500:    #f0a800;
+  --color-primary-600:    #d69200;
+  --color-primary-700:    #b37800;
+  --color-primary-800:    #8a5d00;
+  --color-primary-900:    #664600;
 
-  /* Neutral / UI */
-  --color-bg:            #F9F9F7;
-  --color-surface:       #FFFFFF;
-  --color-text:          #111111;
-  --color-secondary:     #5A5A5A;
-  --color-muted:         #9A9A9A;
-  --color-border:        #E8E8E4;
-  --color-border-strong: #D0D0CA;
+  --color-bg:             #F9F9F7;
+  --color-surface:        #FFFFFF;
+  --color-text:           #111111;
+  --color-secondary:      #5A5A5A;
+  --color-muted:          #9A9A9A;
+  --color-border:         #E8E8E4;
+  --color-border-strong:  #D0D0CA;
+  --color-sidebar-bg:     #111111;
+  --color-sidebar-active: #FFC107;
+  --color-success:        #22A65A;
+  --color-warning:        #F59E0B;
+  --color-error:          #DC2626;
+  --color-info:           #2563EB;
 
-  /* Sidebar */
-  --color-sidebar-bg:    #111111;
-  --color-sidebar-active:#FFC107;
+  /* SF Pro on Apple, Inter on everything else */
+  --font-sans:
+    'SF Pro Display', 'SF Pro Text',
+    -apple-system, BlinkMacSystemFont,
+    'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 
-  /* Semantic */
-  --color-success:       #22A65A;
-  --color-warning:       #F59E0B;
-  --color-error:         #DC2626;
-  --color-info:          #2563EB;
+  --font-display:
+    'SF Pro Display',
+    -apple-system, BlinkMacSystemFont,
+    'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 
-  /* Typography — SF Pro (Apple system font stack) */
-  --font-sans:    'SF Pro Display', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
-  --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  --font-mono:
+    'SF Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+/* Inter loaded via <link> in index.html — NOT via @import here,
+   because @import after @import "tailwindcss" is dropped by PostCSS. */
+
+html, body, #root { height: 100%; }
 
 body {
-  background-color: var(--color-bg, #F9F9F7);
-  color: var(--color-text, #111111);
-  font-family: var(--font-sans);
+  /* Literal font stack — no var() so it always resolves correctly
+     regardless of Tailwind v4 @theme processing order.            */
+  font-family:
+    'SF Pro Display', 'SF Pro Text',
+    -apple-system, BlinkMacSystemFont,
+    'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111111;
+  background-color: #F9F9F7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
 }
 
-* {
-  box-sizing: border-box;
+h1, h2, h3, h4, h5, h6 {
+  font-family:
+    'SF Pro Display', 'SF Pro Text',
+    -apple-system, BlinkMacSystemFont,
+    'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #111111;
 }
 
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-thumb {
-  background: #D0D0CA;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+button, input, select, textarea, label { font-family: inherit; }
 
-.focus-ring {
-  outline: none;
-}
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: #D0D0CA; border-radius: 9999px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.focus-ring { outline: none; }
 .focus-ring:focus-visible {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px #FFC107;
 }

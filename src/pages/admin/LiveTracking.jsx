@@ -10,6 +10,14 @@ import { useApi } from '../../hooks/useApi';
 import { tripService } from '../../services';
 import { TRIP_STATUS } from '../../constants';
 
+function addr(val) {
+  if (!val) return '—';
+  if (typeof val === 'string') return val;
+  return val.address || val.formattedAddress || '—';
+}
+
+
+
 const STALE_MS = 20000;
 const MAP_STYLES = ['streets', 'satellite', 'hybrid'];
 

@@ -22,6 +22,15 @@ import { useAuth } from '../../hooks/useAuth';
 import { PERMISSIONS, BOOKING_TRANSITIONS, BOOKING_STATUS } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 
+// Helper: backend returns pickupAddress/dropAddress as { address: "..." } objects
+function addr(val) {
+  if (!val) return '—';
+  if (typeof val === 'string') return val;
+  return val.address || val.formattedAddress || JSON.stringify(val);
+}
+
+
+
 // ── Transition config — label/icon per target status ───────────────────────
 const TRANSITION_BTN = {
   [BOOKING_STATUS.CONFIRMED]: { label: 'Confirm Booking',  icon: CheckCircle, variant: 'primary' },

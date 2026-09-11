@@ -27,7 +27,7 @@ export const adminInvoicesService = {
    * endpoint exists.
    */
   async list({ limit = 100 } = {}) {
-    const bookingsRes = await apiClient.get('/bookings', {
+    const bookingsRes = await apiClient.get('/admin/bookings', {
       params: { limit, sortBy: 'createdAt', status: 'COMPLETED' },
     });
     const completedBookings = bookingsRes.data || [];
