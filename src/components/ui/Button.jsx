@@ -2,19 +2,12 @@ import { cn } from '../../utils/cn';
 import { Loader2 } from 'lucide-react';
 
 const VARIANT_STYLES = {
-  primary:   { backgroundColor: '#FFC107', color: '#111111', border: 'none' },
-  secondary: { backgroundColor: '#fff', color: '#111111', border: '1.5px solid #E8E8E4' },
-  dark:      { backgroundColor: '#111111', color: '#ffffff', border: 'none' },
-  danger:    { backgroundColor: '#DC2626', color: '#fff', border: 'none' },
-  ghost:     { backgroundColor: 'transparent', color: '#5A5A5A', border: 'none' },
-};
-
-const VARIANT_HOVER = {
-  primary:   'hover:opacity-90',
-  secondary: 'hover:bg-gray-50',
-  dark:      'hover:opacity-85',
-  danger:    'hover:opacity-90',
-  ghost:     'hover:bg-gray-100',
+  primary:      { backgroundColor: '#FFC107', color: '#111111', border: 'none' },
+  secondary:    { backgroundColor: '#fff', color: '#111111', border: '1.5px solid #E8E8E4' },
+  dark:         { backgroundColor: '#111111', color: '#ffffff', border: 'none' },
+  danger:       { backgroundColor: '#DC2626', color: '#fff', border: 'none' },
+  dangerOutline:{ backgroundColor: '#fef2f2', color: '#DC2626', border: '1.5px solid #fecaca' },
+  ghost:        { backgroundColor: 'transparent', color: '#5A5A5A', border: 'none' },
 };
 
 const SIZES = {
@@ -32,10 +25,10 @@ export default function Button({
       type={type}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-bold tracking-wide transition-all focus-ring disabled:cursor-not-allowed disabled:opacity-50',
-        VARIANT_HOVER[variant], SIZES[size], className
+        'inline-flex items-center justify-center rounded-lg font-bold tracking-wide transition-all focus-ring disabled:cursor-not-allowed disabled:opacity-50 hover:opacity-90',
+        SIZES[size], className
       )}
-      style={{ ...VARIANT_STYLES[variant], ...externalStyle }}
+      style={{ ...VARIANT_STYLES[variant] || VARIANT_STYLES.secondary, ...externalStyle }}
       aria-busy={loading}
       {...props}
     >

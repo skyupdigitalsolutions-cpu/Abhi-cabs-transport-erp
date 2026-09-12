@@ -7,11 +7,14 @@ const Select = forwardRef(function Select({ className, error, options = [], plac
     <div className="relative">
       <select
         ref={ref}
-        className={cn('w-full appearance-none rounded-lg border px-3 py-2 pr-9 text-sm transition-colors focus-ring', className)}
+        className={cn(
+          'w-full appearance-none rounded-lg border px-3 py-2 pr-9 text-xs font-medium transition-colors focus-ring cursor-pointer',
+          className
+        )}
         style={{
           backgroundColor: '#ffffff',
-          color: '#1F2937',
-          borderColor: error ? '#EF4444' : '#E5E7EB',
+          color: '#111111',
+          borderColor: error ? '#DC2626' : '#E8E8E4',
           outline: 'none',
         }}
         {...props}
@@ -21,7 +24,8 @@ const Select = forwardRef(function Select({ className, error, options = [], plac
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
-      <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: '#6B7280' }} />
+      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+        style={{ color: '#9A9A9A' }} />
     </div>
   );
 });

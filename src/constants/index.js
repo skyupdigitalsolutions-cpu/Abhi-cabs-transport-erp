@@ -31,7 +31,6 @@ export const PERMISSIONS = {
   USERS_MANAGE:    'users.manage',
   MASTERS_MANAGE:  'masters.manage',
   SETTINGS_MANAGE: 'settings.manage',
-  OFFERS_MANAGE:   'offers.manage',
 };
 
 export const ROLE_PERMISSIONS = {
@@ -57,6 +56,7 @@ export const BOOKING_STATUS = {
 };
 
 export const TRIP_STATUS = {
+  // Backend enum is uppercase — do not change these values
   SCHEDULED: 'scheduled',
   ONGOING:   'ongoing',
   COMPLETED: 'completed',
@@ -221,9 +221,10 @@ export const ADMIN_NAV = [
   { label: 'Reports',      to: '/admin/reports',    icon: 'BarChart3',      permission: PERMISSIONS.REPORTS_VIEW },
   { label: 'Masters',      to: '/admin/masters',    icon: 'Database',       permission: PERMISSIONS.MASTERS_MANAGE },
   { label: 'Notifications',to: '/admin/notifications', icon: 'Bell' },
-  { label: 'Discounts & Offers', to: '/admin/discounts', icon: 'Tag', permission: 'offers.manage' },
   { label: 'Support & SOS',to: '/admin/support',    icon: 'LifeBuoy',       permission: PERMISSIONS.SUPPORT_MANAGE },
-  { label: 'Users',        to: '/admin/users',      icon: 'ShieldCheck',    permission: PERMISSIONS.USERS_MANAGE },
+  { label: 'WhatsApp',         to: '/admin/whatsapp',         icon: 'MessageCircle',  permission: PERMISSIONS.SETTINGS_MANAGE },
+  { label: 'Discounts & Offers', to: '/admin/discounts',  icon: 'Tag',            permission: PERMISSIONS.SETTINGS_MANAGE },
+  { label: 'Users & Roles',      to: '/admin/users',      icon: 'ShieldCheck',    permission: PERMISSIONS.USERS_MANAGE },
   { label: 'Settings',     to: '/admin/settings',   icon: 'Settings' },
 ];
 

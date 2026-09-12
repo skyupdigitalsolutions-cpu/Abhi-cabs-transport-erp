@@ -10,28 +10,39 @@ import BookingFormDrawer from '../../components/booking/BookingFormDrawer';
 import { useResourceList } from '../../hooks/useResourceList';
 import { bookingService }  from '../../services';
 import { useToast }        from '../../hooks/useToast';
-import { BOOKING_STATUS, PERMISSIONS } from '../../constants';
+import { PERMISSIONS }     from '../../constants';
 import { useAuth }         from '../../hooks/useAuth';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
 
-// Helper: backend returns pickupAddress/dropAddress as { address: "..." } objects
+// All filters are SERVER-SIDE — sent directly as query params to /admin/bookings
+// Backend listBookingsQuerySchema accepts:
+//   status, tripType, from, to, search, sortBy, order, page, limit
+
+const BOOKING_STATUSES = ['PENDING','CONFIRMED','ALLOCATED','EN_ROUTE','ONGOING','ARRIVED','COMPLETED','CANCELLED','EXPIRED'];
+const TRIP_TYPES       = ['ONE_WAY','ROUND_TRIP','AIRPORT','HOURLY'];
+const SORT_OPTIONS     = ['createdAt','pickupAt','estimatedFare','status'];
+
 function addr(val) {
   if (!val) return '—';
   if (typeof val === 'string') return val;
-  return val.address || val.formattedAddress || JSON.stringify(val);
+  return val.address || val.formattedAddress || '—';
 }
 
 export default function Bookings() {
-  const list = useResourceList(bookingService, {
-    filterDefaults: { status: '' },
-    sortBy: 'createdAt',
-    limit: 10,
-  });
-  const [formOpen, setFormOpen] = useState(false);
-  const toast     = useToast();
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
+  const toast    = useToast();
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.BOOKINGS_MANAGE);
+
+  // Server-side filters passed directly to useResourceList → backend query params
+  const list = useResourceList(bookingService, {
+    filterDefaults: { status: '', tripType: '', from: '', to: '' },
+    sortBy: 'createdAt',
+    sortDir: 'desc',
+    limit: 10,
+  });
+
+  const [formOpen, setFormOpen] = useState(false);
 
   const columns = [
     {
@@ -39,16 +50,18 @@ export default function Bookings() {
       render: (r) => <span className="font-mono text-xs" style={{ color: '#6B7280' }}>{r.bookingNumber || '—'}</span>,
     },
     {
-      key: 'customer', header: 'Customer', sortable: false,
+      key: 'customer', header: 'Customer',
       render: (r) => (
-        <span style={{ color: '#1F2937' }}>
-          {r.customer?.user?.name || r.corporate?.companyName || '—'}
-        </span>
+        <div>
+          <p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>
+            {r.customer?.user?.name || r.corporate?.companyName || '—'}
+          </p>
+          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{r.customer?.user?.phone || ''}</p>
+        </div>
       ),
     },
     {
-      key: 'route', header: 'Route', sortable: false,
-      // FIXED: pickupAddress and dropAddress are objects — extract .address
+      key: 'route', header: 'Route',
       render: (r) => (
         <span style={{ color: '#6B7280', fontSize: 12 }}>
           {addr(r.pickupAddress)} → {addr(r.dropAddress)}
@@ -56,8 +69,12 @@ export default function Bookings() {
       ),
     },
     {
+      key: 'tripType', header: 'Type',
+      render: (r) => <span style={{ fontSize: 12, color: '#6B7280' }}>{r.tripType?.replace(/_/g,' ') || '—'}</span>,
+    },
+    {
       key: 'vehicleClass', header: 'Class',
-      render: (r) => <span style={{ color: '#6B7280', fontSize: 12 }}>{r.vehicleClass || '—'}</span>,
+      render: (r) => <span style={{ fontSize: 12, color: '#6B7280' }}>{titleCase(r.vehicleClass || '—')}</span>,
     },
     {
       key: 'fare', header: 'Fare', sortable: true,
@@ -83,25 +100,55 @@ export default function Bookings() {
     <div>
       <PageHeader
         title="Bookings"
-        description="All booking requests across your fleet operations."
+        description="All booking requests. Filters are applied server-side for speed."
         actions={canManage && (
           <Button icon={Plus} onClick={() => setFormOpen(true)}>New booking</Button>
         )}
       />
+
       <FilterBar
         search={list.search}
         onSearchChange={list.onSearchChange}
-        searchPlaceholder="Search booking # or customer…"
-        filters={[{
-          name: 'status',
-          value: list.filters.status,
-          onChange: (v) => list.setFilter('status', v),
-          placeholder: 'All statuses',
-          options: Object.values(BOOKING_STATUS).map((s) => ({
-            value: s, label: s.replace(/_/g, ' '),
-          })),
-        }]}
+        searchPlaceholder="Search booking # or customer name…"
+        filters={[
+          {
+            name: 'status',
+            value: list.filters.status,
+            onChange: (v) => list.setFilter('status', v),
+            placeholder: 'All statuses',
+            options: BOOKING_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, ' ') })),
+          },
+          {
+            name: 'tripType',
+            value: list.filters.tripType,
+            onChange: (v) => list.setFilter('tripType', v),
+            placeholder: 'All trip types',
+            options: TRIP_TYPES.map((t) => ({ value: t, label: t.replace(/_/g, ' ') })),
+          },
+          {
+            name: 'sortBy',
+            value: list.sortBy,
+            onChange: (v) => list.onSort(v, list.sortDir),
+            placeholder: 'Sort by',
+            options: SORT_OPTIONS.map((s) => ({ value: s, label: titleCase(s.replace(/([A-Z])/g, ' $1')) })),
+          },
+        ]}
+        extra={
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold" style={{ color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
+            <input type="date" value={list.filters.from || ''}
+              onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
+              className="text-xs border rounded-lg px-2 py-1.5"
+              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+            <label className="text-xs font-semibold" style={{ color: '#6B7280' }}>To</label>
+            <input type="date" value={list.filters.to || ''}
+              onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
+              className="text-xs border rounded-lg px-2 py-1.5"
+              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+          </div>
+        }
       />
+
       <DataTable
         columns={columns}
         rows={list.rows}
@@ -117,14 +164,11 @@ export default function Bookings() {
         totalPages={list.meta?.totalPages}
         onPageChange={list.setPage}
         onRowClick={(r) => navigate(`/admin/bookings/${r.id}`)}
-        emptyTitle="No bookings yet"
-        emptyDescription="New bookings will appear here once created."
+        emptyTitle="No bookings found"
+        emptyDescription="Try adjusting your filters or date range."
       />
-      <BookingFormDrawer
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSubmit={handleCreate}
-      />
+
+      <BookingFormDrawer open={formOpen} onClose={() => setFormOpen(false)} onSubmit={handleCreate} />
     </div>
   );
 }

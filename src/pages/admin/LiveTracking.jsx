@@ -207,7 +207,7 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function LiveTracking() {
-  const tripsApi = useApi(() => tripService.list({ limit: 20, filters: { status: TRIP_STATUS.ONGOING } }), []);
+  const tripsApi = useApi(() => tripService.list({ limit: 20, status: TRIP_STATUS.ONGOING }), []);
   const ongoingTrips = (tripsApi.data?.data || []).slice(0, 6);
   const driverIds = useMemo(() => ongoingTrips.map((t) => t.driverId), [ongoingTrips]);
   const { connection, positions } = useTrackingSocket(driverIds);

@@ -1,40 +1,47 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Phone, Mail, User } from 'lucide-react';
+import { Pencil, Phone, Mail } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import FilterBar     from '../../components/ui/FilterBar';
 import DataTable     from '../../components/ui/DataTable';
 import IconButton    from '../../components/ui/IconButton';
-import StatusBadge   from '../../components/ui/StatusBadge';
 import Badge         from '../../components/ui/Badge';
 import CustomerFormDrawer from '../../components/customer/CustomerFormDrawer';
-import { useResourceList } from '../../hooks/useResourceList';
+import { useResourceList }       from '../../hooks/useResourceList';
 import { adminCustomersService } from '../../services';
 import { useToast }  from '../../hooks/useToast';
-import { formatDate } from '../../utils/formatters';
+import { formatDate, titleCase } from '../../utils/formatters';
 import { PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
 
-/**
- * Real backend: /admin/customers (GET list, GET one, PATCH update only).
- * No create or delete — customers self-register via the customer app.
- * Field shape confirmed: each row has { userId, user: { name, email, phone },
- *   accountType, loyaltyPoints, createdAt } — name/email/phone are nested
- *   under `user`, not on the root customer object.
- */
+// Backend listCustomersQuerySchema accepts:
+//   search, accountType, sortBy (createdAt|loyaltyPoints|totalBookings|name), order, page, limit
+// ALL SERVER-SIDE.
 
-// Wrap adminCustomersService so it has the list() signature useResourceList expects
+const SORT_OPTIONS = [
+  { value: 'createdAt',    label: 'Joined date'    },
+  { value: 'loyaltyPoints',label: 'Loyalty points' },
+  { value: 'name',         label: 'Name'           },
+];
+
 const customerListService = {
   list: (params) => adminCustomersService.list(params),
 };
 
 export default function Customers() {
-  const list      = useResourceList(customerListService, { sortBy: 'createdAt', limit: 10 });
-  const [editing, setEditing] = useState(null);
-  const toast     = useToast();
   const navigate  = useNavigate();
+  const toast     = useToast();
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.CLIENTS_MANAGE);
+
+  const list = useResourceList(customerListService, {
+    filterDefaults: { accountType: '' },
+    sortBy: 'createdAt',
+    sortDir: 'desc',
+    limit: 10,
+  });
+
+  const [editing, setEditing] = useState(null);
 
   const columns = [
     {
@@ -65,18 +72,18 @@ export default function Customers() {
       ),
     },
     {
-      key: 'loyaltyPoints', header: 'Loyalty Pts',
+      key: 'loyaltyPoints', header: 'Loyalty Pts', sortable: true,
       render: (r) => <span style={{ color: '#1F2937' }}>{r.loyaltyPoints ?? 0}</span>,
     },
     {
-      key: 'createdAt', header: 'Joined',
+      key: 'createdAt', header: 'Joined', sortable: true,
       render: (r) => formatDate(r.createdAt),
     },
     ...(canManage ? [{
       key: 'actions', header: '', className: 'text-right',
       render: (r) => (
         <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <IconButton icon={Pencil} label="Edit customer" onClick={() => setEditing(r)} />
+          <IconButton icon={Pencil} label="Edit" onClick={() => setEditing(r)} />
         </div>
       ),
     }] : []),
@@ -93,28 +100,63 @@ export default function Customers() {
     <div>
       <PageHeader
         title="Customers"
-        description="All registered customers. Customers self-register via the booking portal."
+        description="All registered customers. Filters applied server-side."
       />
+
       <FilterBar
         search={list.search}
         onSearchChange={list.onSearchChange}
-        searchPlaceholder="Search by name or email…"
+        searchPlaceholder="Search name, email or phone…"
+        filters={[
+          {
+            name: 'accountType',
+            value: list.filters.accountType,
+            onChange: (v) => list.setFilter('accountType', v),
+            placeholder: 'All account types',
+            options: [
+              { value: 'RETAIL',    label: 'Retail'    },
+              { value: 'CORPORATE', label: 'Corporate' },
+            ],
+          },
+          {
+            name: 'sortBy',
+            value: list.sortBy,
+            onChange: (v) => list.onSort(v, list.sortDir),
+            placeholder: 'Sort by',
+            options: SORT_OPTIONS,
+          },
+          {
+            name: 'order',
+            value: list.sortDir,
+            onChange: (v) => list.onSort(list.sortBy, v),
+            placeholder: 'Order',
+            options: [
+              { value: 'desc', label: 'Newest first' },
+              { value: 'asc',  label: 'Oldest first' },
+            ],
+          },
+        ]}
       />
+
       <DataTable
         columns={columns}
         rows={list.rows}
         status={list.status}
         error={list.error}
         onRetry={list.refetch}
+        sortBy={list.sortBy}
+        sortDir={list.sortDir}
+        onSort={list.onSort}
         page={list.page}
         limit={list.meta?.limit}
         total={list.meta?.total}
         totalPages={list.meta?.totalPages}
         onPageChange={list.setPage}
         onRowClick={(r) => navigate(`/admin/customers/${r.userId}`)}
-        emptyTitle="No customers yet"
-        emptyDescription="Customers appear here once they register via the booking portal."
+        emptyTitle="No customers found"
+        emptyDescription="Try adjusting your search or filters."
       />
+
       {editing && (
         <CustomerFormDrawer
           open={!!editing}

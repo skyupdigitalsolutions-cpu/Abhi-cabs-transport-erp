@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import Navbar from './Navbar';
+import Navbar  from './Navbar';
 import ErrorBoundary from './ErrorBoundary';
 import { ADMIN_NAV } from '../../constants';
 import { AdminRealtimeProvider, useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
@@ -9,18 +9,20 @@ import { AdminRealtimeProvider, useAdminRealtimeContext } from '../../context/Ad
 function AdminLayoutInner() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
-  const current = ADMIN_NAV.find((n) => location.pathname.startsWith(n.to));
-
-  // Live "new booking" toasts + activity feed — the socket connection lives
-  // in AdminRealtimeProvider (wrapped below), so this just reads its state.
+  const current  = ADMIN_NAV.find((n) => location.pathname.startsWith(n.to));
   const { connected } = useAdminRealtimeContext();
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#F7F8FC' }}>
+    <div className="flex min-h-screen" style={{ backgroundColor: '#F9F9F7' }}>
       <Sidebar nav={ADMIN_NAV} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
-      <div className="flex-1 min-w-0 flex flex-col">
-        <Navbar onMenuClick={() => setMobileOpen(true)} title={current?.label || 'ABHI CABS ERP'} liveConnected={connected} />
-        <main className="flex-1 p-4 sm:p-6">
+      {/* lg:ml-60 offsets for the fixed 240px sidebar */}
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
+        <Navbar
+          onMenuClick={() => setMobileOpen(true)}
+          title={current?.label || 'ABHI CABS ERP'}
+          liveConnected={connected}
+        />
+        <main className="flex-1 p-4 sm:p-6 overflow-auto">
           <ErrorBoundary key={location.pathname}>
             <Outlet />
           </ErrorBoundary>
@@ -31,9 +33,6 @@ function AdminLayoutInner() {
 }
 
 export default function AdminLayout() {
-  // Provider lives here so exactly one socket connection exists per admin
-  // session, shared by the Navbar's live indicator, Dashboard's activity
-  // feed, and any other page that wants to react to live events.
   return (
     <AdminRealtimeProvider>
       <AdminLayoutInner />
