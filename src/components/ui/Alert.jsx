@@ -1,5 +1,4 @@
 import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
-import { cn } from '../../utils/cn';
 
 const TYPES = {
   info:    { bg: '#eff6ff', border: '#bfdbfe', color: '#1d4ed8', Icon: Info },
@@ -8,14 +7,16 @@ const TYPES = {
   error:   { bg: '#fef2f2', border: '#fecaca', color: '#b91c1c', Icon: XCircle },
 };
 
-export default function Alert({ type = 'info', children, className }) {
+export default function Alert({ type = 'info', children, className, style }) {
   const { bg, border, color, Icon } = TYPES[type] || TYPES.info;
   return (
-    <div
-      className={cn('flex items-start gap-3 rounded-xl px-4 py-3 text-xs font-medium', className)}
-      style={{ backgroundColor: bg, border: `1px solid ${border}`, color }}
-    >
-      <Icon size={15} className="shrink-0 mt-0.5" />
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10,
+      borderRadius: 12, padding: '10px 14px', fontSize: 12, fontWeight: 500,
+      backgroundColor: bg, border: `1px solid ${border}`, color,
+      ...style,
+    }}>
+      <Icon size={15} style={{ flexShrink: 0, marginTop: 1, color }} />
       <div>{children}</div>
     </div>
   );

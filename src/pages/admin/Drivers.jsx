@@ -285,7 +285,7 @@ function PerformanceTab() {
   const columns = [
     { key: 'name', header: 'Driver', render: (r) => <p style={{ color: '#1F2937', fontWeight: 600 }}>{r.name}</p> },
     { key: 'rating', header: 'Rating', render: (r) => <span className="flex items-center gap-1"><Star size={13} style={{ color: '#F59E0B', fill: '#F59E0B' }} />{Number(r.ratingAvg ?? 0).toFixed(2)} <span style={{ color: '#9CA3AF', fontSize: 12 }}>({r.ratingCount ?? 0})</span></span> },
-    { key: 'offers', header: 'Offers', render: (r) => <span>{r.offers ?? 0}</span> },
+    { key: 'offers', header: 'Offers', render: (r) => <span>{r.offersReceived ?? r.offers ?? 0}</span> },
     { key: 'acceptance', header: 'Acceptance', render: (r) => { const rate = Math.round(Number(r.acceptanceRate ?? 0) * 100); return <Badge tone={rate >= 80 ? 'green' : rate >= 50 ? 'amber' : 'red'}>{rate}%</Badge>; } },
     { key: 'completedTrips', header: 'Completed', render: (r) => <Badge tone="primary">{r.completedTrips ?? 0}</Badge> },
     { key: 'earnings', header: 'Earnings', render: (r) => <span style={{ fontWeight: 600, color: '#1F2937' }}>{formatCurrency(r.earnings ?? 0)}</span> },

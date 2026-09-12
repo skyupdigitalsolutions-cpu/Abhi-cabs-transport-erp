@@ -36,7 +36,7 @@ const RANGE_PRESETS = [
 
 const VEHICLE_CLASSES = ['hatchback', 'sedan', 'suv', 'tempo'];
 const TRIP_TYPES      = ['ONE_WAY', 'ROUND_TRIP', 'AIRPORT', 'HOURLY'];
-const BOOKING_STATUSES = ['PENDING','CONFIRMED','ALLOCATED','EN_ROUTE','ONGOING','ARRIVED','COMPLETED','CANCELLED'];
+const BOOKING_STATUSES = ['PENDING','CONFIRMED','ALLOCATED','EN_ROUTE','ONGOING','COMPLETED','CANCELLED'];
 const PAYMENT_METHODS  = ['UPI', 'CARD', 'NETBANKING', 'WALLET', 'CASH'];
 const PAYMENT_STATUSES = ['CREATED','AUTHORISED','CAPTURED','PARTIALLY_PAID','FAILED','REFUNDED'];
 
@@ -121,10 +121,10 @@ function OverviewTab({ executive, fleet, trend, bookings, rangeLabel }) {
     [filtered]
   );
 
-  const trendArr = Array.isArray(trend.data) ? trend.data : (trend.data?.series || trend.series || []);
+  const trendArr = trend.data?.series || (Array.isArray(trend.data) ? trend.data : []);
   const revenueByDay = trendArr.map((d) => ({
-    label: String(d.day || d.date || '').slice(5),
-    value: n(d.revenue),
+    label: String(d.date || d.day || '').slice(5, 10),
+    value: n(typeof d.revenue === 'string' ? parseFloat(d.revenue) : d.revenue),
   }));
 
   const activeFilters = [statusFilter, vehicleFilter, tripTypeFilter].filter(Boolean).length;
@@ -153,7 +153,7 @@ function OverviewTab({ executive, fleet, trend, bookings, rangeLabel }) {
       </SectionFilter>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile icon={TrendingUp} label="Revenue Collected" value={formatCurrency(n(ex.totalRevenue ?? ex.cash?.collected ?? 0))} tone="green" />
+        <KpiTile icon={TrendingUp} label="Revenue Collected" value={formatCurrency(n(ex.cash?.collected ?? ex.revenue?.gross ?? ex.totalRevenue ?? 0))} tone="green" />
         <KpiTile icon={CalendarCheck} label={`Bookings (${rangeLabel})`} value={filtered.length} tone="blue" />
         <KpiTile icon={Users} label="Completed" value={filtered.filter((b) => b.status === 'COMPLETED').length} tone="purple" />
         <KpiTile icon={Truck} label="Fleet Utilisation" value={`${Math.round(n(fl.utilisation) * 100)}%`} sub={`${fl.total ?? 0} vehicles`} tone="amber" />
@@ -252,7 +252,7 @@ function FinancialTab({ executive, bookings, payments }) {
       </SectionFilter>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile icon={TrendingUp} label="Revenue Collected" value={formatCurrency(n(ex.totalRevenue ?? ex.cash?.collected ?? 0))} tone="green" />
+        <KpiTile icon={TrendingUp} label="Revenue Collected" value={formatCurrency(n(ex.cash?.collected ?? ex.revenue?.gross ?? ex.totalRevenue ?? 0))} tone="green" />
         <KpiTile icon={TrendingUp} label="Pending Payments" value={formatCurrency(pendingAmount)} tone="amber" />
         <KpiTile icon={TrendingUp} label="Average Fare" value={formatCurrency(avgFare)} tone="blue"
           sub={vehicleFilter ? `${titleCase(vehicleFilter)} only` : 'All classes'} />
@@ -298,9 +298,9 @@ function FleetTab({ fleetApi, bookings }) {
   }, [bookings, vehicleFilter, statusFilter]);
 
   const fleetRaw = fleetApi.data;
-  const fleet = Array.isArray(fleetRaw)
-    ? { total: fleetRaw.reduce((s,v)=>s+(v.count||0),0), active: fleetRaw.filter(v=>v.status!=='INACTIVE'&&v.onTrip!==undefined).reduce((s,v)=>s+(v.count||0),0), utilisation: 0 }
-    : (fleetRaw?.fleet || fleetRaw || {});
+  const fleet = fleetRaw?.fleet || (Array.isArray(fleetRaw)
+    ? { total: fleetRaw.reduce((s,v)=>s+(v.count||0),0), active: 0, byStatus: Object.fromEntries(fleetRaw.map(v=>[v.status||v.type, v.count])) }
+    : fleetRaw) || {};
 
   const byClass = useMemo(() => {
     const map = {};
@@ -346,7 +346,7 @@ function FleetTab({ fleetApi, bookings }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile icon={Truck} label="Total Vehicles"   value={fleet.total ?? 0}  tone="blue" />
         <KpiTile icon={Truck} label="Active Vehicles"  value={fleet.active ?? 0} tone="green" />
-        <KpiTile icon={Truck} label="Fleet Utilisation" value={`${Math.round(n(fleet.utilisation) * 100)}%`} tone="amber" />
+        <KpiTile icon={Truck} label="Fleet Utilisation" value={`${Math.round(n(fleet.utilisation ?? fleet.utilisationPct) * 100)}%`} tone="amber" />
         <KpiTile icon={CalendarCheck} label="Filtered Bookings" value={filtered.length} tone="purple" />
       </div>
 
@@ -405,7 +405,7 @@ function DriversTab({ driverPerf }) {
   const [sortBy,       setSortBy]       = useState('completedTrips');
   const [minAcceptance,setMinAcceptance]= useState('');
 
-  const allDrivers = Array.isArray(driverPerf.data) ? driverPerf.data : (driverPerf.data?.drivers || driverPerf.drivers || []);
+  const allDrivers = driverPerf.data?.drivers || (Array.isArray(driverPerf.data) ? driverPerf.data : []);
 
   const filtered = useMemo(() => {
     let rows = [...allDrivers];
@@ -726,7 +726,7 @@ function GstTab({ range }) {
   const gst = useApi(() => reportsService.gstSummary(range), [JSON.stringify(range)]);
   if (gst.status === 'loading') return <LoadingState label="Loading GST data…" />;
   if (gst.status === 'error')   return <ErrorState message={gst.error?.message} onRetry={gst.refetch} />;
-  const g = gst.data || gst || {};
+  const g = gst.data || {};
 
   return (
     <div className="space-y-5">
@@ -734,15 +734,15 @@ function GstTab({ range }) {
         GST report covers ISSUED and PAID invoices only. Draft and cancelled invoices are excluded as per GST filing rules.
       </Alert>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile icon={TrendingUp} label="Taxable Value"   value={formatCurrency(n(g.totalTaxable ?? g.taxable?.taxableValue ?? 0))} tone="blue" />
-        <KpiTile icon={TrendingUp} label="CGST Collected"  value={formatCurrency(n(g.cgst ?? g.taxable?.cgst ?? 0))}         tone="green" />
-        <KpiTile icon={TrendingUp} label="SGST Collected"  value={formatCurrency(n(g.sgst ?? g.taxable?.sgst ?? 0))}         tone="amber" />
-        <KpiTile icon={TrendingUp} label="IGST Collected"  value={formatCurrency(n(g.igst ?? g.taxable?.igst ?? 0))}         tone="purple" />
+        <KpiTile icon={TrendingUp} label="Taxable Value"   value={formatCurrency(n(g.taxable?.taxableValue ?? 0))} tone="blue" />
+        <KpiTile icon={TrendingUp} label="CGST Collected"  value={formatCurrency(n(g.taxable?.cgst ?? 0))}         tone="green" />
+        <KpiTile icon={TrendingUp} label="SGST Collected"  value={formatCurrency(n(g.taxable?.sgst ?? 0))}         tone="amber" />
+        <KpiTile icon={TrendingUp} label="IGST Collected"  value={formatCurrency(n(g.taxable?.igst ?? 0))}         tone="purple" />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <KpiTile icon={TrendingUp} label="Total Tax Invoices" value={g.invoiceCount ?? g.taxable?.count ?? 0} tone="blue" />
-        <KpiTile icon={TrendingUp} label="Exempt Invoices"    value={g.exemptCount ?? g.exempt?.count ?? 0}  tone="amber" />
-        <KpiTile icon={TrendingUp} label="Exempt Value"       value={formatCurrency(n(g.exemptAmount ?? g.exempt?.totalAmount ?? 0))} tone="green" />
+        <KpiTile icon={TrendingUp} label="Total Tax Invoices" value={g.taxable?.invoiceCount ?? 0} tone="blue" />
+        <KpiTile icon={TrendingUp} label="Exempt Invoices"    value={g.exempt?.invoiceCount ?? 0}  tone="amber" />
+        <KpiTile icon={TrendingUp} label="Exempt Value"       value={formatCurrency(n(g.exempt?.totalAmount ?? 0))} tone="green" />
       </div>
     </div>
   );

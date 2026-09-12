@@ -1,20 +1,17 @@
 import { forwardRef } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { cn } from '../../utils/cn';
 
-const Select = forwardRef(function Select({ className, error, options = [], placeholder, ...props }, ref) {
+const Select = forwardRef(function Select({ error, options = [], placeholder, style, onChange, value, ...props }, ref) {
   return (
-    <div className="relative">
+    <div style={{ position: 'relative', display: 'inline-block', ...style }}>
       <select
         ref={ref}
-        className={cn(
-          'w-full appearance-none rounded-lg border px-3 py-2 pr-9 text-xs font-medium transition-colors focus-ring cursor-pointer',
-          className
-        )}
+        value={value}
+        onChange={onChange}
         style={{
-          backgroundColor: '#ffffff',
-          color: '#111111',
-          borderColor: error ? '#DC2626' : '#E8E8E4',
+          width: '100%', appearance: 'none', borderRadius: 8,
+          border: `1.5px solid ${error ? '#DC2626' : '#E8E8E4'}`,
+          padding: '7px 32px 7px 10px', fontSize: 12, fontWeight: 500,
+          backgroundColor: '#ffffff', color: '#111111', cursor: 'pointer',
           outline: 'none',
         }}
         {...props}
@@ -24,8 +21,10 @@ const Select = forwardRef(function Select({ className, error, options = [], plac
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
-      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
-        style={{ color: '#9A9A9A' }} />
+      <svg style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#9A9A9A' }}
+        width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
     </div>
   );
 });

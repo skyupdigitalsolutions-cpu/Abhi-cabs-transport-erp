@@ -12,30 +12,43 @@ export const ROLES = {
 };
 
 export const PERMISSIONS = {
-  CLIENTS_VIEW:    'clients.view',
-  CLIENTS_MANAGE:  'clients.manage',
-  DRIVERS_VIEW:    'drivers.view',
-  DRIVERS_MANAGE:  'drivers.manage',
-  VEHICLES_VIEW:   'vehicles.view',
-  VEHICLES_MANAGE: 'vehicles.manage',
-  BOOKINGS_VIEW:   'bookings.view',
-  BOOKINGS_MANAGE: 'bookings.manage',
-  DISPATCH_MANAGE: 'dispatch.manage',
-  TRIPS_VIEW:      'trips.view',
-  PAYMENTS_VIEW:   'payments.view',
-  PAYMENTS_MANAGE: 'payments.manage',
-  INVOICES_VIEW:   'invoices.view',
-  INVOICES_MANAGE: 'invoices.manage',
-  REPORTS_VIEW:    'reports.view',
-  SUPPORT_MANAGE:  'support.manage',
-  USERS_MANAGE:    'users.manage',
-  MASTERS_MANAGE:  'masters.manage',
-  SETTINGS_MANAGE: 'settings.manage',
+  // These match the exact permission strings the backend requires
+  // (returned by GET /auth/me and checked by requirePermission middleware)
+  CLIENTS_VIEW:    'CUSTOMER_MANAGE',
+  CLIENTS_MANAGE:  'CUSTOMER_MANAGE',
+  DRIVERS_VIEW:    'DRIVER_APPROVE',
+  DRIVERS_MANAGE:  'DRIVER_APPROVE',
+  VEHICLES_VIEW:   'VEHICLE_MANAGE',
+  VEHICLES_MANAGE: 'VEHICLE_MANAGE',
+  BOOKINGS_VIEW:   'BOOKING_MANAGE',
+  BOOKINGS_MANAGE: 'BOOKING_MANAGE',
+  DISPATCH_MANAGE: 'DISPATCH_MANAGE',
+  TRIPS_VIEW:      'BOOKING_MANAGE',
+  PAYMENTS_VIEW:   'PAYMENT_VIEW',
+  PAYMENTS_MANAGE: 'PAYMENT_VIEW',
+  INVOICES_VIEW:   'PAYMENT_VIEW',
+  INVOICES_MANAGE: 'PAYMENT_VIEW',
+  REPORTS_VIEW:    'REPORT_VIEW',
+  SUPPORT_MANAGE:  'SUPPORT_MANAGE',
+  USERS_MANAGE:    'USER_MANAGE',
+  MASTERS_MANAGE:  'SETTINGS_MANAGE',
+  SETTINGS_MANAGE: 'SETTINGS_MANAGE',
+  DASHBOARD_VIEW:  'REPORT_VIEW',
+  AUDIT_VIEW:      'AUDIT_VIEW',
+  BOOKING_CANCEL:  'BOOKING_CANCEL',
+  BOOKING_CREATE:  'BOOKING_CREATE',
 };
 
+// Backend permission strings granted to ADMIN role (from seeded role_permissions table)
 export const ROLE_PERMISSIONS = {
-  [ROLES.ADMIN]:  Object.values(PERMISSIONS),  // full access
-  [ROLES.DRIVER]: [PERMISSIONS.TRIPS_VIEW],    // trip-only access
+  [ROLES.ADMIN]: [
+    'BOOKING_MANAGE', 'BOOKING_CREATE', 'BOOKING_CANCEL',
+    'DISPATCH_MANAGE', 'DRIVER_APPROVE', 'VEHICLE_MANAGE',
+    'CUSTOMER_MANAGE', 'PAYMENT_VIEW', 'PAYMENT_REFUND',
+    'REPORT_VIEW', 'USER_MANAGE', 'SETTINGS_MANAGE',
+    'AUDIT_VIEW', 'SUPPORT_MANAGE',
+  ],
+  [ROLES.DRIVER]: ['BOOKING_MANAGE'],
 };
 
 // Real backend enum (src/models/booking.model.js) — confirmed uppercase,
@@ -56,27 +69,30 @@ export const BOOKING_STATUS = {
 };
 
 export const TRIP_STATUS = {
-  // Backend enum is uppercase — do not change these values
-  SCHEDULED: 'scheduled',
-  ONGOING:   'ongoing',
-  COMPLETED: 'completed',
-  CANCELLED: 'cancelled',
+  ALLOCATED: 'ALLOCATED',
+  EN_ROUTE:  'EN_ROUTE',
+  ONGOING:   'ONGOING',
+  ARRIVED:   'ARRIVED',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
 };
 
 export const PAYMENT_STATUS = {
-  PENDING:  'pending',
-  PAID:     'paid',
-  FAILED:   'failed',
-  REFUNDED: 'refunded',
+  CREATED:        'CREATED',
+  AUTHORISED:     'AUTHORISED',
+  CAPTURED:       'CAPTURED',
+  PARTIALLY_PAID: 'PARTIALLY_PAID',
+  FAILED:         'FAILED',
+  REFUNDED:       'REFUNDED',
 };
 
 export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Wallet', 'Cash', 'Bank Transfer', 'Cheque'];
 
 export const INVOICE_STATUS = {
-  DRAFT:   'draft',
-  ISSUED:  'issued',
-  PAID:    'paid',
-  OVERDUE: 'overdue',
+  DRAFT:     'DRAFT',
+  ISSUED:    'ISSUED',
+  PAID:      'PAID',
+  CANCELLED: 'CANCELLED',
 };
 
 /**

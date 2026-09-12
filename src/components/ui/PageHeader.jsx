@@ -1,23 +1,30 @@
 export default function PageHeader({ title, description, actions, breadcrumb }) {
   return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between mb-6">
-      <div className="min-w-0">
-        {breadcrumb && <div className="mb-2">{breadcrumb}</div>}
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight leading-tight"
-          style={{ color: '#111111', letterSpacing: '-0.5px' }}>
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-1 text-xs font-medium leading-relaxed" style={{ color: '#9A9A9A', maxWidth: 560 }}>
-            {description}
-          </p>
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 4,
+      marginBottom: 24,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          {breadcrumb && <div style={{ marginBottom: 8 }}>{breadcrumb}</div>}
+          <h1 style={{
+            fontSize: 22, fontWeight: 900, color: '#111111',
+            letterSpacing: '-0.5px', lineHeight: 1.2, margin: 0,
+          }}>
+            {title}
+          </h1>
+          {description && (
+            <p style={{ marginTop: 4, fontSize: 12, fontWeight: 500, color: '#9A9A9A', maxWidth: 560, lineHeight: 1.6 }}>
+              {description}
+            </p>
+          )}
+        </div>
+        {actions && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
+            {actions}
+          </div>
         )}
       </div>
-      {actions && (
-        <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0 sm:shrink-0">
-          {actions}
-        </div>
-      )}
     </div>
   );
 }

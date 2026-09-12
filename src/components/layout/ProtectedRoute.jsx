@@ -1,10 +1,10 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
 const ROLE_HOME  = { admin: '/admin/dashboard', driver: '/driver/trips' };
 const ROLE_LOGIN = { admin: '/admin/login',     driver: '/driver/login'  };
 
-export default function ProtectedRoute({ permission, requiredRole, redirectTo }) {
+export default function ProtectedRoute({ permission, requiredRole, redirectTo, children }) {
   const { isAuthenticated, hasPermission, user } = useAuth();
   const location = useLocation();
 
@@ -21,5 +21,5 @@ export default function ProtectedRoute({ permission, requiredRole, redirectTo })
     return <Navigate to="/unauthorized" replace />;
   }
 
-  return <Outlet />;
+  return children;
 }

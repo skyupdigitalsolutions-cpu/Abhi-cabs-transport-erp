@@ -39,7 +39,8 @@ export function useResourceList(
 
   const { data, status, error, refetch } = useApi(
     () => service.list(params),
-    [service, JSON.stringify(params), reloadTick]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(params), reloadTick]
   );
 
   const onSearchChange = useCallback((v) => { setSearch(v); setPage(1); }, []);

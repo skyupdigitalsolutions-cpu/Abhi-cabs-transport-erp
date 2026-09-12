@@ -2,16 +2,23 @@ import { Inbox } from 'lucide-react';
 
 export default function EmptyState({ icon: Icon = Inbox, title = 'Nothing here yet', description, action }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
-      <div
-        className="h-12 w-12 grid place-items-center rounded-full"
-        style={{ backgroundColor: '#eef2fb' }}
-      >
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 8, padding: '56px 24px', textAlign: 'center',
+    }}>
+      <div style={{
+        height: 48, width: 48, display: 'grid', placeItems: 'center',
+        borderRadius: '50%', backgroundColor: '#EEF2FB', flexShrink: 0,
+      }}>
         <Icon size={22} style={{ color: '#3B65DB' }} />
       </div>
-      <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>{title}</p>
-      {description && <p className="text-sm max-w-sm" style={{ color: '#6B7280' }}>{description}</p>}
-      {action}
+      <p style={{ fontWeight: 700, fontSize: 14, color: '#111111', margin: 0 }}>{title}</p>
+      {description && (
+        <p style={{ fontSize: 13, color: '#9A9A9A', maxWidth: 360, margin: 0, lineHeight: 1.5 }}>
+          {description}
+        </p>
+      )}
+      {action && <div style={{ marginTop: 4 }}>{action}</div>}
     </div>
   );
 }

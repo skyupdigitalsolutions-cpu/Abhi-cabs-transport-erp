@@ -6,6 +6,8 @@ import ErrorBoundary from './ErrorBoundary';
 import { ADMIN_NAV } from '../../constants';
 import { AdminRealtimeProvider, useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 
+const SIDEBAR_W = 240;
+
 function AdminLayoutInner() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
@@ -13,16 +15,21 @@ function AdminLayoutInner() {
   const { connected } = useAdminRealtimeContext();
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#F9F9F7' }}>
-      <Sidebar nav={ADMIN_NAV} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
-      {/* lg:ml-60 offsets for the fixed 240px sidebar */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
+    <div style={{ backgroundColor: '#F9F9F7', minHeight: '100vh' }}>
+      <Sidebar
+        nav={ADMIN_NAV}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
+      />
+
+      {/* Main content — offset by sidebar width */}
+      <div style={{ marginLeft: SIDEBAR_W }}>
         <Navbar
           onMenuClick={() => setMobileOpen(true)}
           title={current?.label || 'ABHI CABS ERP'}
           liveConnected={connected}
         />
-        <main className="flex-1 p-4 sm:p-6 overflow-auto">
+        <main style={{ padding: '24px', minHeight: 'calc(100vh - 64px)' }}>
           <ErrorBoundary key={location.pathname}>
             <Outlet />
           </ErrorBoundary>

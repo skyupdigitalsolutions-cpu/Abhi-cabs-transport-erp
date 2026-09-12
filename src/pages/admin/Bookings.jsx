@@ -18,7 +18,7 @@ import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatter
 // Backend listBookingsQuerySchema accepts:
 //   status, tripType, from, to, search, sortBy, order, page, limit
 
-const BOOKING_STATUSES = ['PENDING','CONFIRMED','ALLOCATED','EN_ROUTE','ONGOING','ARRIVED','COMPLETED','CANCELLED','EXPIRED'];
+const BOOKING_STATUSES = ['PENDING','CONFIRMED','ALLOCATED','EN_ROUTE','ONGOING','COMPLETED','CANCELLED','EXPIRED'];
 const TRIP_TYPES       = ['ONE_WAY','ROUND_TRIP','AIRPORT','HOURLY'];
 const SORT_OPTIONS     = ['createdAt','pickupAt','estimatedFare','status'];
 

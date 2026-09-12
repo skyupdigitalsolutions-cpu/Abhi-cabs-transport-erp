@@ -1,14 +1,21 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
-import { Navigation } from 'lucide-react';
-import PageHeader from '../../components/ui/PageHeader';
-import Card from '../../components/ui/Card';
-import EmptyState from '../../components/ui/EmptyState';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { Navigation, MapPin, Truck, Radio, RefreshCw } from 'lucide-react';
+import PageHeader      from '../../components/ui/PageHeader';
+import Card            from '../../components/ui/Card';
+import Badge           from '../../components/ui/Badge';
+import Button          from '../../components/ui/Button';
+import StatusBadge     from '../../components/ui/StatusBadge';
+import LoadingState    from '../../components/ui/LoadingState';
+import ErrorState      from '../../components/ui/ErrorState';
 import ConnectionBadge from '../../components/tracking/ConnectionBadge';
-import LoadingState from '../../components/ui/LoadingState';
 import { useTrackingSocket } from '../../hooks/useTrackingSocket';
-import { useApi } from '../../hooks/useApi';
-import { tripService } from '../../services';
-import { TRIP_STATUS } from '../../constants';
+import { useApi }      from '../../hooks/useApi';
+import { bookingService } from '../../services';
+import { formatDateTime } from '../../utils/formatters';
+
+const STALE_MS  = 20_000;
+const CENTER    = { lat: 12.9716, lng: 77.5946 };
+const MAPS_KEY  = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 function addr(val) {
   if (!val) return '—';
@@ -16,200 +23,317 @@ function addr(val) {
   return val.address || val.formattedAddress || '—';
 }
 
-
-
-const STALE_MS = 20000;
-const MAP_STYLES = ['streets', 'satellite', 'hybrid'];
-
-// Bengaluru center
-const CENTER = { lat: 12.9716, lng: 77.5946 };
-const ZOOM = 12;
-
-// ── OpenStreetMap tile-based map with Leaflet via CDN ─────────────────────
-function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
-  const mapRef = useRef(null);
-  const leafletRef = useRef(null);
-  const markersRef = useRef({});
-  const [mapStyle, setMapStyle] = useState('streets');
-  const [mapReady, setMapReady] = useState(false);
+// ── Google Maps loader ───────────────────────────────────────────────────────
+function useGoogleMaps() {
+  const [ready, setReady] = useState(!!window.google?.maps);
   const [error, setError] = useState(null);
 
-  const TILE_URLS = {
-    streets:   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    hybrid:    'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-  };
-
-  const TILE_ATTRIBS = {
-    streets:   '© OpenStreetMap contributors',
-    satellite: '© Esri',
-    hybrid:    '© Google',
-  };
-
-  // Load Leaflet from CDN
   useEffect(() => {
-    if (window.L) { initMap(); return; }
+    if (window.google?.maps) { setReady(true); return; }
+    if (!MAPS_KEY) { setError('VITE_GOOGLE_MAPS_API_KEY not set in .env'); return; }
 
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
+    // Avoid loading twice if another instance already appended the script
+    if (document.getElementById('gmap-script')) return;
 
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => initMap();
-    script.onerror = () => setError('Failed to load map library');
+    script.id  = 'gmap-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=marker`;
+    script.async = true;
+    script.defer = true;
+    script.onload  = () => setReady(true);
+    script.onerror = () => setError('Failed to load Google Maps — check your API key.');
     document.head.appendChild(script);
   }, []);
 
-  function initMap() {
-    if (!mapRef.current || leafletRef.current) return;
-    try {
-      const L = window.L;
-      const map = L.map(mapRef.current, {
-        center: [CENTER.lat, CENTER.lng],
-        zoom: ZOOM,
-        zoomControl: true,
-        attributionControl: true,
-      });
+  return { ready, error };
+}
 
-      L.tileLayer(TILE_URLS.streets, {
-        attribution: TILE_ATTRIBS.streets,
-        maxZoom: 19,
-      }).addTo(map);
+// ── Truck SVG for marker ─────────────────────────────────────────────────────
+function truckSvg(color) {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="17" fill="${color}" stroke="#fff" stroke-width="2.5"/>
+      <rect x="6" y="13" width="14" height="10" rx="1.5" fill="white"/>
+      <path d="M20 15.5h4l3 4v3.5h-7V15.5z" fill="white"/>
+      <circle cx="10" cy="25" r="2" fill="${color}"/>
+      <circle cx="25" cy="25" r="2" fill="${color}"/>
+    </svg>
+  `)}`;
+}
 
-      leafletRef.current = map;
-      setMapReady(true);
-    } catch (e) {
-      setError('Map initialisation failed');
-    }
-  }
+// ── Live Map ─────────────────────────────────────────────────────────────────
+function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
+  const mapRef     = useRef(null);
+  const gmapRef    = useRef(null);   // google.maps.Map instance
+  const markersRef = useRef({});     // driverId → google.maps.Marker
+  const { ready, error } = useGoogleMaps();
+  const [mapType, setMapType] = useState('roadmap'); // roadmap | satellite | hybrid
 
-  // Switch tile layer when style changes
+  // Init map once SDK is ready
   useEffect(() => {
-    if (!leafletRef.current || !mapReady) return;
-    const L = window.L;
-    leafletRef.current.eachLayer(layer => {
-      if (layer instanceof L.TileLayer) leafletRef.current.removeLayer(layer);
+    if (!ready || !mapRef.current || gmapRef.current) return;
+    gmapRef.current = new window.google.maps.Map(mapRef.current, {
+      center:    CENTER,
+      zoom:      12,
+      mapTypeId: mapType,
+      disableDefaultUI: false,
+      zoomControl: true,
+      mapTypeControl: false,   // we render our own switcher
+      streetViewControl: false,
+      fullscreenControl: true,
+      styles: [
+        { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+        { featureType: 'transit', stylers: [{ visibility: 'simplified' }] },
+      ],
     });
-    L.tileLayer(TILE_URLS[mapStyle], {
-      attribution: TILE_ATTRIBS[mapStyle],
-      maxZoom: 19,
-    }).addTo(leafletRef.current);
-  }, [mapStyle, mapReady]);
+  }, [ready]);
 
-  // Place / update driver markers
+  // Swap map type when toggle changes
   useEffect(() => {
-    if (!leafletRef.current || !mapReady) return;
-    const L = window.L;
-    const map = leafletRef.current;
+    if (!gmapRef.current) return;
+    gmapRef.current.setMapTypeId(mapType);
+  }, [mapType]);
 
-    trips.forEach(trip => {
-      const pos = positions[trip.driverId];
+  // Update markers whenever positions or trips change
+  useEffect(() => {
+    if (!gmapRef.current || !ready) return;
+    const G = window.google.maps;
+
+    trips.forEach((trip) => {
+      const pos   = positions[trip.driverId];
       if (!pos) return;
-
-      const isSelected = selectedDriver === trip.driverId;
       const stale = now - pos.at > STALE_MS;
-      const color = stale ? '#6B7280' : isSelected ? '#2F55C7' : '#3B65DB';
+      const isSelected = selectedDriver === trip.driverId;
+      const color = stale ? '#9CA3AF' : isSelected ? '#FFC107' : '#3B65DB';
 
-      // SVG marker icon — truck silhouette with pulse ring
-      const svgIcon = L.divIcon({
-        className: '',
-        iconSize: [44, 44],
-        iconAnchor: [22, 22],
-        popupAnchor: [0, -22],
-        html: `
-          <div style="position:relative;width:44px;height:44px;">
-            ${!stale ? `<div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.2;animation:pulse 2s infinite;"></div>` : ''}
-            <div style="position:absolute;inset:6px;background:${color};border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="1" y="3" width="15" height="13" rx="1"/>
-                <path d="M16 8h4l3 4v4h-7V8z"/>
-                <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-              </svg>
-            </div>
-            ${isSelected ? `<div style="position:absolute;-inset:3px;border:3px solid ${color};border-radius:50%;"></div>` : ''}
-          </div>
-          <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:0.2}50%{transform:scale(1.5);opacity:0.1}}</style>
-        `,
-      });
+      const icon = {
+        url:        truckSvg(color),
+        scaledSize: new G.Size(36, 36),
+        anchor:     new G.Point(18, 18),
+      };
 
       if (markersRef.current[trip.driverId]) {
-        markersRef.current[trip.driverId]
-          .setLatLng([pos.lat, pos.lng])
-          .setIcon(svgIcon);
+        const marker = markersRef.current[trip.driverId];
+        marker.setPosition({ lat: pos.lat, lng: pos.lng });
+        marker.setIcon(icon);
       } else {
-        const marker = L.marker([pos.lat, pos.lng], { icon: svgIcon })
-          .addTo(map)
-          .on('click', () => onSelectDriver(trip.driverId));
+        const marker = new G.Marker({
+          position: { lat: pos.lat, lng: pos.lng },
+          map:      gmapRef.current,
+          icon,
+          title:    trip.driverName || 'Driver',
+        });
+
+        const info = new G.InfoWindow({
+          content: `
+            <div style="font-family:-apple-system,sans-serif;min-width:160px;padding:2px 0">
+              <p style="font-weight:700;margin:0 0 3px;color:#111;font-size:13px">${trip.driverName || 'Driver'}</p>
+              <p style="font-size:11px;color:#666;margin:0 0 2px">${trip.vehicleRegNo || ''}</p>
+              <p style="font-size:11px;color:#666;margin:0 0 6px">
+                ${addr(trip.pickupAddress)?.split(',')[0]} → ${addr(trip.dropAddress)?.split(',')[0]}
+              </p>
+              <span style="font-size:11px;background:#eef2fb;color:#3B65DB;padding:2px 8px;border-radius:99px;font-weight:600">
+                ${pos.speedKmph ?? 0} km/h
+              </span>
+            </div>`,
+        });
+
+        marker.addListener('click', () => {
+          onSelectDriver(trip.driverId);
+          info.open(gmapRef.current, marker);
+        });
+
         markersRef.current[trip.driverId] = marker;
       }
-
-      // Update popup
-      markersRef.current[trip.driverId].bindPopup(`
-        <div style="font-family:-apple-system,sans-serif;min-width:180px">
-          <p style="font-weight:700;color:#1F2937;margin:0 0 4px">${trip.driverName}</p>
-          <p style="font-size:12px;color:#6B7280;margin:0 0 2px">${trip.vehicleRegNo}</p>
-          <p style="font-size:12px;color:#6B7280;margin:0 0 6px">${trip.pickup?.split(',')[0]} → ${trip.drop?.split(',')[0]}</p>
-          <div style="display:flex;gap:8px">
-            <span style="font-size:11px;background:#eef2fb;color:#3B65DB;padding:2px 8px;border-radius:999px;font-weight:600">${pos.speedKmph} km/h</span>
-            <span style="font-size:11px;background:#F7F8FC;color:#6B7280;padding:2px 8px;border-radius:999px">${stale ? '⚠ Stale' : '● Live'}</span>
-          </div>
-        </div>
-      `, { maxWidth: 220 });
     });
-  }, [trips, positions, now, selectedDriver, mapReady]);
 
-  // Pan to selected driver
+    // Remove markers for drivers no longer in the list
+    const activeIds = new Set(trips.map((t) => t.driverId));
+    Object.keys(markersRef.current).forEach((id) => {
+      if (!activeIds.has(id)) {
+        markersRef.current[id].setMap(null);
+        delete markersRef.current[id];
+      }
+    });
+  }, [trips, positions, now, selectedDriver, ready]);
+
+  // Pan/zoom to selected driver
   useEffect(() => {
-    if (!leafletRef.current || !selectedDriver || !mapReady) return;
-    const trip = trips.find(t => t.driverId === selectedDriver);
-    if (!trip) return;
+    if (!gmapRef.current || !selectedDriver) return;
     const pos = positions[selectedDriver];
-    if (pos) leafletRef.current.flyTo([pos.lat, pos.lng], 15, { animate: true, duration: 1 });
-  }, [selectedDriver, mapReady]);
+    if (pos) {
+      gmapRef.current.panTo({ lat: pos.lat, lng: pos.lng });
+      gmapRef.current.setZoom(15);
+    }
+  }, [selectedDriver, positions]);
 
   return (
-    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {/* Map container */}
-      <div ref={mapRef} style={{ height: '100%', width: '100%', borderRadius: '0' }} />
+    <div style={{ position: 'relative', height: '100%', width: '100%', borderRadius: 16, overflow: 'hidden' }}>
+      <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
 
       {/* Error overlay */}
       {error && (
-        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', backgroundColor:'#F7F8FC' }}>
-          <p style={{ color:'#6B7280', fontSize:14 }}>{error}</p>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F7' }}>
+          <p style={{ color: '#9A9A9A', fontSize: 14, textAlign: 'center', padding: 16 }}>{error}</p>
         </div>
       )}
 
-      {/* Map style switcher */}
-      <div style={{ position:'absolute', top:10, right:10, zIndex:1000, display:'flex', gap:4, background:'rgba(255,255,255,0.95)', borderRadius:8, padding:4, boxShadow:'0 2px 8px rgba(0,0,0,0.15)' }}>
-        {MAP_STYLES.map(s => (
-          <button key={s} onClick={() => setMapStyle(s)}
-            style={{ padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:600, border:'none', cursor:'pointer',
-              backgroundColor: mapStyle===s ? '#3B65DB':'transparent',
-              color: mapStyle===s ? '#fff':'#6B7280' }}>
-            {s.charAt(0).toUpperCase()+s.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Loading indicator */}
-      {!mapReady && !error && (
-        <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', backgroundColor:'#eef2fb' }}>
-          <div style={{ width:36, height:36, border:'3px solid #c7d7f6', borderTopColor:'#3B65DB', borderRadius:'50%', animation:'spin 0.8s linear infinite', marginBottom:12 }} />
-          <p style={{ color:'#3B65DB', fontSize:13, fontWeight:600 }}>Loading map…</p>
+      {/* Loading overlay */}
+      {!ready && !error && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FB' }}>
+          <div style={{ width: 32, height: 32, border: '3px solid #c7d7f6', borderTopColor: '#3B65DB', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: 10 }} />
+          <p style={{ color: '#3B65DB', fontSize: 13, fontWeight: 600 }}>Loading Google Maps…</p>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        </div>
+      )}
+
+      {/* Map type switcher */}
+      {ready && (
+        <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000, display: 'flex', gap: 3, background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+          {[
+            { key: 'roadmap',   label: 'Map'       },
+            { key: 'satellite', label: 'Satellite'  },
+            { key: 'hybrid',    label: 'Hybrid'     },
+          ].map((t) => (
+            <button key={t.key} onClick={() => setMapType(t.key)}
+              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', backgroundColor: mapType === t.key ? '#3B65DB' : 'transparent', color: mapType === t.key ? '#fff' : '#6B7280' }}>
+              {t.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────
+// ── Driver card ──────────────────────────────────────────────────────────────
+function DriverCard({ trip, pos, now, selected, onSelect }) {
+  const stale = pos && (now - pos.at > STALE_MS);
+  return (
+    <div onClick={() => onSelect(trip.driverId)}
+      className="rounded-2xl border p-4 cursor-pointer"
+      style={{ backgroundColor: selected ? '#eef2fb' : '#fff', borderColor: selected ? '#3B65DB' : '#E8E8E4', outline: selected ? '2px solid #3B65DB' : 'none' }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-full grid place-items-center font-bold text-white text-xs shrink-0"
+            style={{ backgroundColor: '#111111' }}>
+            {(trip.driverName || 'D')[0]}
+          </div>
+          <div>
+            <p className="font-bold text-xs" style={{ color: '#111111' }}>{trip.driverName || 'Driver'}</p>
+            <p className="text-[10px]" style={{ color: '#9A9A9A' }}>{trip.vehicleRegNo || trip.vehicleClass || '—'}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: !pos ? '#E8E8E4' : stale ? '#F59E0B' : '#22A65A' }} />
+          <StatusBadge status={trip.status} />
+        </div>
+      </div>
+      <p className="text-[10px] truncate mb-2" style={{ color: '#9A9A9A' }}>
+        {addr(trip.pickupAddress)?.split(',')[0]} → {addr(trip.dropAddress)?.split(',')[0]}
+      </p>
+      {pos ? (
+        <div className="grid grid-cols-3 gap-1.5">
+          {[
+            ['Speed', `${pos.speedKmph ?? 0} km/h`],
+            ['Lat',   pos.lat?.toFixed(4)],
+            ['Lng',   pos.lng?.toFixed(4)],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg px-2 py-1 text-center" style={{ backgroundColor: '#F9F9F7' }}>
+              <p className="text-[9px] uppercase tracking-wide" style={{ color: '#9A9A9A' }}>{label}</p>
+              <p className="text-[10px] font-bold font-mono" style={{ color: '#111111' }}>{value}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[10px]" style={{ color: '#9A9A9A' }}>Waiting for GPS signal…</p>
+      )}
+    </div>
+  );
+}
+
+// ── Empty state ──────────────────────────────────────────────────────────────
+function NoActiveTrips({ recentBookings, refetch }) {
+  return (
+    <div>
+      <div className="rounded-2xl border p-5 mb-5 flex items-center gap-4"
+        style={{ backgroundColor: '#F9F9F7', borderColor: '#E8E8E4' }}>
+        <div className="h-12 w-12 rounded-2xl grid place-items-center shrink-0"
+          style={{ backgroundColor: '#F5F5F3' }}>
+          <Navigation size={22} style={{ color: '#9A9A9A' }} />
+        </div>
+        <div className="flex-1">
+          <p className="font-bold text-sm" style={{ color: '#111111' }}>No active trips right now</p>
+          <p className="text-xs mt-0.5" style={{ color: '#9A9A9A' }}>
+            Driver positions will appear here in real time once a trip is in progress.
+            Use <strong>Dispatch</strong> to assign a vehicle to a pending booking.
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" icon={RefreshCw} onClick={refetch}>Refresh</Button>
+      </div>
+
+      <div className="rounded-2xl border mb-5 overflow-hidden"
+        style={{ height: 320, borderColor: '#E8E8E4', backgroundColor: '#EEF2FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+        <MapPin size={36} style={{ color: '#c7d7f6' }} />
+        <p style={{ color: '#9A9A9A', fontSize: 13, fontWeight: 600 }}>Map will activate when trips are live</p>
+      </div>
+
+      {recentBookings.length > 0 && (
+        <Card padded={false}>
+          <div className="px-5 pt-4 pb-3 border-b" style={{ borderColor: '#F5F5F3' }}>
+            <p className="text-sm font-bold" style={{ color: '#111111' }}>Recent bookings</p>
+            <p className="text-xs mt-0.5" style={{ color: '#9A9A9A' }}>Latest confirmed and pending bookings awaiting dispatch</p>
+          </div>
+          <div className="divide-y" style={{ borderColor: '#F5F5F3' }}>
+            {recentBookings.map((b) => (
+              <div key={b.id} className="flex items-center justify-between px-5 py-3 gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="font-mono text-[10px] font-bold" style={{ color: '#9A9A9A' }}>
+                      {b.bookingNumber}
+                    </span>
+                    <Badge tone="slate">{b.tripType?.replace(/_/g, ' ')}</Badge>
+                  </div>
+                  <p className="text-xs font-semibold truncate" style={{ color: '#111111' }}>
+                    {b.customer?.user?.name || b.corporate?.companyName || '—'}
+                  </p>
+                  <p className="text-[10px] truncate mt-0.5" style={{ color: '#9A9A9A' }}>
+                    {addr(b.pickupAddress)?.split(',')[0]} → {addr(b.dropAddress)?.split(',')[0]}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <StatusBadge status={b.status} />
+                  <p className="text-[10px] mt-1" style={{ color: '#9A9A9A' }}>
+                    {formatDateTime(b.pickupAt)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function LiveTracking() {
-  const tripsApi = useApi(() => tripService.list({ limit: 20, status: TRIP_STATUS.ONGOING }), []);
-  const ongoingTrips = (tripsApi.data?.data || []).slice(0, 6);
-  const driverIds = useMemo(() => ongoingTrips.map((t) => t.driverId), [ongoingTrips]);
+  const activeApi  = useApi(
+    () => bookingService.list({ status: 'ONGOING', limit: 20 }),
+    []
+  );
+  const recentApi  = useApi(
+    () => bookingService.list({ limit: 10, sortBy: 'createdAt', order: 'desc' }),
+    []
+  );
+
+  const activeTrips    = activeApi.data?.data  ?? activeApi.data?.items  ?? [];
+  const recentBookings = recentApi.data?.data  ?? recentApi.data?.items  ?? [];
+
+  const driverIds = useMemo(
+    () => activeTrips.map((t) => t.driverId).filter(Boolean),
+    [activeTrips]
+  );
   const { connection, positions } = useTrackingSocket(driverIds);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -219,13 +343,15 @@ export default function LiveTracking() {
     return () => clearInterval(t);
   }, []);
 
-  if (tripsApi.status === 'loading') return <LoadingState label="Loading active trips…" />;
+  if (activeApi.status === 'loading' || recentApi.status === 'loading') {
+    return <LoadingState label="Loading tracking data…" />;
+  }
 
-  if (!ongoingTrips.length) {
+  if (activeApi.status === 'error') {
     return (
       <div>
-        <PageHeader title="Live Tracking" description="Realtime GPS tracking for all active trips." />
-        <Card><EmptyState icon={Navigation} title="No trips in progress" description="Live driver positions appear here as soon as a trip starts." /></Card>
+        <PageHeader title="Live Tracking" />
+        <ErrorState message={activeApi.error?.message} onRetry={activeApi.refetch} />
       </div>
     );
   }
@@ -234,84 +360,55 @@ export default function LiveTracking() {
     <div>
       <PageHeader
         title="Live Tracking"
-        description="Realtime GPS positions — click a driver card to centre the map."
-        actions={<ConnectionBadge status={connection} />}
+        description={activeTrips.length > 0
+          ? `${activeTrips.length} trip${activeTrips.length > 1 ? 's' : ''} in progress — click a driver to centre the map.`
+          : 'Realtime GPS positions appear here once trips are in progress.'}
+        actions={
+          <div className="flex items-center gap-2">
+            <ConnectionBadge status={connection} />
+            <Button size="sm" variant="secondary" icon={RefreshCw}
+              onClick={() => { activeApi.refetch(); recentApi.refetch(); }}>
+              Refresh
+            </Button>
+          </div>
+        }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ height: 'calc(100vh - 200px)', minHeight: 520 }}>
-        {/* Map */}
-        <div className="lg:col-span-2 rounded-2xl overflow-hidden border shadow-sm" style={{ borderColor:'#E5E7EB', minHeight: 420 }}>
-          <LiveMap
-            trips={ongoingTrips}
-            positions={positions}
-            now={now}
-            selectedDriver={selectedDriver}
-            onSelectDriver={setSelectedDriver}
-          />
-        </div>
+      {activeTrips.length === 0 ? (
+        <NoActiveTrips
+          recentBookings={recentBookings}
+          refetch={() => { activeApi.refetch(); recentApi.refetch(); }}
+        />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4"
+          style={{ height: 'calc(100vh - 200px)', minHeight: 520 }}>
+          {/* Map */}
+          <div className="lg:col-span-2 rounded-2xl overflow-hidden border"
+            style={{ borderColor: '#E8E8E4', minHeight: 420 }}>
+            <LiveMap
+              trips={activeTrips}
+              positions={positions}
+              now={now}
+              selectedDriver={selectedDriver}
+              onSelectDriver={setSelectedDriver}
+            />
+          </div>
 
-        {/* Driver list */}
-        <div className="flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '100%' }}>
-          {ongoingTrips.map(trip => {
-            const pos      = positions[trip.driverId];
-            const stale    = pos && now - pos.at > STALE_MS;
-            const isSelected = selectedDriver === trip.driverId;
-
-            return (
-              <div
+          {/* Driver cards */}
+          <div className="flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '100%' }}>
+            {activeTrips.map((trip) => (
+              <DriverCard
                 key={trip.id}
-                onClick={() => setSelectedDriver(trip.driverId)}
-                className="rounded-2xl border p-4 cursor-pointer transition-all"
-                style={{
-                  backgroundColor: isSelected ? '#eef2fb':'#ffffff',
-                  borderColor: isSelected ? '#3B65DB':'#E5E7EB',
-                  outline: isSelected ? '2px solid #3B65DB':undefined,
-                }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full grid place-items-center font-bold text-white text-xs"
-                      style={{ backgroundColor: '#3B65DB' }}>
-                      {(trip.driverName||'D').slice(0,1)}
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm" style={{ color:'#1F2937' }}>{trip.driverName}</p>
-                      <p className="text-xs" style={{ color:'#6B7280' }}>{trip.vehicleRegNo}</p>
-                    </div>
-                  </div>
-                  <span className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: !pos ? '#E5E7EB' : stale ? '#F59E0B' : '#38B763' }} />
-                </div>
-
-                <p className="text-xs mb-2 truncate" style={{ color:'#6B7280' }}>
-                  {trip.pickup?.split(',')[0]} → {trip.drop?.split(',')[0]}
-                </p>
-
-                {pos ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ backgroundColor:'#F7F8FC' }}>
-                      <p className="text-xs" style={{ color:'#6B7280' }}>Speed</p>
-                      <p className="text-sm font-bold" style={{ color:'#1F2937' }}>{pos.speedKmph} km/h</p>
-                    </div>
-                    <div className="rounded-lg px-2 py-1.5 text-center" style={{ backgroundColor:'#F7F8FC' }}>
-                      <p className="text-xs" style={{ color:'#6B7280' }}>Updated</p>
-                      <p className="text-sm font-bold" style={{ color: stale ? '#F59E0B':'#38B763' }}>{stale ? 'Stale' : 'Live'}</p>
-                    </div>
-                    <div className="col-span-2 rounded-lg px-2 py-1.5" style={{ backgroundColor:'#F7F8FC' }}>
-                      <p className="text-xs" style={{ color:'#6B7280' }}>Coordinates</p>
-                      <p className="text-xs font-mono font-semibold" style={{ color:'#1F2937' }}>
-                        {pos.lat.toFixed(4)}° N, {pos.lng.toFixed(4)}° E
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs" style={{ color:'#6B7280' }}>Waiting for GPS signal…</p>
-                )}
-              </div>
-            );
-          })}
+                trip={trip}
+                pos={positions[trip.driverId]}
+                now={now}
+                selected={selectedDriver === trip.driverId}
+                onSelect={setSelectedDriver}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -45,9 +45,10 @@ export default function Dispatch() {
     board.refetch();
   }, [lastBookingEventId]);
 
-  const pendingBookings   = board.data?.pending?.bookings || board.pending?.bookings || [];
-  const liveTrips         = board.data?.live?.trips || board.live?.trips || [];
-  const availableVehicles = board.data?.vehicles?.available || board.vehicles?.available || [];
+  const pendingBookings   = board.data?.pending?.bookings || [];
+  const liveTrips         = board.data?.live?.trips || [];
+  // Backend returns { vehicles: { count, vehicles: [...] } }
+  const availableVehicles = board.data?.vehicles?.vehicles || [];
 
   // All verified drivers — admin can assign even offline ones for pre-assignment
   const allDrivers = driversApi.data?.items ?? driversApi.data?.data ?? [];

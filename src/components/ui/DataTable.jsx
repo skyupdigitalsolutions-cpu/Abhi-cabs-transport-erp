@@ -1,5 +1,4 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
-import { cn } from '../../utils/cn';
 import { TableSkeleton } from './Skeleton';
 import EmptyState from './EmptyState';
 import ErrorState from './ErrorState';
@@ -14,7 +13,7 @@ export default function DataTable({
   const wrapStyle = {
     backgroundColor: '#ffffff',
     border: '1px solid #E8E8E4',
-    borderRadius: '12px',
+    borderRadius: 12,
     overflow: 'hidden',
   };
 
@@ -29,18 +28,23 @@ export default function DataTable({
   );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto" style={wrapStyle}>
-        <table className="w-full min-w-max">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ overflowX: 'auto', ...wrapStyle }}>
+        <table style={{ width: '100%', minWidth: 'max-content', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #F5F5F3', backgroundColor: '#F9F9F7' }}>
               {columns.map((col) => (
-                <th key={col.key} scope="col"
-                  className={cn('px-4 py-3 text-left whitespace-nowrap', col.className)}
-                  style={{ color: '#9A9A9A', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800 }}>
+                <th key={col.key}
+                  style={{
+                    padding: '10px 16px', textAlign: 'left', whiteSpace: 'nowrap',
+                    color: '#9A9A9A', fontSize: 10, textTransform: 'uppercase',
+                    letterSpacing: '0.08em', fontWeight: 800,
+                    ...(col.className?.includes('text-right') ? { textAlign: 'right' } : {}),
+                  }}>
                   {col.sortable ? (
-                    <button className="inline-flex items-center gap-1 focus-ring rounded hover:text-gray-600"
-                      onClick={() => onSort?.(col.key)} style={{ color: '#9A9A9A' }}>
+                    <button
+                      onClick={() => onSort?.(col.key)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#9A9A9A', fontWeight: 800, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', padding: 0 }}>
                       {col.header}
                       {sortBy === col.key
                         ? (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
@@ -56,15 +60,21 @@ export default function DataTable({
               <tr
                 key={row[rowKey] ?? idx}
                 onClick={() => onRowClick?.(row)}
-                className={cn(onRowClick && 'cursor-pointer')}
-                style={{ borderBottom: idx < rows.length - 1 ? '1px solid #F5F5F3' : 'none' }}
+                style={{
+                  borderBottom: idx < rows.length - 1 ? '1px solid #F5F5F3' : 'none',
+                  cursor: onRowClick ? 'pointer' : 'default',
+                  transition: 'background-color 0.1s',
+                }}
                 onMouseEnter={onRowClick ? (e) => { e.currentTarget.style.backgroundColor = '#FAFAF8'; } : undefined}
                 onMouseLeave={onRowClick ? (e) => { e.currentTarget.style.backgroundColor = ''; } : undefined}
               >
                 {columns.map((col) => (
                   <td key={col.key}
-                    className={cn('px-4 py-3.5 text-xs font-medium', col.className)}
-                    style={{ color: '#111111', whiteSpace: col.wrap ? 'normal' : 'nowrap' }}>
+                    style={{
+                      padding: '12px 16px', fontSize: 12, fontWeight: 500, color: '#111111',
+                      whiteSpace: col.wrap ? 'normal' : 'nowrap',
+                      ...(col.className?.includes('text-right') ? { textAlign: 'right' } : {}),
+                    }}>
                     {col.render ? col.render(row) : row[col.key]}
                   </td>
                 ))}

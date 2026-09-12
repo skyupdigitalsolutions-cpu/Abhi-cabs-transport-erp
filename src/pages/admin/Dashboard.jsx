@@ -94,10 +94,7 @@ export default function Dashboard() {
 
   const exec       = executiveApi.data || {};
   const fleetRaw   = fleetApi.data;
-  // Fleet can be array (mock) or object with { fleet: {...} } (real)
-  const fleet = Array.isArray(fleetRaw)
-    ? { total: fleetRaw.reduce((s,v)=>s+v.count,0), active: fleetRaw.filter(v=>v.status!=='INACTIVE').reduce((s,v)=>s+v.count,0), utilisation: 0, byStatus: Object.fromEntries(fleetRaw.map(v=>[v.type||v.status, v.count])) }
-    : (fleetRaw?.fleet || fleetRaw || {});
+  const fleet = fleetRaw?.fleet || fleetRaw || {};
   const fleetStatus = Object.entries(fleet.byStatus || {}).map(([label, value]) => ({ label: titleCase(label), value }));
 
   // bookingService.list returns { data: [...], pagination: {...} } via crudFactory
