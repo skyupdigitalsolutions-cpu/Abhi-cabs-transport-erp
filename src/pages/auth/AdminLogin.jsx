@@ -122,7 +122,7 @@ export default function AdminLogin() {
             </FormField>
             <div className="flex justify-end">
               <Link
-                to="/admin/forgot-password"
+                to="/admin/forgot"
                 className="text-[11px] font-bold hover:underline focus-ring rounded"
                 style={{ color: '#b45309' }}
               >

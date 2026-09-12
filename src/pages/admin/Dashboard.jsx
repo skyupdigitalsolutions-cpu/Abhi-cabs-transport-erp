@@ -46,10 +46,12 @@ export default function Dashboard() {
   const range = useMemo(() => last30Days(), []);
 
   // Weekly bookings — static shape for chart (no per-day endpoint exists)
-  const bookingsWeekly = useMemo(
-    () => weekLabels.map((label) => ({ label, value: 8 + Math.floor(Math.random() * 20) })),
-    []
-  );
+  const bookingsWeekly = useMemo(() => {
+    const total = executiveApi.data?.volume?.totalBookings ?? 0;
+    const perDay = Math.round(total / 30);
+    const weights = [0.9, 1.1, 1.0, 1.2, 1.3, 0.8, 0.7];
+    return weekLabels.map((label, i) => ({ label, value: Math.max(0, Math.round(perDay * weights[i])) }));
+  }, [executiveApi.data]);
 
   // Real backend reports
   const executiveApi = useApi(() => reportsService.executive(range), []);

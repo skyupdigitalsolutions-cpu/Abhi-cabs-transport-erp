@@ -247,8 +247,11 @@ function PendingTab() {
   const [actionLoading, setActionLoading] = useState(null);
   const [reviewVehicle, setReviewVehicle] = useState(null);
 
+  // Backend /admin/vehicles has no verificationStatus filter — that field only
+  // exists on driver-self-submitted vehicles. Filter by INACTIVE + isActive=false
+  // which covers unverified/pending vehicles submitted via the driver app.
   const { data, status, error, refetch } = useApi(
-    () => apiClient.get('/admin/vehicles', { params: { verificationStatus: 'PENDING', limit: 50, page: 1 } }),
+    () => apiClient.get('/admin/vehicles', { params: { status: 'INACTIVE', isActive: 'false', limit: 50, page: 1 } }),
     []
   );
   const pendingVehicles = data?.data ?? data?.items ?? [];
@@ -256,7 +259,7 @@ function PendingTab() {
   async function approve(vehicle) {
     setActionLoading(`approve-${vehicle.id}`);
     try {
-      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { verificationStatus: 'VERIFIED', status: 'AVAILABLE', isActive: true });
+      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { status: 'AVAILABLE', isActive: true });
       toast.success(`${vehicle.registrationNumber} approved`);
       setReviewVehicle(null); refetch();
     } catch (e) { toast.error(e.message || 'Could not approve'); }
@@ -266,7 +269,7 @@ function PendingTab() {
   async function reject(vehicle) {
     setActionLoading(`reject-${vehicle.id}`);
     try {
-      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { verificationStatus: 'REJECTED' });
+      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { status: 'INACTIVE', isActive: false });
       toast.success(`${vehicle.registrationNumber} rejected`);
       setReviewVehicle(null); refetch();
     } catch (e) { toast.error(e.message || 'Could not reject'); }
@@ -296,7 +299,7 @@ export default function Vehicles() {
   const [tab, setTab] = useState('fleet');
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.VEHICLES_MANAGE);
-  const { data: pendingData } = useApi(() => apiClient.get('/admin/vehicles', { params: { verificationStatus: 'PENDING', limit: 1, page: 1 } }), []);
+  const { data: pendingData } = useApi(() => apiClient.get('/admin/vehicles', { params: { status: 'INACTIVE', isActive: 'false', limit: 1, page: 1 } }), []);
   const pendingCount = pendingData?.meta?.total ?? pendingData?.pagination?.total ?? 0;
 
   const tabs = [

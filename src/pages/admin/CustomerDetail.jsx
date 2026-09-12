@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Phone, Mail, Building2, CalendarCheck, Gift, Star, ShieldCheck } from 'lucide-react';
 import { useApi }   from '../../hooks/useApi';
@@ -63,7 +63,7 @@ export default function CustomerDetail() {
   const c = customer.data;
   const recentBookings = bookings.data?.data ?? bookings.data?.items ?? bookings.data ?? [];
 
-  const { values, errors, touched, submitting, setValue, setFieldTouched, handleSubmit } = useForm({
+  const { values, errors, touched, submitting, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
     initialValues: {
       accountType: c?.accountType || 'RETAIL',
       notes:       c?.notes || '',
@@ -75,6 +75,12 @@ export default function CustomerDetail() {
       customer.refetch();
     },
   });
+
+  // Sync form when customer data loads (useForm initialValues are evaluated before API resolves)
+  useEffect(() => {
+    if (c) setValues({ accountType: c.accountType || 'RETAIL', notes: c.notes || '' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c?.userId]);
 
   if (customer.status === 'loading') return <LoadingState label="Loading customer…" />;
   if (customer.status === 'error')   return <ErrorState message={customer.error?.message} onRetry={customer.refetch} />;

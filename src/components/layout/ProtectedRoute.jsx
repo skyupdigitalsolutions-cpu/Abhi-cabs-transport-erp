@@ -1,8 +1,11 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
-const ROLE_HOME  = { admin: '/admin/dashboard', driver: '/driver/trips' };
-const ROLE_LOGIN = { admin: '/admin/login',     driver: '/driver/login'  };
+const ROLE_LOGIN = {
+  ADMIN:  '/admin/login',
+  USER:   '/customer/login',
+  DRIVER: '/driver/login',
+};
 
 export default function ProtectedRoute({ permission, requiredRole, redirectTo, children }) {
   const { isAuthenticated, hasPermission, user } = useAuth();
@@ -14,12 +17,15 @@ export default function ProtectedRoute({ permission, requiredRole, redirectTo, c
   }
 
   if (requiredRole && user?.role !== requiredRole) {
-    return <Navigate to={ROLE_HOME[user?.role] || '/admin/login'} replace />;
+    const fallback = ROLE_LOGIN[user?.role] || '/admin/login';
+    return <Navigate to={fallback} replace />;
   }
 
   if (permission && !hasPermission(permission)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
-  return children;
+  // When used as a layout wrapper (no children), render nested routes via Outlet.
+  // When used as a guard around a specific page (children passed), render children.
+  return children ?? <Outlet />;
 }
