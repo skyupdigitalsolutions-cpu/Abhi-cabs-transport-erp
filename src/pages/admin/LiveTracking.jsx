@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Navigation, MapPin, Truck, Radio, RefreshCw } from 'lucide-react';
 import PageHeader      from '../../components/ui/PageHeader';
 import Card            from '../../components/ui/Card';
@@ -11,6 +11,7 @@ import ConnectionBadge from '../../components/tracking/ConnectionBadge';
 import { useTrackingSocket } from '../../hooks/useTrackingSocket';
 import { useApi }      from '../../hooks/useApi';
 import { bookingService } from '../../services';
+import { apiClient }   from '../../services/apiClient';
 import { formatDateTime } from '../../utils/formatters';
 
 const STALE_MS  = 20_000;
@@ -196,7 +197,7 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
             { key: 'hybrid',    label: 'Hybrid'     },
           ].map((t) => (
             <button key={t.key} onClick={() => setMapType(t.key)}
-              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', backgroundColor: mapType === t.key ? '#3B65DB' : 'transparent', color: mapType === t.key ? '#fff' : '#6B7280' }}>
+              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 12.5, fontWeight: 700, border: 'none', cursor: 'pointer', backgroundColor: mapType === t.key ? '#3B65DB' : 'transparent', color: mapType === t.key ? '#fff' : '#6B7280' }}>
               {t.label}
             </button>
           ))}
@@ -221,7 +222,7 @@ function DriverCard({ trip, pos, now, selected, onSelect }) {
           </div>
           <div>
             <p className="font-bold text-xs" style={{ color: '#111111' }}>{trip.driverName || 'Driver'}</p>
-            <p className="text-[10px]" style={{ color: '#9A9A9A' }}>{trip.vehicleRegNo || trip.vehicleClass || '—'}</p>
+            <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>{trip.vehicleRegNo || trip.vehicleClass || '—'}</p>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -229,7 +230,7 @@ function DriverCard({ trip, pos, now, selected, onSelect }) {
           <StatusBadge status={trip.status} />
         </div>
       </div>
-      <p className="text-[10px] truncate mb-2" style={{ color: '#9A9A9A' }}>
+      <p className="text-[11.5px] truncate mb-2" style={{ color: '#9A9A9A' }}>
         {addr(trip.pickupAddress)?.split(',')[0]} → {addr(trip.dropAddress)?.split(',')[0]}
       </p>
       {pos ? (
@@ -241,12 +242,12 @@ function DriverCard({ trip, pos, now, selected, onSelect }) {
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg px-2 py-1 text-center" style={{ backgroundColor: '#F9F9F7' }}>
               <p className="text-[9px] uppercase tracking-wide" style={{ color: '#9A9A9A' }}>{label}</p>
-              <p className="text-[10px] font-bold font-mono" style={{ color: '#111111' }}>{value}</p>
+              <p className="text-[11.5px] font-bold font-mono" style={{ color: '#111111' }}>{value}</p>
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-[10px]" style={{ color: '#9A9A9A' }}>Waiting for GPS signal…</p>
+        <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>Waiting for GPS signal…</p>
       )}
     </div>
   );
@@ -289,7 +290,7 @@ function NoActiveTrips({ recentBookings, refetch }) {
               <div key={b.id} className="flex items-center justify-between px-5 py-3 gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono text-[10px] font-bold" style={{ color: '#9A9A9A' }}>
+                    <span className="font-mono text-[11.5px] font-bold" style={{ color: '#9A9A9A' }}>
                       {b.bookingNumber}
                     </span>
                     <Badge tone="slate">{b.tripType?.replace(/_/g, ' ')}</Badge>
@@ -297,13 +298,13 @@ function NoActiveTrips({ recentBookings, refetch }) {
                   <p className="text-xs font-semibold truncate" style={{ color: '#111111' }}>
                     {b.customer?.user?.name || b.corporate?.companyName || '—'}
                   </p>
-                  <p className="text-[10px] truncate mt-0.5" style={{ color: '#9A9A9A' }}>
+                  <p className="text-[11.5px] truncate mt-0.5" style={{ color: '#9A9A9A' }}>
                     {addr(b.pickupAddress)?.split(',')[0]} → {addr(b.dropAddress)?.split(',')[0]}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
                   <StatusBadge status={b.status} />
-                  <p className="text-[10px] mt-1" style={{ color: '#9A9A9A' }}>
+                  <p className="text-[11.5px] mt-1" style={{ color: '#9A9A9A' }}>
                     {formatDateTime(b.pickupAt)}
                   </p>
                 </div>
@@ -327,8 +328,49 @@ export default function LiveTracking() {
     []
   );
 
-  const activeTrips    = activeApi.data?.data  ?? activeApi.data?.items  ?? [];
+  const activeTripsRaw = activeApi.data?.data  ?? activeApi.data?.items  ?? [];
   const recentBookings = recentApi.data?.data  ?? recentApi.data?.items  ?? [];
+
+  // FIX: the admin booking list (/admin/bookings, used by bookingService) never
+  // includes an allocation/driverId field — BOOKING_LIST_SELECT on the backend
+  // only returns booking columns, not the assigned driver. Every trip.driverId
+  // read below was always undefined, so positions[trip.driverId] never matched
+  // anything and the map never plotted a single live marker, regardless of
+  // whether the tracking socket itself had real data.
+  //
+  // The existing GET /admin/dispatch/bookings/:bookingId/allocation endpoint
+  // (already used by Dispatch.jsx) returns the real driverId for a booking, so
+  // it's fetched once per active trip here rather than inventing a new API.
+  const [driverIdByBooking, setDriverIdByBooking] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const missing = activeTripsRaw.filter((t) => t.id && !(t.id in driverIdByBooking));
+    if (missing.length === 0) return;
+
+    Promise.all(
+      missing.map((t) =>
+        apiClient.get(`/admin/dispatch/bookings/${t.id}/allocation`)
+          .then((data) => [t.id, data?.allocation?.driverId ?? data?.data?.allocation?.driverId ?? null])
+          .catch(() => [t.id, null])
+      )
+    ).then((pairs) => {
+      if (cancelled) return;
+      setDriverIdByBooking((prev) => {
+        const next = { ...prev };
+        for (const [bookingId, driverId] of pairs) next[bookingId] = driverId;
+        return next;
+      });
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripsRaw.map((t) => t.id).join(',')]);
+
+  const activeTrips = useMemo(
+    () => activeTripsRaw.map((t) => ({ ...t, driverId: t.driverId ?? driverIdByBooking[t.id] ?? null })),
+    [activeTripsRaw, driverIdByBooking]
+  );
 
   const driverIds = useMemo(
     () => activeTrips.map((t) => t.driverId).filter(Boolean),

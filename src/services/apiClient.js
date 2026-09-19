@@ -158,12 +158,24 @@ async function request(path, { method = 'GET', body, params, timeout = DEFAULT_T
         await refreshAccessToken();
         return request(path, { method, body, params, timeout, retry, _retried: true });
       }
+      // FIX: 401/403/409 used to throw a hardcoded generic message and never
+      // even looked at the response body — so whatever specific, useful
+      // reason the backend actually sent (e.g. "A driver with that licence
+      // number already exists", or a real double-booking detail) was
+      // silently thrown away and replaced with a made-up placeholder. Only
+      // 404 (below) and the final catch-all correctly read the real
+      // message. Now all of them do, falling back to a sensible generic
+      // only when the body genuinely can't be read.
       if (res.status === 401) {
         clearSession();
-        throw new ApiError('Session expired. Please log in again.', { status: 401, code: 'UNAUTHORIZED' });
+        let payload = {};
+        try { payload = await res.json(); } catch { /* noop */ }
+        throw new ApiError(payload.error?.message || payload.message || 'Session expired. Please log in again.', { status: 401, code: payload.error?.code || 'UNAUTHORIZED' });
       }
       if (res.status === 403) {
-        throw new ApiError('You do not have permission to perform this action.', { status: 403, code: 'FORBIDDEN' });
+        let payload = {};
+        try { payload = await res.json(); } catch { /* noop */ }
+        throw new ApiError(payload.error?.message || payload.message || 'You do not have permission to perform this action.', { status: 403, code: payload.error?.code || 'FORBIDDEN' });
       }
       if (res.status === 404) {
         let payload = {};
@@ -181,7 +193,9 @@ async function request(path, { method = 'GET', body, params, timeout = DEFAULT_T
         throw new ApiError(msg || 'The requested resource was not found.', { status: 404, code: payload.error?.code || 'NOT_FOUND' });
       }
       if (res.status === 409) {
-        throw new ApiError('This conflicts with an existing record (e.g. a double-booked vehicle).', { status: 409, code: 'CONFLICT' });
+        let payload = {};
+        try { payload = await res.json(); } catch { /* noop */ }
+        throw new ApiError(payload.error?.message || payload.message || 'This conflicts with an existing record.', { status: 409, code: payload.error?.code || 'CONFLICT' });
       }
       if (res.status === 429) {
         throw new ApiError('Too many requests. Please slow down and try again.', { status: 429, code: 'RATE_LIMITED' });

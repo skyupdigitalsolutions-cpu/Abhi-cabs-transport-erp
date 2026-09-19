@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Download, TrendingUp, Truck, Users, CalendarCheck, Filter, X } from 'lucide-react';
 import PageHeader  from '../../components/ui/PageHeader';
 import Card        from '../../components/ui/Card';
@@ -12,7 +12,7 @@ import LoadingState from '../../components/ui/LoadingState';
 import ErrorState  from '../../components/ui/ErrorState';
 import { useApi }  from '../../hooks/useApi';
 import { useToast } from '../../hooks/useToast';
-import { reportsService, bookingService, adminPaymentsService } from '../../services';
+import { reportsService, bookingService, adminPaymentsService, contactService } from '../../services';
 import { formatCurrency, titleCase, formatDate } from '../../utils/formatters';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -23,6 +23,8 @@ const REPORT_TABS = [
   { key: 'drivers',   label: 'Drivers'   },
   { key: 'customers', label: 'Customers' },
   { key: 'locations', label: 'Locations' },
+  { key: 'cancellations', label: 'Cancellations' },
+  { key: 'abandoned', label: 'Abandoned Bookings' },
   { key: 'gst',       label: 'GST'       },
 ];
 
@@ -376,7 +378,7 @@ function FleetTab({ fleetApi, bookings }) {
               <thead>
                 <tr style={{ backgroundColor: '#F7F8FC', borderBottom: '1px solid #E5E7EB' }}>
                   {['Class', 'Bookings', 'Completed', 'Revenue'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left font-semibold text-[11px] uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-[12.5px] uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -471,7 +473,7 @@ function DriversTab({ driverPerf }) {
             <thead>
               <tr style={{ backgroundColor: '#F7F8FC', borderBottom: '1px solid #E5E7EB' }}>
                 {['Driver', 'Rating', 'Trips', 'Acceptance', 'Earnings'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-[12.5px] font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -584,7 +586,7 @@ function CustomersTab({ bookings }) {
             <p className="text-2xl mb-1" style={{ color: tier.color }}>{tier.icon}</p>
             <p className="text-2xl font-black" style={{ color: tier.color }}>{tierCounts[tier.key]}</p>
             <p className="text-xs font-semibold" style={{ color: tier.color }}>{tier.label}</p>
-            <p className="text-[10px]" style={{ color: tier.color, opacity: 0.7 }}>≥{tier.minBookings} bookings</p>
+            <p className="text-[11.5px]" style={{ color: tier.color, opacity: 0.7 }}>≥{tier.minBookings} bookings</p>
           </div>
         ))}
       </div>
@@ -599,7 +601,7 @@ function CustomersTab({ bookings }) {
             <thead>
               <tr style={{ backgroundColor: '#F7F8FC', borderBottom: '1px solid #E5E7EB' }}>
                 {['Customer', 'Tier', 'Bookings', 'Total Spend', 'Completed', 'Last Booking'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left font-semibold text-[11px] uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left font-semibold text-[12.5px] uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -700,7 +702,7 @@ function LocationsTab({ bookings }) {
             <thead>
               <tr style={{ backgroundColor: '#F7F8FC', borderBottom: '1px solid #E5E7EB' }}>
                 {['Destination', 'Bookings', 'Completed', 'Revenue'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left font-semibold text-[11px] uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left font-semibold text-[12.5px] uppercase tracking-wide" style={{ color: '#6B7280' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -722,6 +724,218 @@ function LocationsTab({ bookings }) {
 }
 
 // ── GST tab ──────────────────────────────────────────────────────────────────
+// FIX: cancellation reasons are collected from customers (a required,
+// fixed set of categories — see the customer website's cancel dialog) and
+// stored on the booking, but nothing anywhere in this dashboard ever
+// showed or counted them. GET /admin/bookings (used for `bookings` above)
+// doesn't even return the reason field — only the single-booking detail
+// endpoint does — so this fetches each cancelled booking's real reason
+// individually. Frontend-only, by request: no backend change to add the
+// field to the list endpoint, which would've been one call instead of N.
+const CANCEL_REASON_CATEGORIES = [
+  'Change of plans',
+  'Booked by mistake',
+  'Found a better price elsewhere',
+  'Trip is no longer needed',
+];
+
+function CancellationsTab({ bookings, onRefresh, refreshing }) {
+  const cancelledBookings = useMemo(
+    () => bookings.filter((b) => b.status === 'CANCELLED'),
+    [bookings]
+  );
+  const [reasons, setReasons] = useState({}); // bookingId -> reason string
+  const [status, setStatus] = useState(cancelledBookings.length ? 'loading' : 'ready');
+  // Bumped by the Refresh button to force the per-booking reason re-fetch
+  // below to run again even if the cancelled-booking id list itself didn't
+  // change (e.g. a booking that was already cancelled just got its reason
+  // corrected, or was cancelled moments after this list was first loaded).
+  const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (cancelledBookings.length === 0) { setStatus('ready'); return; }
+    setStatus('loading');
+
+    Promise.all(
+      cancelledBookings.map((b) =>
+        bookingService.get(b.id)
+          .then((full) => [b.id, full?.cancellationReason || null])
+          .catch(() => [b.id, null])
+      )
+    ).then((pairs) => {
+      if (cancelled) return;
+      const map = {};
+      for (const [id, reason] of pairs) map[id] = reason;
+      setReasons(map);
+      setStatus('ready');
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cancelledBookings.map((b) => b.id).join(','), reloadTick]);
+
+  function handleRefresh() {
+    // Re-fetches the underlying booking list (picks up any newly cancelled
+    // bookings, or status changes, since this page's list is only fetched
+    // once on load otherwise) AND re-runs the per-booking reason fetch.
+    onRefresh?.();
+    setReloadTick((t) => t + 1);
+  }
+
+  const counts = useMemo(() => {
+    const tally = {};
+    for (const cat of CANCEL_REASON_CATEGORIES) tally[cat] = 0;
+    tally['Other'] = 0;
+    tally['Not recorded'] = 0;
+    for (const b of cancelledBookings) {
+      const reason = reasons[b.id];
+      if (!reason) { tally['Not recorded']++; continue; }
+      if (CANCEL_REASON_CATEGORIES.includes(reason)) tally[reason]++;
+      else tally['Other']++;
+    }
+    return tally;
+  }, [cancelledBookings, reasons]);
+
+  const total = cancelledBookings.length;
+  const maxCount = Math.max(1, ...Object.values(counts));
+
+  return (
+    <div>
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <p className="text-sm text-gray-500">
+            Based on the {bookings.length} most recently loaded bookings ({total} of them cancelled) — not
+            every cancellation ever made. "Not recorded" covers cancellations made before reason-collection
+            existed, or ones where no reason was saved. This list is only fetched when the page loads —
+            use Refresh below if you just cancelled something and don't see it reflected yet.
+          </p>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing || status === 'loading'}>
+            {refreshing || status === 'loading' ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 className="text-base font-semibold mb-4">Cancellation Reasons</h3>
+        {status === 'loading' ? (
+          <p className="text-sm text-gray-500 py-8 text-center">Loading reasons for {total} cancelled booking{total === 1 ? '' : 's'}…</p>
+        ) : total === 0 ? (
+          <p className="text-sm text-gray-500 py-8 text-center">No cancelled bookings in this data set.</p>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {Object.entries(counts).map(([reason, count]) => (
+                <div key={reason}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-medium text-gray-700">{reason}</span>
+                    <span className="text-gray-500">{count} ({total ? Math.round((count / total) * 100) : 0}%)</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${(count / maxCount) * 100}%`, backgroundColor: reason === 'Not recorded' ? '#D1D5DB' : '#FFC107' }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Raw per-booking list — so a mismatch (e.g. a real reason that
+                doesn't match one of the fixed categories) is immediately
+                visible, rather than silently disappearing into a bucket. */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Individual Cancelled Bookings</p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {cancelledBookings.map((b) => (
+                  <div key={b.id} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
+                    <span className="text-gray-700 font-medium">{b.bookingNumber}</span>
+                    <span className={reasons[b.id] ? 'text-gray-600' : 'text-gray-400 italic'}>
+                      {reasons[b.id] || 'no reason on record'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// NEW: real list of abandoned checkouts, fed by the customer website's
+// checkout page (see its beforeunload/pagehide tracking) via the existing
+// Contact/Support system — GET /admin/contacts?search=Abandoned Booking
+// genuinely matches these server-side (confirmed against contact.service.js:
+// search matches name/email/topic/mobile). Not a live feed on this tab —
+// just a real, paginated, on-demand list.
+function AbandonedBookingsTab() {
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const { data, status, error, refetch } = useApi(
+    () => contactService.list({ search: 'Abandoned Booking', page, limit, sortBy: 'createdAt', order: 'desc' }),
+    [page]
+  );
+  const items = data?.items ?? [];
+  const total = data?.pagination?.total ?? 0;
+  const totalPages = data?.pagination?.totalPages ?? 1;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-base font-semibold">Abandoned Bookings</h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Customers who reached checkout with their details filled in, but left before confirming.
+            {total > 0 && ` ${total} total.`}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refetch}>Refresh</Button>
+      </div>
+
+      {status === 'loading' ? (
+        <LoadingState />
+      ) : status === 'error' ? (
+        <ErrorState message={error?.message || 'Could not load abandoned bookings'} onRetry={refetch} />
+      ) : items.length === 0 ? (
+        <p className="text-sm text-gray-500 py-8 text-center">No abandoned bookings recorded.</p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {items.map((c) => {
+              const lines = (c.message || '').split('\n');
+              return (
+                <div key={c.id} className="p-3 rounded-lg" style={{ backgroundColor: '#FAFAFA', border: '1px solid #F0F0F0' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{c.name} · {c.mobile}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{c.email}</p>
+                    </div>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                      {c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 space-y-0.5">
+                    {lines.slice(1).map((line, i) => <p key={i}>{line}</p>)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-3" style={{ borderTop: '1px solid #F0F0F0' }}>
+              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <span className="text-xs text-gray-400">Page {page} of {totalPages}</span>
+              <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function GstTab({ range }) {
   const gst = useApi(() => reportsService.gstSummary(range), [JSON.stringify(range)]);
   if (gst.status === 'loading') return <LoadingState label="Loading GST data…" />;
@@ -835,6 +1049,8 @@ export default function Reports() {
       {activeTab === 'drivers'   && <DriversTab   driverPerf={driverPerf} />}
       {activeTab === 'customers' && <CustomersTab bookings={bookings} />}
       {activeTab === 'locations' && <LocationsTab bookings={bookings} />}
+      {activeTab === 'cancellations' && <CancellationsTab bookings={bookings} onRefresh={bookingsApi.refetch} refreshing={bookingsApi.status === 'loading'} />}
+      {activeTab === 'abandoned' && <AbandonedBookingsTab />}
       {activeTab === 'gst'       && <GstTab       range={range} />}
     </div>
   );

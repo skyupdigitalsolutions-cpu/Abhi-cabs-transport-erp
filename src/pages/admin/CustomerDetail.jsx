@@ -59,6 +59,46 @@ export default function CustomerDetail() {
     [id]
   );
 
+  // FIX: "Total Bookings" / "Completed" / "Total Spend" used to be computed
+  // from the same 10-row "Recent Bookings" preview above — accurate only for
+  // a customer with 10 or fewer bookings ever, silently wrong for anyone
+  // with more history than that. GET /admin/bookings already supports
+  // filtering by customerId (confirmed against the real backend validator),
+  // so this fetches the customer's FULL booking history (paging through in
+  // batches of 100, the backend's max page size) and computes real totals
+  // from all of it — frontend-only, no backend change needed.
+  const [fullStats, setFullStats] = useState({ status: 'loading', total: 0, completed: 0, spend: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    setFullStats({ status: 'loading', total: 0, completed: 0, spend: 0 });
+
+    async function loadAll() {
+      let page = 1;
+      let totalPages = 1;
+      let total = 0, completed = 0, spend = 0;
+      do {
+        const res = await bookingService.list({ customerId: id, page, limit: 100, sortBy: 'createdAt' });
+        const rows = res?.data ?? res?.items ?? [];
+        const meta = res?.meta ?? res?.pagination;
+        totalPages = meta?.totalPages ?? 1;
+        total += rows.length;
+        for (const b of rows) {
+          if (b.status === 'COMPLETED') {
+            completed += 1;
+            spend += Number(b.finalFare ?? b.estimatedFare ?? 0);
+          }
+        }
+        page += 1;
+      } while (page <= totalPages && !cancelled);
+
+      if (!cancelled) setFullStats({ status: 'ready', total, completed, spend });
+    }
+
+    loadAll().catch(() => { if (!cancelled) setFullStats((s) => ({ ...s, status: 'error' })); });
+    return () => { cancelled = true; };
+  }, [id]);
+
   // adminCustomersService.get() returns customer object directly (already unwrapped)
   const c = customer.data;
   const recentBookings = bookings.data?.data ?? bookings.data?.items ?? bookings.data ?? [];
@@ -86,10 +126,12 @@ export default function CustomerDetail() {
   if (customer.status === 'error')   return <ErrorState message={customer.error?.message} onRetry={customer.refetch} />;
   if (!c) return <ErrorState message="Customer not found" />;
 
-  const totalSpend = recentBookings.reduce(
-    (s, b) => s + Number(b.finalFare ?? b.estimatedFare ?? 0), 0
-  );
-  const completedCount = recentBookings.filter((b) => b.status === 'COMPLETED').length;
+  // Real totals across the customer's ENTIRE booking history (see fullStats
+  // effect above) — not the backend's stale, never-updated totalBookings
+  // column, and not just the small "recent" preview list either.
+  const totalSpend     = fullStats.spend;
+  const completedCount = fullStats.completed;
+  const totalBookingsCount = fullStats.status === 'ready' ? fullStats.total : (c.totalBookings ?? 0);
 
   return (
     <div>
@@ -133,10 +175,10 @@ export default function CustomerDetail() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={CalendarCheck} label="Total Bookings"  value={c.totalBookings ?? 0}            tone="primary" />
-        <StatCard icon={CalendarCheck} label="Completed"       value={completedCount}                  tone="green" />
-        <StatCard icon={Gift}          label="Loyalty Points"  value={c.loyaltyPoints ?? 0}            tone="amber" />
-        <StatCard icon={Star}          label="Total Spend"     value={formatCurrency(totalSpend)}      tone="purple" />
+        <StatCard icon={CalendarCheck} label="Total Bookings"  value={fullStats.status === 'loading' ? '…' : totalBookingsCount} tone="primary" />
+        <StatCard icon={CalendarCheck} label="Completed"       value={fullStats.status === 'loading' ? '…' : completedCount}     tone="green" />
+        <StatCard icon={Gift}          label="Loyalty Points"  value={c.loyaltyPoints ?? 0}                                       tone="amber" />
+        <StatCard icon={Star}          label="Total Spend"     value={fullStats.status === 'loading' ? '…' : formatCurrency(totalSpend)} tone="purple" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

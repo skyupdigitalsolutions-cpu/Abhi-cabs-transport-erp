@@ -10,6 +10,7 @@ import Badge         from '../../components/ui/Badge';
 import Alert         from '../../components/ui/Alert';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import DriverFormDrawer from '../../components/driver/DriverFormDrawer';
+import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import { useApi }    from '../../hooks/useApi';
 import { useResourceList } from '../../hooks/useResourceList';
 import { useToast }  from '../../hooks/useToast';
@@ -72,8 +73,8 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
                     }
                   </div>
                   <div style={{ padding: '6px 10px' }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, color: '#1F2937' }}>{DOC_LABELS[docType] || titleCase(docType)}</p>
-                    {doc.uploadedAt && <p style={{ fontSize: 10, color: '#9CA3AF' }}>{formatDateTime(doc.uploadedAt)}</p>}
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: '#1F2937' }}>{DOC_LABELS[docType] || titleCase(docType)}</p>
+                    {doc.uploadedAt && <p style={{ fontSize: 11.5, color: '#9CA3AF' }}>{formatDateTime(doc.uploadedAt)}</p>}
                   </div>
                 </div>
               ))}
@@ -83,7 +84,7 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {[['Full Name', driver.user?.name], ['Phone', driver.user?.phone], ['Email', driver.user?.email], ['Licence', driver.licenceNumber], ['Applied', formatDateTime(driver.createdAt)]].map(([label, value]) => (
                 <div key={label}>
-                  <p style={{ fontSize: 11, color: '#9CA3AF' }}>{label}</p>
+                  <p style={{ fontSize: 12.5, color: '#9CA3AF' }}>{label}</p>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#1F2937' }}>{value || '—'}</p>
                 </div>
               ))}
@@ -101,7 +102,7 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
           <div style={{ maxWidth: 800, width: '100%', textAlign: 'center' }}>
             <p style={{ color: '#fff', fontWeight: 600, marginBottom: 12 }}>{DOC_LABELS[selectedDoc.docType] || selectedDoc.docType}</p>
             <img src={selectedDoc.doc.url} alt={selectedDoc.docType} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 8, objectFit: 'contain' }} />
-            <p style={{ color: '#9CA3AF', marginTop: 12, fontSize: 12 }}>Click anywhere to close</p>
+            <p style={{ color: '#9CA3AF', marginTop: 12, fontSize: 13.5 }}>Click anywhere to close</p>
           </div>
         </div>
       )}
@@ -146,7 +147,7 @@ function RosterTab() {
       render: (r) => (
         <div>
           <p style={{ fontWeight: 600, color: '#1F2937' }}>{r.user?.name}</p>
-          <p style={{ fontSize: 12, color: '#6B7280' }} className="flex items-center gap-1"><Phone size={11} />{r.user?.phone}</p>
+          <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Phone size={11} />{r.user?.phone}</p>
         </div>
       ),
     },
@@ -156,7 +157,7 @@ function RosterTab() {
       render: (r) => (
         <div>
           <p className="flex items-center gap-1 font-mono" style={{ color: '#1F2937', fontSize: 13 }}><IdCard size={12} />{r.licenceNumber}</p>
-          {r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 11 }}>Expires {formatDate(r.licenceExpiry)}</p>}
+          {r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}
         </div>
       ),
     },
@@ -199,6 +200,7 @@ function RosterTab() {
       <DataTable columns={columns} rows={list.rows} rowKey="userId" status={list.status} error={list.error} onRetry={list.refetch}
         sortBy={list.sortBy} sortDir={list.sortDir} onSort={list.onSort}
         page={list.page} limit={list.meta?.limit} total={list.meta?.total} totalPages={list.meta?.totalPages} onPageChange={list.setPage}
+        onLimitChange={list.setLimit}
         emptyTitle="No drivers found" emptyDescription="Try adjusting your filters." />
       <DriverFormDrawer open={formOpen} onClose={() => setFormOpen(false)} initial={editing} onSubmit={handleSubmit} />
       <ConfirmDialog open={!!deleting} title="Deactivate this driver?" description={deleting ? `${deleting.user?.name} will be deactivated and forced offline.` : ''} confirmLabel="Deactivate" danger loading={deleteLoading} onClose={() => setDeleting(null)} onConfirm={handleDeactivate} />
@@ -240,8 +242,8 @@ function KycTab() {
   }
 
   const columns = [
-    { key: 'name', header: 'Applicant', render: (r) => (<div><p style={{ fontWeight: 600, color: '#1F2937' }}>{r.user?.name}</p><p style={{ fontSize: 12, color: '#6B7280' }} className="flex items-center gap-1"><Phone size={11} />{r.user?.phone}</p>{r.user?.email && <p style={{ fontSize: 12, color: '#6B7280' }} className="flex items-center gap-1"><Mail size={11} />{r.user.email}</p>}</div>) },
-    { key: 'licenceNumber', header: 'Licence', render: (r) => (<div><p className="font-mono" style={{ color: '#1F2937', fontSize: 13 }}>{r.licenceNumber}</p>{r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 11 }}>Expires {formatDate(r.licenceExpiry)}</p>}</div>) },
+    { key: 'name', header: 'Applicant', render: (r) => (<div><p style={{ fontWeight: 600, color: '#1F2937' }}>{r.user?.name}</p><p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Phone size={11} />{r.user?.phone}</p>{r.user?.email && <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Mail size={11} />{r.user.email}</p>}</div>) },
+    { key: 'licenceNumber', header: 'Licence', render: (r) => (<div><p className="font-mono" style={{ color: '#1F2937', fontSize: 13 }}>{r.licenceNumber}</p>{r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}</div>) },
     { key: 'appliedAt', header: 'Applied', render: (r) => formatDateTime(r.createdAt) },
     { key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex gap-2 justify-end"><Button size="sm" variant="secondary" icon={Eye} onClick={() => setReviewDriver(r)}>Review</Button><Button size="sm" variant="primary" icon={CheckCircle} loading={actionLoading === `approve-${r.userId}`} onClick={() => approve(r)}>Approve</Button><Button size="sm" variant="dangerOutline" icon={XCircle} disabled={!!actionLoading} onClick={() => setRejectDialog(r)}>Reject</Button></div>) },
   ];
@@ -258,16 +260,19 @@ function KycTab() {
 
 // ── Performance tab ──────────────────────────────────────────────────────────
 function PerformanceTab() {
-  const [days,    setDays]    = useState(30);
+  const [customRange, setCustomRange] = useState(null); // { from, to } | null
   const [sortBy,  setSortBy]  = useState('completedTrips');
   const [minRate, setMinRate] = useState('');
 
+  // Defaults to last 30 days until the driver picks something else via
+  // DateRangeFilter (Today / 7d / 30d / This Month / Custom).
   const range = useMemo(() => {
-    const to = new Date(); const from = new Date(Date.now() - days * 86400000);
+    if (customRange) return customRange;
+    const to = new Date(); const from = new Date(Date.now() - 30 * 86400000);
     return { from: from.toISOString(), to: to.toISOString() };
-  }, [days]);
+  }, [customRange]);
 
-  const { data, status, error, refetch } = useApi(() => reportsService.driverPerformance(range), [days]);
+  const { data, status, error, refetch } = useApi(() => reportsService.driverPerformance(range), [customRange]);
   const allDrivers = data?.drivers || [];
 
   const filtered = useMemo(() => {
@@ -284,7 +289,7 @@ function PerformanceTab() {
 
   const columns = [
     { key: 'name', header: 'Driver', render: (r) => <p style={{ color: '#1F2937', fontWeight: 600 }}>{r.name}</p> },
-    { key: 'rating', header: 'Rating', render: (r) => <span className="flex items-center gap-1"><Star size={13} style={{ color: '#F59E0B', fill: '#F59E0B' }} />{Number(r.ratingAvg ?? 0).toFixed(2)} <span style={{ color: '#9CA3AF', fontSize: 12 }}>({r.ratingCount ?? 0})</span></span> },
+    { key: 'rating', header: 'Rating', render: (r) => <span className="flex items-center gap-1"><Star size={13} style={{ color: '#F59E0B', fill: '#F59E0B' }} />{Number(r.ratingAvg ?? 0).toFixed(2)} <span style={{ color: '#9CA3AF', fontSize: 13.5 }}>({r.ratingCount ?? 0})</span></span> },
     { key: 'offers', header: 'Offers', render: (r) => <span>{r.offersReceived ?? r.offers ?? 0}</span> },
     { key: 'acceptance', header: 'Acceptance', render: (r) => { const rate = Math.round(Number(r.acceptanceRate ?? 0) * 100); return <Badge tone={rate >= 80 ? 'green' : rate >= 50 ? 'amber' : 'red'}>{rate}%</Badge>; } },
     { key: 'completedTrips', header: 'Completed', render: (r) => <Badge tone="primary">{r.completedTrips ?? 0}</Badge> },
@@ -293,9 +298,8 @@ function PerformanceTab() {
 
   return (
     <div>
-      <div className="flex gap-2 justify-end mb-3 flex-wrap">
-        <Select value={String(days)} onChange={(e) => setDays(Number(e.target.value))}
-          options={[{ value:'7',label:'Last 7 days' },{ value:'30',label:'Last 30 days' },{ value:'90',label:'Last 90 days' },{ value:'365',label:'Last 12 months' }]} />
+      <div className="flex gap-2 justify-end mb-3 flex-wrap items-center">
+        <DateRangeFilter label="Last 30 Days" onChange={setCustomRange} />
         <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
           options={[{ value:'completedTrips',label:'Sort: Trips' },{ value:'earnings',label:'Sort: Earnings' },{ value:'rating',label:'Sort: Rating' }]} />
         <Select value={minRate} onChange={(e) => setMinRate(e.target.value)}
@@ -329,7 +333,7 @@ export default function Drivers() {
             className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring"
             style={{ borderColor: tab === t.key ? '#3B65DB' : 'transparent', color: tab === t.key ? '#3B65DB' : '#6B7280' }}>
             {t.label}
-            {t.key === 'kyc' && pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>{pendingCount}</span>}
+            {t.key === 'kyc' && pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[11.5px] font-bold" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>{pendingCount}</span>}
           </button>
         ))}
       </div>

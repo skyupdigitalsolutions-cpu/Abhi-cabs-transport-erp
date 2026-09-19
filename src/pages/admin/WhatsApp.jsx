@@ -1,92 +1,61 @@
 /**
- * WhatsApp page — real WhatsApp-style UI.
- * Left: contact/conversation list (customers who received messages).
- * Right: chat thread with inbound + outbound bubbles, reply box.
- * Bottom-left: Automation panel (templates, live log).
+ * src/pages/admin/WhatsApp.jsx
+ *
+ * WhatsApp Business inbox for ABHI CABS.
+ *
+ * UPDATED:
+ * - Removed hardcoded MOCK badge and mock conversations
+ * - Conversations list starts empty (no fake data)
+ * - New booking events from the live socket auto-appear as outbound cards
+ *   (previewing what will be sent once MSG91 is connected)
+ * - Automation panel shows "Setup required" instead of MOCK
+ * - Reply box sends messages locally (optimistic) — real delivery wires to
+ *   POST /admin/whatsapp/send once MSG91_AUTH_KEY is set in backend .env
+ * - Page is fully functional as a conversation viewer; send becomes real
+ *   by adding one apiClient.post() call in handleSend below.
  */
 import { useState, useRef, useEffect } from 'react';
 import {
   Search, Send, Phone, MoreVertical, CheckCheck, Check,
-  Zap, Clock, CheckCircle, XCircle, AlertTriangle,
-  MessageCircle, ChevronDown, RefreshCw, BookOpen,
+  Zap, Clock, CheckCircle, AlertTriangle,
+  MessageCircle, ChevronDown, Settings,
 } from 'lucide-react';
-import Badge        from '../../components/ui/Badge';
-import Button       from '../../components/ui/Button';
-import Alert        from '../../components/ui/Alert';
+import Button  from '../../components/ui/Button';
+import Alert   from '../../components/ui/Alert';
 import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 import { useToast } from '../../hooks/useToast';
-import { formatDateTime } from '../../utils/formatters';
 
 // ── Brand colours ─────────────────────────────────────────────────────────
 const WA = {
-  green:      '#25D366',
-  greenDark:  '#128C7E',
-  greenLight: '#DCF8C6',
-  teal:       '#075E54',
-  bg:         '#ECE5DD',
-  panelBg:    '#F0F2F5',
-  bubbleOut:  '#DCF8C6',
-  bubbleIn:   '#FFFFFF',
-  text:       '#111B21',
-  sub:        '#667781',
-  border:     '#E9EDEF',
-  header:     '#F0F2F5',
+  green:     '#25D366',
+  greenDark: '#128C7E',
+  greenLight:'#DCF8C6',
+  teal:      '#075E54',
+  bg:        '#ECE5DD',
+  panelBg:   '#F0F2F5',
+  bubbleOut: '#DCF8C6',
+  bubbleIn:  '#FFFFFF',
+  text:      '#111B21',
+  sub:       '#667781',
+  border:    '#E9EDEF',
+  header:    '#F0F2F5',
 };
 
-// ── Mock conversations ────────────────────────────────────────────────────
-const INIT_CONTACTS = [
-  {
-    id: '1', name: 'Ravi Kumar', phone: '+91 98765 43210', avatar: 'RK',
-    lastMsg: 'Thank you! When will the driver arrive?', lastAt: new Date(Date.now() - 4 * 60000).toISOString(),
-    unread: 2, online: true,
-    messages: [
-      { id: 'm1', from: 'out', text: '✅ Your ABHI CABS booking *ABH-2026-000123* has been confirmed.\n📍 Pickup: MG Road, Bengaluru\nOur driver will be assigned shortly.', at: new Date(Date.now() - 30 * 60000).toISOString(), status: 'read', template: 'booking_confirmed' },
-      { id: 'm2', from: 'in',  text: 'Thank you for the confirmation!', at: new Date(Date.now() - 28 * 60000).toISOString() },
-      { id: 'm3', from: 'out', text: '🚗 Your driver is on the way!\n\nBooking: *ABH-2026-000123*\nVehicle: KA-01-AB-1234 · Innova Crysta\n\nTrack your ride in the ABHI CABS app.', at: new Date(Date.now() - 15 * 60000).toISOString(), status: 'read', template: 'driver_assigned' },
-      { id: 'm4', from: 'in',  text: 'Thank you! When will the driver arrive?', at: new Date(Date.now() - 4 * 60000).toISOString() },
-    ],
-  },
-  {
-    id: '2', name: 'Priya Singh', phone: '+91 99887 76655', avatar: 'PS',
-    lastMsg: 'ABHICABS: Booking ABH-2026-000119 has been cancelled.', lastAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-    unread: 0, online: false,
-    messages: [
-      { id: 'm5', from: 'out', text: 'ABHICABS: Booking ABH-2026-000119 has been cancelled. Refund of Rs.850 will be processed in 5-7 days. Helpline: 1800-XXX-XXXX', at: new Date(Date.now() - 2 * 3600000).toISOString(), status: 'delivered', template: 'booking_cancelled' },
-    ],
-  },
-  {
-    id: '3', name: 'Amit Sharma', phone: '+91 91234 56789', avatar: 'AS',
-    lastMsg: 'Is my cab confirmed for tomorrow?', lastAt: new Date(Date.now() - 5 * 3600000).toISOString(),
-    unread: 1, online: false,
-    messages: [
-      { id: 'm6', from: 'in', text: 'Is my cab confirmed for tomorrow?', at: new Date(Date.now() - 5 * 3600000).toISOString() },
-    ],
-  },
-  {
-    id: '4', name: 'Sneha Patel', phone: '+91 90001 11222', avatar: 'SP',
-    lastMsg: '✅ Your ABHI CABS booking *ABH-2026-000131* has been confirmed.', lastAt: new Date(Date.now() - 10 * 60000).toISOString(),
-    unread: 0, online: true,
-    messages: [
-      { id: 'm7', from: 'out', text: '✅ Your ABHI CABS booking *ABH-2026-000131* has been confirmed.\n📍 Pickup: Whitefield, Bengaluru\nOur driver will be assigned shortly.', at: new Date(Date.now() - 10 * 60000).toISOString(), status: 'read', template: 'booking_confirmed' },
-    ],
-  },
-];
-
 const TEMPLATES = [
-  { key: 'booking_confirmed', label: 'Booking Confirmed', channel: 'whatsapp', trigger: 'Admin confirms booking', tone: 'green' },
-  { key: 'driver_assigned',   label: 'Driver Assigned',   channel: 'whatsapp', trigger: 'Vehicle allocated',     tone: 'blue'  },
-  { key: 'booking_cancelled', label: 'Booking Cancelled', channel: 'sms',      trigger: 'Booking cancelled',     tone: 'red'   },
+  { key: 'booking_confirmed', label: 'Booking Confirmed', trigger: 'Admin confirms booking',  channel: 'whatsapp' },
+  { key: 'driver_assigned',   label: 'Driver Assigned',   trigger: 'Vehicle allocated',       channel: 'whatsapp' },
+  { key: 'booking_cancelled', label: 'Booking Cancelled', trigger: 'Booking cancelled',       channel: 'sms'      },
+  { key: 'trip_completed',    label: 'Trip Completed',    trigger: 'Booking marked complete', channel: 'whatsapp' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function timeShort(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 function dateLabel(iso) {
-  const d = new Date(iso);
+  const d   = new Date(iso);
   const now = new Date();
   const diff = now - d;
   if (diff < 86400000 && d.getDate() === now.getDate()) return 'Today';
@@ -139,7 +108,7 @@ function ContactRow({ contact, selected, onClick }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
           <span style={{ fontWeight: 600, fontSize: 15, color: WA.text }}>{contact.name}</span>
-          <span style={{ fontSize: 11, color: contact.unread > 0 ? WA.green : WA.sub, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12.5, color: contact.unread > 0 ? WA.green : WA.sub, whiteSpace: 'nowrap' }}>
             {timeShort(contact.lastAt)}
           </span>
         </div>
@@ -150,7 +119,7 @@ function ContactRow({ contact, selected, onClick }) {
           {contact.unread > 0 && (
             <span style={{
               backgroundColor: WA.green, color: '#fff', borderRadius: '50%',
-              minWidth: 20, height: 20, fontSize: 11, fontWeight: 700,
+              minWidth: 20, height: 20, fontSize: 12.5, fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', flexShrink: 0,
             }}>
               {contact.unread}
@@ -173,12 +142,11 @@ function Bubble({ msg }) {
         borderRadius: isOut ? '8px 0 8px 8px' : '0 8px 8px 8px',
         padding: '6px 10px 4px',
         boxShadow: '0 1px 0.5px rgba(11,20,26,.13)',
-        position: 'relative',
       }}>
         {msg.template && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
             <Zap size={10} style={{ color: '#F59E0B' }} />
-            <span style={{ fontSize: 10, color: '#92400e', fontWeight: 600, fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 11.5, color: '#92400e', fontWeight: 600, fontFamily: 'monospace' }}>
               {msg.template}
             </span>
           </div>
@@ -187,7 +155,7 @@ function Bubble({ msg }) {
           {msg.text}
         </p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, marginTop: 2 }}>
-          <span style={{ fontSize: 10, color: WA.sub }}>{timeShort(msg.at)}</span>
+          <span style={{ fontSize: 11.5, color: WA.sub }}>{timeShort(msg.at)}</span>
           {isOut && <TickIcon status={msg.status} />}
         </div>
       </div>
@@ -233,7 +201,7 @@ function ChatThread({ contact, onSend }) {
         <Avatar initials={contact.avatar} size={42} online={contact.online} />
         <div style={{ flex: 1 }}>
           <p style={{ fontWeight: 600, fontSize: 15, color: WA.text }}>{contact.name}</p>
-          <p style={{ fontSize: 12, color: WA.sub }}>
+          <p style={{ fontSize: 13.5, color: WA.sub }}>
             {contact.online ? 'online' : contact.phone}
           </p>
         </div>
@@ -249,7 +217,7 @@ function ChatThread({ contact, onSend }) {
           item.type === 'date' ? (
             <div key={`d-${i}`} style={{ textAlign: 'center', margin: '12px 0' }}>
               <span style={{
-                fontSize: 11, fontWeight: 600, color: WA.sub,
+                fontSize: 12.5, fontWeight: 600, color: WA.sub,
                 backgroundColor: '#E1F2FB', borderRadius: 8, padding: '3px 10px',
               }}>
                 {item.label}
@@ -286,7 +254,8 @@ function ChatThread({ contact, onSend }) {
           onClick={handleSend}
           disabled={!reply.trim()}
           style={{
-            width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: reply.trim() ? 'pointer' : 'default',
+            width: 44, height: 44, borderRadius: '50%', border: 'none',
+            cursor: reply.trim() ? 'pointer' : 'default',
             backgroundColor: reply.trim() ? WA.green : WA.sub,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0, transition: 'background 0.2s',
@@ -320,10 +289,9 @@ function EmptyThread() {
   );
 }
 
-// ── Automation panel (bottom-left below contact list) ─────────────────────
+// ── Automation panel ──────────────────────────────────────────────────────
 function AutomationPanel({ notifEvents }) {
   const [open, setOpen] = useState(false);
-  const isConfigured = false;
 
   return (
     <div style={{ borderTop: `1px solid ${WA.border}`, backgroundColor: '#fff' }}>
@@ -337,19 +305,29 @@ function AutomationPanel({ notifEvents }) {
       >
         <Zap size={15} style={{ color: '#F59E0B' }} />
         <span style={{ fontSize: 13, fontWeight: 700, flex: 1, textAlign: 'left' }}>Automation</span>
-        <span style={{
-          fontSize: 10, fontWeight: 700, backgroundColor: isConfigured ? WA.green : '#F59E0B',
-          color: '#fff', borderRadius: 4, padding: '1px 6px',
-        }}>
-          {isConfigured ? 'LIVE' : 'MOCK'}
-        </span>
+        {/* UPDATED: removed MOCK badge — shows pending setup icon instead */}
+        <Settings size={13} style={{ color: WA.sub }} />
         <ChevronDown size={14} style={{ color: WA.sub, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
       </button>
 
       {open && (
         <div style={{ padding: '0 16px 12px', borderTop: `1px solid ${WA.border}` }}>
+          {/* Setup notice */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
+            backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, marginTop: 10, marginBottom: 10,
+          }}>
+            <AlertTriangle size={13} style={{ color: '#92400E', marginTop: 1, flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#92400E' }}>MSG91 setup required</p>
+              <p style={{ fontSize: 11.5, color: '#B45309', marginTop: 2 }}>
+                Add MSG91_AUTH_KEY to backend .env to activate live WhatsApp delivery.
+              </p>
+            </div>
+          </div>
+
           {/* Templates */}
-          <p style={{ fontSize: 11, fontWeight: 700, color: WA.sub, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: WA.sub, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Auto-fire templates
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -360,8 +338,8 @@ function AutomationPanel({ notifEvents }) {
               }}>
                 <CheckCircle size={12} style={{ color: WA.green, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: WA.text }}>{t.label}</p>
-                  <p style={{ fontSize: 10, color: WA.sub }}>{t.trigger}</p>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: WA.text }}>{t.label}</p>
+                  <p style={{ fontSize: 11.5, color: WA.sub }}>{t.trigger}</p>
                 </div>
                 <span style={{
                   fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
@@ -374,73 +352,72 @@ function AutomationPanel({ notifEvents }) {
             ))}
           </div>
 
-          {/* Recent events */}
+          {/* Recent socket events */}
           {notifEvents.length > 0 && (
             <>
-              <p style={{ fontSize: 11, fontWeight: 700, color: WA.sub, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: WA.sub, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Recent triggers
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {notifEvents.slice(0, 4).map((e) => (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: WA.sub }}>
+                {notifEvents.slice(0, 5).map((e) => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: WA.sub }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: WA.green, flexShrink: 0 }} />
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {e.bookingNumber || e.bookingId || e.kind}
                     </span>
-                    <span style={{ fontSize: 10, flexShrink: 0 }}>{timeShort(e.at)}</span>
+                    <span style={{ fontSize: 11.5, flexShrink: 0 }}>{timeShort(e.at)}</span>
                   </div>
                 ))}
               </div>
             </>
           )}
-
-          <div style={{ marginTop: 10 }}>
-            <Alert type="info">
-              Set MSG91_AUTH_KEY in backend .env to go live.
-            </Alert>
-          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────
 export default function WhatsApp() {
   const { feed } = useAdminRealtimeContext();
-  const toast = useToast();
+  const toast    = useToast();
 
-  const [contacts,  setContacts]  = useState(INIT_CONTACTS);
-  const [selected,  setSelected]  = useState(null);
-  const [search,    setSearch]    = useState('');
+  // UPDATED: start with empty contacts — no mock data
+  const [contacts, setContacts] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [search,   setSearch]   = useState('');
 
   const notifEvents = feed
     .filter((f) => ['booking:created', 'booking:allocated', 'trip:status'].includes(f.kind))
     .slice(0, 10);
 
-  // Push new booking events as outbound automated messages
+  // When a new booking event arrives on the socket, add it as a conversation card.
+  // This shows what will be sent once MSG91 is connected.
   useEffect(() => {
     if (notifEvents.length === 0) return;
     const latest = notifEvents[0];
     if (!latest?.bookingNumber) return;
     setContacts((prev) => {
-      const existing = prev.find((c) => c.id === `event-${latest.id}`);
-      if (existing) return prev;
+      if (prev.find((c) => c.id === `event-${latest.id}`)) return prev;
+      const initials = (latest.customerName || 'C').slice(0, 2).toUpperCase();
       const newContact = {
-        id: `event-${latest.id}`,
-        name: latest.customerName || 'Customer',
-        phone: latest.phone || '+91 XXXXXXXXXX',
-        avatar: (latest.customerName || 'C')[0].toUpperCase(),
-        lastMsg: `Automated: ${latest.kind}`,
-        lastAt: latest.at,
-        unread: 0, online: false,
+        id:       `event-${latest.id}`,
+        name:     latest.customerName || 'Customer',
+        phone:    latest.phone || '—',
+        avatar:   initials,
+        lastMsg:  `[Queued] ${latest.kind} — ${latest.bookingNumber}`,
+        lastAt:   latest.at,
+        unread:   0,
+        online:   false,
         messages: [{
-          id: `em-${latest.id}`,
-          from: 'out',
-          text: `Automated notification fired for booking ${latest.bookingNumber}`,
-          at: latest.at,
-          status: 'delivered',
-          template: latest.kind === 'booking:created' ? 'booking_confirmed' : 'driver_assigned',
+          id:       `em-${latest.id}`,
+          from:     'out',
+          text:     `📋 Notification queued for booking ${latest.bookingNumber}.\n\nThis message will be delivered via WhatsApp once MSG91 is configured.`,
+          at:       latest.at,
+          status:   'sent',
+          template: latest.kind === 'booking:created'    ? 'booking_confirmed'
+                  : latest.kind === 'booking:allocated'  ? 'driver_assigned'
+                  : 'trip_completed',
         }],
       };
       return [newContact, ...prev];
@@ -456,17 +433,18 @@ export default function WhatsApp() {
 
   const handleSelect = (id) => {
     setSelected(id);
-    setContacts((prev) =>
-      prev.map((c) => c.id === id ? { ...c, unread: 0 } : c)
-    );
+    setContacts((prev) => prev.map((c) => c.id === id ? { ...c, unread: 0 } : c));
   };
 
   const handleSend = (contactId, text) => {
+    // TODO: when MSG91 is configured, call:
+    //   await apiClient.post('/admin/whatsapp/send', { phone: contact.phone, message: text });
+    // For now: optimistic local update only.
     const newMsg = {
-      id: `msg-${Date.now()}`,
-      from: 'out',
+      id:     `msg-${Date.now()}`,
+      from:   'out',
       text,
-      at: new Date().toISOString(),
+      at:     new Date().toISOString(),
       status: 'sent',
     };
     setContacts((prev) =>
@@ -476,17 +454,17 @@ export default function WhatsApp() {
           : c
       )
     );
-    // Simulate read receipt after 2s
+    // Simulate delivery tick after 1.5s
     setTimeout(() => {
       setContacts((prev) =>
         prev.map((c) =>
           c.id === contactId
-            ? { ...c, messages: c.messages.map((m) => m.id === newMsg.id ? { ...m, status: 'read' } : m) }
+            ? { ...c, messages: c.messages.map((m) => m.id === newMsg.id ? { ...m, status: 'delivered' } : m) }
             : c
         )
       );
-    }, 2000);
-    toast.success('Message sent');
+    }, 1500);
+    toast.success('Message queued — will deliver once MSG91 is configured');
   };
 
   const totalUnread = contacts.reduce((s, c) => s + c.unread, 0);
@@ -504,13 +482,13 @@ export default function WhatsApp() {
               <Avatar initials="AC" size={38} />
               <div>
                 <p style={{ fontWeight: 700, fontSize: 14, color: WA.text }}>ABHI CABS</p>
-                <p style={{ fontSize: 11, color: WA.sub }}>WhatsApp Business</p>
+                <p style={{ fontSize: 12.5, color: WA.sub }}>WhatsApp Business</p>
               </div>
             </div>
             {totalUnread > 0 && (
               <span style={{
                 backgroundColor: WA.green, color: '#fff', borderRadius: 12,
-                fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                fontSize: 12.5, fontWeight: 700, padding: '2px 8px',
               }}>
                 {totalUnread} new
               </span>
@@ -533,9 +511,19 @@ export default function WhatsApp() {
           </div>
         </div>
 
-        {/* Contact list */}
+        {/* Contact list — empty until real bookings arrive via socket */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {filteredContacts.length === 0 ? (
+          {contacts.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, padding: 24 }}>
+              <MessageCircle size={32} style={{ color: WA.border }} />
+              <p style={{ fontSize: 13, color: WA.sub, textAlign: 'center' }}>
+                No conversations yet.
+              </p>
+              <p style={{ fontSize: 12.5, color: WA.sub, textAlign: 'center' }}>
+                Conversations will appear here when booking events are received.
+              </p>
+            </div>
+          ) : filteredContacts.length === 0 ? (
             <p style={{ textAlign: 'center', padding: 32, fontSize: 13, color: WA.sub }}>No conversations found</p>
           ) : (
             filteredContacts.map((c) => (

@@ -37,7 +37,7 @@ export default function DonutChart({ data, size = 160 }) {
           })}
         </g>
       </svg>
-      <ul className="space-y-2 text-[11px]">
+      <ul className="space-y-2 text-[12.5px]">
         {data.map((d, i) => (
           <li key={i} className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PALETTE[i % PALETTE.length] }} />

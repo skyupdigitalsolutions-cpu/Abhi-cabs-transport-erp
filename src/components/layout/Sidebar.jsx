@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom';
 import * as Icons from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../hooks/useAuth';
-import { APP_NAME } from '../../constants';
 
 const SIDEBAR_W = 240;
 
@@ -26,10 +25,14 @@ export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
           AC
         </div>
         <div style={{ minWidth: 0 }}>
-          <p style={{ fontWeight: 900, color: '#fff', fontSize: 13, letterSpacing: '0.1em', textTransform: 'uppercase', lineHeight: 1 }}>
-            {APP_NAME}
+          {/* Brand guide: "ABHI" is Montserrat Bold, "CABS" is SF Pro
+              Display Medium — previously the whole string used one
+              generic uppercase weight with no Montserrat loaded at all. */}
+          <p style={{ color: '#fff', fontSize: 13, letterSpacing: '0.1em', textTransform: 'uppercase', lineHeight: 1 }}>
+            <span style={{ fontFamily: 'var(--font-brand)', fontWeight: 700 }}>ABHI</span>{' '}
+            <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500 }}>CABS</span>
           </p>
-          <p style={{ fontSize: 10, marginTop: 3, letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 700, color: '#FFC107' }}>
+          <p style={{ fontSize: 11.5, marginTop: 3, letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 700, color: '#FFC107' }}>
             Transport ERP
           </p>
         </div>
@@ -47,7 +50,7 @@ export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: 10,
                 borderRadius: 8, padding: '9px 12px',
-                fontSize: 12, fontWeight: 600, letterSpacing: '0.01em',
+                fontSize: 13.5, fontWeight: 600, letterSpacing: '0.01em',
                 textDecoration: 'none', transition: 'background 0.12s',
                 backgroundColor: isActive ? '#FFC107' : 'transparent',
                 color: isActive ? '#111111' : '#888888',
@@ -74,10 +77,10 @@ export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
 
       {/* Footer */}
       <div style={{ padding: '12px 20px', flexShrink: 0, borderTop: '1px solid rgba(255,193,7,0.1)' }}>
-        <p style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 600, color: '#444' }}>
+        <p style={{ fontSize: 11.5, letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 600, color: '#444' }}>
           © 2026 ABHI CABS
         </p>
-        <p style={{ fontSize: 10, marginTop: 2, fontWeight: 700, color: '#FFC107' }}>
+        <p style={{ fontSize: 11.5, marginTop: 2, fontWeight: 700, color: '#FFC107' }}>
           Ride With Trust
         </p>
       </div>

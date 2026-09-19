@@ -10,8 +10,8 @@ const VARIANTS = {
 };
 
 const SIZES = {
-  sm: { fontSize: 11, padding: '6px 12px', gap: 5 },
-  md: { fontSize: 12, padding: '8px 16px', gap: 6 },
+  sm: { fontSize: 12.5, padding: '6px 12px', gap: 5 },
+  md: { fontSize: 13.5, padding: '8px 16px', gap: 6 },
   lg: { fontSize: 13, padding: '10px 20px', gap: 6 },
 };
 

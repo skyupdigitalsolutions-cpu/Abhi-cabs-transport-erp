@@ -34,7 +34,7 @@ export default function Payments() {
         <div>
           <p className="font-mono text-xs" style={{ color: '#6B7280' }}>{r.booking?.bookingNumber || r.bookingId}</p>
           <p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.booking?.customer?.user?.name || '—'}</p>
-          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{r.booking?.customer?.user?.phone || ''}</p>
+          <p style={{ fontSize: 12.5, color: '#9CA3AF' }}>{r.booking?.customer?.user?.phone || ''}</p>
         </div>
       ),
     },
@@ -68,7 +68,7 @@ export default function Payments() {
     {
       key: 'failureReason', header: 'Notes',
       render: (r) => r.failureReason
-        ? <span style={{ color: '#EF4444', fontSize: 12 }}>{r.failureReason}</span>
+        ? <span style={{ color: '#EF4444', fontSize: 13.5 }}>{r.failureReason}</span>
         : <span style={{ color: '#9CA3AF' }}>—</span>,
     },
   ];
@@ -135,6 +135,7 @@ export default function Payments() {
         total={list.meta?.total}
         totalPages={list.meta?.totalPages}
         onPageChange={list.setPage}
+        onLimitChange={list.setLimit}
         emptyTitle="No payments found"
         emptyDescription="Try adjusting your filters or date range."
       />

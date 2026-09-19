@@ -19,8 +19,14 @@ import { formatDate, formatCurrency } from '../../utils/formatters';
 /**
  * Discounts & Offers page.
  * No backend endpoint exists yet for discount management.
- * This is a fully-functional UI with local state, ready to be wired
+ * This is a fully-functional UI with local, in-memory state, ready to be wired
  * to a backend endpoint when built.
+ *
+ * FIX: previously pre-seeded with three fake promo codes (including
+ * realistic-looking usage counts like "123 / 500 uses") even though the page
+ * already displays a banner saying this data isn't backend-connected. A
+ * fabricated code with a fabricated redemption count looks like real
+ * production data at a glance, banner or not — starts empty instead.
  */
 
 const DISCOUNT_TYPES = [
@@ -33,12 +39,6 @@ const APPLIES_TO = [
   { value: 'FIRST_RIDE', label: 'First ride only'   },
   { value: 'CORPORATE',  label: 'Corporate accounts' },
   { value: 'AIRPORT',    label: 'Airport trips'      },
-];
-
-const MOCK_DISCOUNTS = [
-  { id: '1', code: 'WELCOME20', type: 'PERCENTAGE', value: 20, appliesTo: 'FIRST_RIDE', minFare: 200, maxUses: 500, usedCount: 123, active: true, expiresAt: '2026-12-31', description: 'First ride discount for new customers' },
-  { id: '2', code: 'FLAT100',   type: 'FLAT',       value: 100, appliesTo: 'ALL',        minFare: 400, maxUses: 1000, usedCount: 456, active: true, expiresAt: '2026-10-31', description: '₹100 off on all bookings' },
-  { id: '3', code: 'CORP15',    type: 'PERCENTAGE', value: 15, appliesTo: 'CORPORATE',   minFare: 500, maxUses: null, usedCount: 89,  active: false, expiresAt: '2026-09-30', description: 'Corporate account flat discount' },
 ];
 
 function DiscountFormDrawer({ open, onClose, initial, onSubmit }) {
@@ -99,7 +99,7 @@ function DiscountFormDrawer({ open, onClose, initial, onSubmit }) {
 
 export default function Discounts() {
   const toast = useToast();
-  const [discounts, setDiscounts] = useState(MOCK_DISCOUNTS);
+  const [discounts, setDiscounts] = useState([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);

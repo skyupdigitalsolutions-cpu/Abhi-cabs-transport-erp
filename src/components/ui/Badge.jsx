@@ -14,7 +14,7 @@ export default function Badge({ children, tone = 'slate', className, style }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', borderRadius: 6,
-      padding: '2px 7px', fontSize: 10, fontWeight: 800,
+      padding: '2px 7px', fontSize: 11.5, fontWeight: 800,
       textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
       ...(TONES[tone] || TONES.slate),
       ...style,

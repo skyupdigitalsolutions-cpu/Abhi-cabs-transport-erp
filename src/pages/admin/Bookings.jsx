@@ -56,25 +56,25 @@ export default function Bookings() {
           <p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>
             {r.customer?.user?.name || r.corporate?.companyName || '—'}
           </p>
-          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{r.customer?.user?.phone || ''}</p>
+          <p style={{ fontSize: 12.5, color: '#9CA3AF' }}>{r.customer?.user?.phone || ''}</p>
         </div>
       ),
     },
     {
       key: 'route', header: 'Route',
       render: (r) => (
-        <span style={{ color: '#6B7280', fontSize: 12 }}>
+        <span style={{ color: '#6B7280', fontSize: 13.5 }}>
           {addr(r.pickupAddress)} → {addr(r.dropAddress)}
         </span>
       ),
     },
     {
       key: 'tripType', header: 'Type',
-      render: (r) => <span style={{ fontSize: 12, color: '#6B7280' }}>{r.tripType?.replace(/_/g,' ') || '—'}</span>,
+      render: (r) => <span style={{ fontSize: 13.5, color: '#6B7280' }}>{r.tripType?.replace(/_/g,' ') || '—'}</span>,
     },
     {
       key: 'vehicleClass', header: 'Class',
-      render: (r) => <span style={{ fontSize: 12, color: '#6B7280' }}>{titleCase(r.vehicleClass || '—')}</span>,
+      render: (r) => <span style={{ fontSize: 13.5, color: '#6B7280' }}>{titleCase(r.vehicleClass || '—')}</span>,
     },
     {
       key: 'fare', header: 'Fare', sortable: true,
@@ -163,6 +163,7 @@ export default function Bookings() {
         total={list.meta?.total}
         totalPages={list.meta?.totalPages}
         onPageChange={list.setPage}
+        onLimitChange={list.setLimit}
         onRowClick={(r) => navigate(`/admin/bookings/${r.id}`)}
         emptyTitle="No bookings found"
         emptyDescription="Try adjusting your filters or date range."

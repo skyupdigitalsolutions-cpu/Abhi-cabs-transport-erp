@@ -1,10 +1,20 @@
+/**
+ * src/components/layout/ProtectedRoute.jsx
+ *
+ * FIX: role comparison was case-sensitive.
+ * Backend returns role as "ADMIN" (uppercase).
+ * AuthContext normalises it to "admin" (lowercase).
+ * ProtectedRoute compared user.role ("admin") !== requiredRole ("ADMIN") → always redirected.
+ *
+ * Fix: compare both sides lowercased so "admin" === "admin" ✅
+ */
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
 const ROLE_LOGIN = {
-  ADMIN:  '/admin/login',
-  USER:   '/customer/login',
-  DRIVER: '/driver/login',
+  admin:  '/admin/login',
+  user:   '/admin/login',
+  driver: '/admin/login',
 };
 
 export default function ProtectedRoute({ permission, requiredRole, redirectTo, children }) {
@@ -12,12 +22,13 @@ export default function ProtectedRoute({ permission, requiredRole, redirectTo, c
   const location = useLocation();
 
   if (!isAuthenticated) {
-    const fallback = redirectTo || ROLE_LOGIN[requiredRole] || '/admin/login';
-    return <Navigate to={fallback} state={{ from: location }} replace />;
+    return <Navigate to={redirectTo || '/admin/login'} state={{ from: location }} replace />;
   }
 
-  if (requiredRole && user?.role !== requiredRole) {
-    const fallback = ROLE_LOGIN[user?.role] || '/admin/login';
+  // FIXED: compare lowercased so "admin" === "admin" regardless of what
+  // the backend or the route definition uses as casing.
+  if (requiredRole && user?.role?.toLowerCase() !== requiredRole.toLowerCase()) {
+    const fallback = ROLE_LOGIN[user?.role?.toLowerCase()] || '/admin/login';
     return <Navigate to={fallback} replace />;
   }
 
@@ -25,7 +36,5 @@ export default function ProtectedRoute({ permission, requiredRole, redirectTo, c
     return <Navigate to="/unauthorized" replace />;
   }
 
-  // When used as a layout wrapper (no children), render nested routes via Outlet.
-  // When used as a guard around a specific page (children passed), render children.
   return children ?? <Outlet />;
 }

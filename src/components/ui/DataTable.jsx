@@ -7,7 +7,7 @@ import Pagination from './Pagination';
 export default function DataTable({
   columns, rows, rowKey = 'id', status = 'success', error, onRetry,
   onRowClick, sortBy, sortDir, onSort,
-  page, limit, total, totalPages, onPageChange,
+  page, limit, total, totalPages, onPageChange, onLimitChange,
   emptyTitle = 'No records found', emptyDescription,
 }) {
   const wrapStyle = {
@@ -37,14 +37,14 @@ export default function DataTable({
                 <th key={col.key}
                   style={{
                     padding: '10px 16px', textAlign: 'left', whiteSpace: 'nowrap',
-                    color: '#9A9A9A', fontSize: 10, textTransform: 'uppercase',
+                    color: '#9A9A9A', fontSize: 11.5, textTransform: 'uppercase',
                     letterSpacing: '0.08em', fontWeight: 800,
                     ...(col.className?.includes('text-right') ? { textAlign: 'right' } : {}),
                   }}>
                   {col.sortable ? (
                     <button
                       onClick={() => onSort?.(col.key)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#9A9A9A', fontWeight: 800, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', padding: 0 }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#9A9A9A', fontWeight: 800, fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.08em', padding: 0 }}>
                       {col.header}
                       {sortBy === col.key
                         ? (sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
@@ -71,7 +71,7 @@ export default function DataTable({
                 {columns.map((col) => (
                   <td key={col.key}
                     style={{
-                      padding: '12px 16px', fontSize: 12, fontWeight: 500, color: '#111111',
+                      padding: '12px 16px', fontSize: 13.5, fontWeight: 500, color: '#111111',
                       whiteSpace: col.wrap ? 'normal' : 'nowrap',
                       ...(col.className?.includes('text-right') ? { textAlign: 'right' } : {}),
                     }}>
@@ -85,7 +85,7 @@ export default function DataTable({
       </div>
 
       {onPageChange && (
-        <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onChange={onPageChange} />
+        <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onChange={onPageChange} onLimitChange={onLimitChange} />
       )}
     </div>
   );

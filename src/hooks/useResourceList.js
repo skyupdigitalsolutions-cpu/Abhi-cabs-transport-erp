@@ -9,9 +9,10 @@ import { useDebounce } from './useDebounce';
  */
 export function useResourceList(
   service,
-  { limit = 10, filterDefaults = {}, sortBy: initialSortBy, sortDir: initialSortDir = 'desc', searchDebounceMs = 350 } = {}
+  { limit: initialLimit = 10, filterDefaults = {}, sortBy: initialSortBy, sortDir: initialSortDir = 'desc', searchDebounceMs = 350 } = {}
 ) {
   const [page,       setPage]       = useState(1);
+  const [limit,      setLimitState] = useState(initialLimit);
   const [search,     setSearch]     = useState('');
   const [filters,    setFilters]    = useState(filterDefaults);
   const [sortBy,     setSortBy]     = useState(initialSortBy);
@@ -19,6 +20,16 @@ export function useResourceList(
   const [reloadTick, setReloadTick] = useState(0);
 
   const debouncedSearch = useDebounce(search, searchDebounceMs);
+
+  // FIX: `limit` used to be a fixed value baked in at the call site (e.g.
+  // `limit: 10`) with no way to change it — there was no page-size control
+  // anywhere in the app. Now real state, with a setter that also resets to
+  // page 1 (changing page size while sitting on page 4 of the old size
+  // would show a confusing/out-of-range page).
+  const setLimit = useCallback((n) => {
+    setLimitState(Number(n) || 10);
+    setPage(1);
+  }, []);
 
   // Flatten filters into top-level params — backend expects flat query params
   // (e.g. status=COMPLETED&from=2026-01-01 NOT filters[status]=COMPLETED)
@@ -69,6 +80,7 @@ export function useResourceList(
   return {
     rows, meta, status, error, refetch,
     page, setPage,
+    limit, setLimit,
     search, onSearchChange,
     filters, setFilter,
     sortBy, sortDir, onSort,

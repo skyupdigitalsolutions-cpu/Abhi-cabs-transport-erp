@@ -129,7 +129,11 @@ class LiveTrackingSocket {
       this.io.on('connect', () => {
         this.status = 'open';
         this.emit('open', { at: Date.now() });
-        // Subscribe to the drivers we care about once connected.
+        // NOTE: the backend's realtime layer has no 'subscribe:drivers'
+        // handler today — ADMIN/OPS sockets are auto-joined to the DISPATCH
+        // room on connect and already receive every driver's 'driver:location'
+        // broadcast unfiltered. This emit is a no-op until/unless the backend
+        // adds per-driver subscription filtering; kept for forward-compat.
         this.io.emit('subscribe:drivers', { driverIds });
       });
 

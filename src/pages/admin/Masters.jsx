@@ -197,7 +197,7 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
           style={{ backgroundColor: catBg }}
         >
           <Users size={14} style={{ color: catColor }} />
-          <p className="text-[10px] font-bold leading-none mt-0.5" style={{ color: catColor }}>
+          <p className="text-[11.5px] font-bold leading-none mt-0.5" style={{ color: catColor }}>
             {rate.seater}
           </p>
         </div>
@@ -208,12 +208,12 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
             <p className="text-sm font-bold leading-snug" style={{ color: '#1F2937' }}>{rate.name}</p>
           </div>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+            <span className="text-[12.5px] px-2 py-0.5 rounded-full font-semibold"
               style={{ backgroundColor: catBg, color: catColor }}>{rate.category}</span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+            <span className="text-[12.5px] px-2 py-0.5 rounded-full font-medium"
               style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>{rate.acType}</span>
             {rate.bsCategory && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+              <span className="text-[12.5px] px-2 py-0.5 rounded-full font-medium"
                 style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>{rate.bsCategory}</span>
             )}
             {!rate.active && <Badge tone="slate">Inactive</Badge>}
@@ -239,12 +239,12 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
             <div className="h-4 w-4 rounded grid place-items-center" style={{ backgroundColor: '#eef2fb' }}>
               <Clock size={9} style={{ color: '#3B65DB' }} />
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#3B65DB' }}>Local City Tour</p>
+            <p className="text-[11.5px] font-bold uppercase tracking-wider" style={{ color: '#3B65DB' }}>Local City Tour</p>
           </div>
           <p className="text-base font-black" style={{ color: '#1F2937' }}>
             ₹{rate.local.packageRate?.toLocaleString('en-IN')}
           </p>
-          <p className="text-[11px]" style={{ color: '#6B7280' }}>
+          <p className="text-[12.5px]" style={{ color: '#6B7280' }}>
             {rate.local.hours} hrs / {rate.local.km} km
           </p>
         </div>
@@ -255,12 +255,12 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
             <div className="h-4 w-4 rounded grid place-items-center" style={{ backgroundColor: '#fff8ec' }}>
               <Gauge size={9} style={{ color: '#F59E0B' }} />
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#F59E0B' }}>Out of Station</p>
+            <p className="text-[11.5px] font-bold uppercase tracking-wider" style={{ color: '#F59E0B' }}>Out of Station</p>
           </div>
           <p className="text-base font-black" style={{ color: '#1F2937' }}>
             ₹{rate.outstation.perKmRate}/km
           </p>
-          <p className="text-[11px]" style={{ color: '#6B7280' }}>
+          <p className="text-[12.5px]" style={{ color: '#6B7280' }}>
             Min {rate.outstation.minKmPerDay} km/day
           </p>
         </div>
@@ -280,7 +280,7 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
         <div className="grid grid-cols-2 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
           {/* Local detail */}
           <div className="p-3 space-y-1.5" style={{ borderRight: '1px solid #F7F8FC', backgroundColor: '#f8faff' }}>
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#3B65DB' }}>Local Rates</p>
+            <p className="text-[11.5px] font-bold uppercase tracking-wider mb-2" style={{ color: '#3B65DB' }}>Local Rates</p>
             <RateRow icon="⏱" label="Package" value={`${rate.local.hours} hrs / ${rate.local.km} km`} />
             <RateRow icon="₹" label="Package rate" value={`₹${rate.local.packageRate?.toLocaleString('en-IN')}`} highlight />
             <RateRow icon="+" label="Extra hour" value={`₹${rate.local.extraHourRate}/-`} />
@@ -288,7 +288,7 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
           </div>
           {/* Outstation detail */}
           <div className="p-3 space-y-1.5" style={{ backgroundColor: '#fffcf5' }}>
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#F59E0B' }}>Outstation Rates</p>
+            <p className="text-[11.5px] font-bold uppercase tracking-wider mb-2" style={{ color: '#F59E0B' }}>Outstation Rates</p>
             <RateRow icon="📍" label="Per km"       value={`₹${rate.outstation.perKmRate}/-`} highlight />
             <RateRow icon="🗓" label="Min km/day"   value={`${rate.outstation.minKmPerDay} km`} />
             <RateRow icon="👤" label="Driver bhata" value={`₹${rate.outstation.driverBhata}/day`} />
@@ -302,8 +302,8 @@ function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
 function RateRow({ icon, label, value, highlight }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[11px]" style={{ color: '#6B7280' }}>{icon} {label}</span>
-      <span className="text-[11px] font-bold" style={{ color: highlight ? '#1F2937':'#6B7280' }}>{value}</span>
+      <span className="text-[12.5px]" style={{ color: '#6B7280' }}>{icon} {label}</span>
+      <span className="text-[12.5px] font-bold" style={{ color: highlight ? '#1F2937':'#6B7280' }}>{value}</span>
     </div>
   );
 }
@@ -642,6 +642,29 @@ export default function Masters() {
         title="Masters"
         description="Configure vehicle rate cards, cargo types, zones and pricing — all in one place."
       />
+
+      {/* FIX: this whole page (Vehicle Rate Cards, Driver Allowance/Bata
+          included) runs entirely on mock data — mastersService uses
+          mockMastersCrud with no backend endpoint behind it at all
+          (confirmed directly: no admin route, and prisma.fareConfig is only
+          ever read elsewhere in the codebase, never written). Anything
+          saved here was previously indistinguishable from a real,
+          functioning settings page, which is actively misleading — an
+          admin could set a driver allowance here, see it save "successfully",
+          and have no idea it changed nothing about real trip pricing. This
+          banner makes that limitation visible instead of hidden. */}
+      <div
+        className="mb-4 px-4 py-3 rounded-xl text-sm flex items-start gap-2.5"
+        style={{ backgroundColor: '#FFFBEA', border: '1px solid #FDE68A', color: '#92400E' }}
+      >
+        <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+        <span>
+          <strong>Preview only — not yet connected to live pricing.</strong> Changes made on this page
+          (including Driver Allowance / Bata) are saved locally for review, but do not affect real fares
+          charged to customers. Ask your developer to connect this to the live fare configuration when
+          you're ready to make it authoritative.
+        </span>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b overflow-x-auto" style={{ borderColor: '#E5E7EB' }}>

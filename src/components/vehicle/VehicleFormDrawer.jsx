@@ -117,11 +117,11 @@ function DocPanel({ cfg, docValues, onChangeField, fileValue, onChangeFile }) {
         <div className="flex-1">
           <p className="text-sm font-bold" style={{ color: '#1F2937' }}>{cfg.label}</p>
           {cfg.required
-            ? <span className="text-[10px] font-semibold" style={{ color: cfg.color }}>Required</span>
-            : <span className="text-[10px]" style={{ color: '#6B7280' }}>Optional</span>}
+            ? <span className="text-[11.5px] font-semibold" style={{ color: cfg.color }}>Required</span>
+            : <span className="text-[11.5px]" style={{ color: '#6B7280' }}>Optional</span>}
         </div>
         {expiry && (
-          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: expiry.bg, color: expiry.color }}>
+          <span className="flex items-center gap-1 text-[12.5px] font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: expiry.bg, color: expiry.color }}>
             <expiry.icon size={11} /> {expiry.label}
           </span>
         )}
@@ -187,14 +187,14 @@ function ComplianceTab({ docValues, files }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-bold" style={{ color: '#1F2937' }}>{cfg.label}</p>
-                  {cfg.required && <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: cfg.bg, color: cfg.color }}>Required</span>}
+                  {cfg.required && <span className="text-[11.5px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: cfg.bg, color: cfg.color }}>Required</span>}
                 </div>
                 <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                  <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: statusBg, color: statusColor }}>
+                  <span className="flex items-center gap-1 text-[12.5px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: statusBg, color: statusColor }}>
                     <StatusIcon size={10} /> {statusLabel}
                   </span>
                   {expiryDate && <span className="text-xs" style={{ color: '#6B7280' }}>Expires: {new Date(expiryDate).toLocaleDateString('en-IN')}</span>}
-                  {hasFile && <span className="flex items-center gap-1 text-[11px]" style={{ color: '#38B763' }}><FileText size={10} /> Doc uploaded</span>}
+                  {hasFile && <span className="flex items-center gap-1 text-[12.5px]" style={{ color: '#38B763' }}><FileText size={10} /> Doc uploaded</span>}
                 </div>
               </div>
             </div>
@@ -293,7 +293,7 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
   ];
 
   const TAB_STYLE = (tab) => ({
-    padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    padding: '8px 14px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
     background: 'none', border: 'none', whiteSpace: 'nowrap',
     borderBottom: `2px solid ${activeTab === tab ? '#3B65DB' : 'transparent'}`,
     color: activeTab === tab ? '#3B65DB' : '#6B7280',

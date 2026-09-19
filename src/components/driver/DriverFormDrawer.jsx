@@ -145,7 +145,7 @@ export default function DriverFormDrawer({ open, onClose, initial, onSubmit }) {
         <button style={TAB_STYLE('docs')} onClick={() => setActiveTab('docs')}>
           Documents
           {uploadedCount > 0 && (
-            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+            <span className="ml-1.5 text-[11.5px] px-1.5 py-0.5 rounded-full font-bold"
               style={{ backgroundColor: '#eef2fb', color: '#3B65DB' }}>{uploadedCount}</span>
           )}
         </button>

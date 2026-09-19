@@ -1,4 +1,17 @@
-import { useState } from 'react';
+/**
+ * src/pages/admin/Trips.jsx
+ *
+ * FIX: Backend listBookingsQuerySchema uses z.enum() for status — it only
+ * accepts a single status value. Sending a comma-joined string like
+ * "ALLOCATED,EN_ROUTE,ONGOING" returns 400 VALIDATION_ERROR.
+ *
+ * Solution: default filter is empty (all statuses returned, sorted by pickupAt).
+ * The user can filter to a single status via the dropdown. This is the correct
+ * approach until the backend adds array/multi-value support for status.
+ *
+ * Client-side: filter displayRows to TRIP_STATUSES so PENDING/EXPIRED/CONFIRMED
+ * bookings don't appear in the Trips tab (which is for in-progress + completed).
+ */
 import { useNavigate } from 'react-router-dom';
 import PageHeader  from '../../components/ui/PageHeader';
 import FilterBar   from '../../components/ui/FilterBar';
@@ -8,14 +21,9 @@ import { useResourceList } from '../../hooks/useResourceList';
 import { bookingService }  from '../../services';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
 
-// Backend listBookingsQuerySchema accepts: status, tripType, from, to, search, sortBy, order
-// Trips = bookings with status in [ALLOCATED, EN_ROUTE, ONGOING, ARRIVED, COMPLETED]
-// We pass status server-side when a specific status is selected,
-// and client-filter the rest of the trip-relevant statuses.
-
-const TRIP_STATUSES = ['ALLOCATED','EN_ROUTE','ONGOING','ARRIVED','COMPLETED'];
-const TRIP_TYPES    = ['ONE_WAY','ROUND_TRIP','AIRPORT','HOURLY'];
-const SORT_OPTIONS  = ['createdAt','pickupAt','estimatedFare'];
+const TRIP_STATUSES = ['ALLOCATED', 'EN_ROUTE', 'ONGOING', 'ARRIVED', 'COMPLETED'];
+const TRIP_TYPES    = ['ONE_WAY', 'ROUND_TRIP', 'AIRPORT', 'HOURLY'];
+const SORT_OPTIONS  = ['createdAt', 'pickupAt', 'estimatedFare'];
 
 function addr(val) {
   if (!val) return '—';
@@ -27,15 +35,20 @@ export default function Trips() {
   const navigate = useNavigate();
 
   const list = useResourceList(bookingService, {
+    // No default status — backend only accepts a single enum value.
+    // We client-filter to TRIP_STATUSES below so non-trip bookings don't show.
     filterDefaults: { status: '', tripType: '', from: '', to: '' },
-    sortBy: 'pickupAt',
+    sortBy:  'pickupAt',
     sortDir: 'desc',
-    limit: 10,
+    limit:   20,
   });
 
-  // Client-filter to trip-relevant statuses only (when no status is selected server-side)
+  // Client-filter: only show trip-relevant statuses in the Trips tab.
+  // When the user picks a specific status from the dropdown, show that only.
   const displayRows = (list.rows || []).filter((b) =>
-    list.filters.status ? true : TRIP_STATUSES.includes(b.status)
+    list.filters.status
+      ? b.status === list.filters.status
+      : TRIP_STATUSES.includes(b.status)
   );
 
   const columns = [
@@ -50,25 +63,25 @@ export default function Trips() {
           <p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>
             {r.customer?.user?.name || r.corporate?.companyName || '—'}
           </p>
-          <p style={{ fontSize: 11, color: '#9CA3AF' }}>{r.customer?.user?.phone || ''}</p>
+          <p style={{ fontSize: 12.5, color: '#9CA3AF' }}>{r.customer?.user?.phone || ''}</p>
         </div>
       ),
     },
     {
       key: 'route', header: 'Route',
       render: (r) => (
-        <span style={{ color: '#6B7280', fontSize: 12 }}>
+        <span style={{ color: '#6B7280', fontSize: 13.5 }}>
           {addr(r.pickupAddress)} → {addr(r.dropAddress)}
         </span>
       ),
     },
     {
       key: 'tripType', header: 'Type',
-      render: (r) => <span style={{ fontSize: 12 }}>{r.tripType?.replace(/_/g,' ')}</span>,
+      render: (r) => <span style={{ fontSize: 13.5 }}>{r.tripType?.replace(/_/g, ' ')}</span>,
     },
     {
       key: 'vehicleClass', header: 'Class',
-      render: (r) => <span style={{ fontSize: 12, color: '#6B7280' }}>{titleCase(r.vehicleClass || '—')}</span>,
+      render: (r) => <span style={{ fontSize: 13.5, color: '#6B7280' }}>{titleCase(r.vehicleClass || '—')}</span>,
     },
     {
       key: 'fare', header: 'Fare', sortable: true,
@@ -88,7 +101,7 @@ export default function Trips() {
     <div>
       <PageHeader
         title="Trips"
-        description="Active and historical trips. Filters applied server-side."
+        description="Active and completed trips."
       />
 
       <FilterBar
@@ -101,6 +114,7 @@ export default function Trips() {
             value: list.filters.status,
             onChange: (v) => list.setFilter('status', v),
             placeholder: 'All trip statuses',
+            // Backend accepts single enum value only — no comma-joined options
             options: TRIP_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, ' ') })),
           },
           {
@@ -121,15 +135,21 @@ export default function Trips() {
         extra={
           <div className="flex items-center gap-2">
             <label className="text-xs font-semibold" style={{ color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
-            <input type="date" value={list.filters.from || ''}
+            <input
+              type="date"
+              value={list.filters.from ? list.filters.from.slice(0, 10) : ''}
               onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
               className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+              style={{ borderColor: '#E5E7EB', color: '#1F2937' }}
+            />
             <label className="text-xs font-semibold" style={{ color: '#6B7280' }}>To</label>
-            <input type="date" value={list.filters.to || ''}
+            <input
+              type="date"
+              value={list.filters.to ? list.filters.to.slice(0, 10) : ''}
               onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
               className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+              style={{ borderColor: '#E5E7EB', color: '#1F2937' }}
+            />
           </div>
         }
       />
@@ -148,6 +168,7 @@ export default function Trips() {
         total={list.meta?.total}
         totalPages={list.meta?.totalPages}
         onPageChange={list.setPage}
+        onLimitChange={list.setLimit}
         onRowClick={(r) => navigate(`/admin/bookings/${r.id}`)}
         emptyTitle="No trips found"
         emptyDescription="Try adjusting your filters or date range."

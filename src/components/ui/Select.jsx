@@ -10,7 +10,7 @@ const Select = forwardRef(function Select({ error, options = [], placeholder, st
         style={{
           width: '100%', appearance: 'none', borderRadius: 8,
           border: `1.5px solid ${error ? '#DC2626' : '#E8E8E4'}`,
-          padding: '7px 32px 7px 10px', fontSize: 12, fontWeight: 500,
+          padding: '7px 32px 7px 10px', fontSize: 13.5, fontWeight: 500,
           backgroundColor: '#ffffff', color: '#111111', cursor: 'pointer',
           outline: 'none',
         }}

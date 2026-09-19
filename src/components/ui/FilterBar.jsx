@@ -34,7 +34,7 @@ export default function FilterBar({
             onClick={clearAll}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8,
+              fontSize: 12.5, fontWeight: 700, padding: '6px 10px', borderRadius: 8,
               color: '#DC2626', backgroundColor: '#fef2f2',
               border: '1px solid #fecaca', cursor: 'pointer',
             }}

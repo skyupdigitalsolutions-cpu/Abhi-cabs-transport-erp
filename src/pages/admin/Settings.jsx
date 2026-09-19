@@ -116,14 +116,14 @@ export default function Settings() {
           </Alert>
           <div className="space-y-4">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#9A9A9A' }}>Email</p>
+              <p className="text-[11.5px] font-bold uppercase tracking-widest mb-3" style={{ color: '#9A9A9A' }}>Email</p>
               <div className="space-y-3">
                 <Toggle checked={notifs.emailOnNewBooking}    onChange={(v) => setNotifs((n) => ({ ...n, emailOnNewBooking: v }))}    label="Email admin on new booking" />
                 <Toggle checked={notifs.emailOnCancellation}  onChange={(v) => setNotifs((n) => ({ ...n, emailOnCancellation: v }))}  label="Email admin on cancellation" />
               </div>
             </div>
             <div className="pt-2 border-t" style={{ borderColor: '#E8E8E4' }}>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#9A9A9A' }}>WhatsApp / SMS (via MSG91)</p>
+              <p className="text-[11.5px] font-bold uppercase tracking-widest mb-3" style={{ color: '#9A9A9A' }}>WhatsApp / SMS (via MSG91)</p>
               <div className="space-y-3">
                 <Toggle checked={notifs.whatsappOnConfirm}   onChange={(v) => setNotifs((n) => ({ ...n, whatsappOnConfirm: v }))}    label="WhatsApp customer on booking confirmed" />
                 <Toggle checked={notifs.smsOnDriverAssign}   onChange={(v) => setNotifs((n) => ({ ...n, smsOnDriverAssign: v }))}    label="WhatsApp customer on driver assigned" />
@@ -163,7 +163,7 @@ export default function Settings() {
           <Card className="space-y-4">
             <h3 className="text-sm font-bold" style={{ color: '#111111' }}>Backend Environment Keys</h3>
             <Alert type="info">
-              These keys are set in the backend <code className="font-mono text-[10px] px-1 py-0.5 rounded" style={{ backgroundColor: '#F5F5F3' }}>.env</code> file,
+              These keys are set in the backend <code className="font-mono text-[11.5px] px-1 py-0.5 rounded" style={{ backgroundColor: '#F5F5F3' }}>.env</code> file,
               not in the ERP. Listed here for reference only.
             </Alert>
             {[
@@ -182,8 +182,8 @@ export default function Settings() {
                     {item.status}
                   </Badge>
                 </div>
-                <code className="text-[10px] font-mono" style={{ color: '#7c3aed' }}>{item.key}</code>
-                <p className="text-[10px] mt-1" style={{ color: '#9A9A9A' }}>{item.hint}</p>
+                <code className="text-[11.5px] font-mono" style={{ color: '#7c3aed' }}>{item.key}</code>
+                <p className="text-[11.5px] mt-1" style={{ color: '#9A9A9A' }}>{item.hint}</p>
               </div>
             ))}
           </Card>

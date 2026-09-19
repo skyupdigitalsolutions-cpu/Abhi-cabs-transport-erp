@@ -12,7 +12,7 @@ export default function Alert({ type = 'info', children, className, style }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: 10,
-      borderRadius: 12, padding: '10px 14px', fontSize: 12, fontWeight: 500,
+      borderRadius: 12, padding: '10px 14px', fontSize: 13.5, fontWeight: 500,
       backgroundColor: bg, border: `1px solid ${border}`, color,
       ...style,
     }}>

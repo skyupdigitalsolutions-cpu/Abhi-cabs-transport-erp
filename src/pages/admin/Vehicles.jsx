@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield, ShieldAlert, XCircle, Eye, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield, XCircle, Eye, FileText } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import Button        from '../../components/ui/Button';
 import IconButton    from '../../components/ui/IconButton';
@@ -34,14 +34,14 @@ function getDaysUntil(dateStr) {
 
 function ExpiryChip({ dateStr }) {
   const days = getDaysUntil(dateStr);
-  if (days === null) return <span style={{ color: '#6B7280', fontSize: 11 }}>—</span>;
+  if (days === null) return <span style={{ color: '#6B7280', fontSize: 12.5 }}>—</span>;
   const expired  = days < 0;
   const expiring = days <= 30;
   const color = expired ? '#EF4444' : expiring ? '#F59E0B' : '#38B763';
   const bg    = expired ? '#fef2f2' : expiring ? '#fffbeb' : '#f0fdf4';
   const Icon  = expired ? AlertTriangle : expiring ? Clock : CheckCircle;
   return (
-    <div className="flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
+    <div className="flex items-center gap-1 text-[12.5px] font-semibold px-1.5 py-0.5 rounded-full"
       style={{ backgroundColor: bg, color, display: 'inline-flex' }}>
       <Icon size={10} />{expired ? 'Expired' : expiring ? `${days}d` : 'Valid'}
     </div>
@@ -53,11 +53,11 @@ function ComplianceChips({ vehicle }) {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {checks.map((c) => {
-        if (!c.date) return <span key={c.label} className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: '#F7F8FC', color: '#9CA3AF' }}>{c.label}</span>;
+        if (!c.date) return <span key={c.label} className="text-[11.5px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: '#F7F8FC', color: '#9CA3AF' }}>{c.label}</span>;
         const days  = getDaysUntil(c.date);
         const color = days < 0 ? '#EF4444' : days <= 30 ? '#F59E0B' : '#38B763';
         const bg    = days < 0 ? '#fef2f2' : days <= 30 ? '#fffbeb' : '#f0fdf4';
-        return <span key={c.label} className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: bg, color }}>{c.label}</span>;
+        return <span key={c.label} className="text-[11.5px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: bg, color }}>{c.label}</span>;
       })}
     </div>
   );
@@ -93,7 +93,7 @@ function DocDetailModal({ open, vehicle, onClose }) {
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(fields).filter(([k, v]) => v && k !== 'fileSelected' && k !== 'fileName').map(([k, v]) => (
                       <div key={k}>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>{k.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}</p>
+                        <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>{k.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}</p>
                         <p className="text-xs font-medium mt-0.5" style={{ color: '#1F2937' }}>{typeof v === 'string' && v.includes('T') && !isNaN(Date.parse(v)) ? new Date(v).toLocaleDateString('en-IN') : String(v)}</p>
                       </div>
                     ))}
@@ -109,28 +109,21 @@ function DocDetailModal({ open, vehicle, onClose }) {
   );
 }
 
-function PendingVehicleModal({ vehicle, onClose, onApprove, onReject, actionLoading }) {
-  const [rejectConfirm, setRejectConfirm] = useState(false);
+function PendingVehicleModal({ vehicle, onClose, onSetOperationalStatus, actionLoading }) {
+  const [confirmInactive, setConfirmInactive] = useState(false);
   const docs = vehicle.documents || {};
   const docEntries = Object.entries(docs);
   return (
     <div style={{ position:'fixed',inset:0,zIndex:50,backgroundColor:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:16 }} onClick={onClose}>
       <div style={{ backgroundColor:'#fff',borderRadius:16,width:'100%',maxWidth:680,maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding:'20px 24px',borderBottom:'1px solid #F3F4F6',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-          <div><h2 style={{ fontWeight:700,fontSize:18,color:'#1F2937' }}>Vehicle Verification — {vehicle.registrationNumber}</h2><p style={{ fontSize:13,color:'#6B7280',marginTop:2 }}>{vehicle.makeModel} · {titleCase(vehicle.vehicleClass)} · {vehicle.seatingCapacity} seats</p></div>
-          <Badge tone="amber">PENDING</Badge>
+          <div><h2 style={{ fontWeight:700,fontSize:18,color:'#1F2937' }}>Vehicle — {vehicle.registrationNumber}</h2><p style={{ fontSize:13,color:'#6B7280',marginTop:2 }}>{vehicle.makeModel} · {titleCase(vehicle.vehicleClass)} · {vehicle.seatingCapacity} seats</p></div>
+          <Badge tone="slate">Operational: {titleCase(vehicle.status)}</Badge>
         </div>
         <div style={{ padding:'20px 24px' }}>
-          {vehicle.ownerDriver && (
-            <div style={{ backgroundColor:'#F9FAFB',borderRadius:10,padding:'12px 16px',marginBottom:16 }}>
-              <p style={{ fontSize:12,fontWeight:600,color:'#6B7280',marginBottom:8 }}>SUBMITTED BY</p>
-              <div style={{ display:'flex',gap:24 }}>
-                {[['Driver', vehicle.ownerDriver?.user?.name], ['Phone', vehicle.ownerDriver?.user?.phone], ['Licence', vehicle.ownerDriver?.licenceNumber]].map(([l,v]) => (
-                  <div key={l}><p style={{ fontSize:11,color:'#9CA3AF' }}>{l}</p><p style={{ fontSize:13,fontWeight:600,color:'#1F2937' }}>{v||'—'}</p></div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Submitted-by driver info would come from the VehicleClaim relation — no
+              existing admin endpoint returns it, so this is honestly omitted rather
+              than shown as blank/guessed. */}
           <p style={{ fontSize:13,fontWeight:600,color:'#374151',marginBottom:10 }}>Documents ({docEntries.length})</p>
           {docEntries.length === 0 ? (
             <div style={{ textAlign:'center',padding:24,backgroundColor:'#F9FAFB',borderRadius:10,marginBottom:16 }}>
@@ -145,31 +138,42 @@ function PendingVehicleModal({ vehicle, onClose, onApprove, onReject, actionLoad
                     {doc.url ? <img src={doc.url} alt={docType} style={{ width:'100%',height:'100%',objectFit:'cover' }} /> : <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100%' }}><FileText size={28} style={{ color:'#D1D5DB' }} /></div>}
                   </div>
                   <div style={{ padding:'6px 8px' }}>
-                    <p style={{ fontSize:11,fontWeight:600,color:'#1F2937' }}>{docType.replace(/_/g,' ')}</p>
-                    {doc.uploadedAt && <p style={{ fontSize:10,color:'#9CA3AF' }}>{formatDateTime(doc.uploadedAt)}</p>}
-                    <p style={{ fontSize:10,color:'#3B65DB',marginTop:2 }}>Click to open ↗</p>
+                    <p style={{ fontSize: 12.5,fontWeight:600,color:'#1F2937' }}>{docType.replace(/_/g,' ')}</p>
+                    {doc.uploadedAt && <p style={{ fontSize: 11.5,color:'#9CA3AF' }}>{formatDateTime(doc.uploadedAt)}</p>}
+                    <p style={{ fontSize: 11.5,color:'#3B65DB',marginTop:2 }}>Click to open ↗</p>
                   </div>
                 </a>
               ))}
             </div>
           )}
-          <div style={{ backgroundColor:'#EEF2FF',borderRadius:10,padding:'12px 16px' }}>
-            <p style={{ fontSize:12,fontWeight:600,color:'#3730A3',marginBottom:6 }}>Before approving, verify:</p>
-            <ul style={{ fontSize:12,color:'#4338CA',lineHeight:1.8,paddingLeft:16 }}>
-              <li>Registration number matches the RC document</li>
-              <li>Insurance is valid and not expired</li>
-              <li>PUC certificate is current</li>
-              <li>Vehicle photos show the correct vehicle</li>
-            </ul>
+
+          {/* Verification — honestly unavailable. Do not present an action here
+              that implies the backend actually verifies this vehicle. */}
+          <div style={{ backgroundColor:'#FFFBEB',borderRadius:10,padding:'14px 16px',marginBottom:16,border:'1px solid #FDE68A' }}>
+            <p style={{ fontSize:13,fontWeight:700,color:'#92400E',marginBottom:6 }}>⚠ Vehicle Verification</p>
+            <p style={{ fontSize: 13.5,color:'#92400E',lineHeight:1.6 }}>
+              Verification approval is currently unavailable because the existing backend does not
+              provide a vehicle verification/claim approval API. Please complete verification once
+              the backend capability is available. This vehicle cannot be marked dispatch-ready from
+              here.
+            </p>
+          </div>
+
+          {/* Operational status — a real, existing, separate capability. Not a
+              verification decision; only changes fleet availability. */}
+          <div style={{ backgroundColor:'#F9FAFB',borderRadius:10,padding:'14px 16px' }}>
+            <p style={{ fontSize: 13.5,fontWeight:600,color:'#374151',marginBottom:8 }}>Operational Status (fleet availability only)</p>
+            <div style={{ display:'flex',gap:10 }}>
+              <Button variant="dangerOutline" icon={XCircle} loading={actionLoading === `inactive-${vehicle.id}`} onClick={() => setConfirmInactive(true)}>Keep Inactive</Button>
+              <Button variant="primary" icon={CheckCircle} loading={actionLoading === `active-${vehicle.id}`} onClick={() => onSetOperationalStatus(vehicle, true)}>Mark Active in Fleet</Button>
+            </div>
           </div>
         </div>
         <div style={{ padding:'16px 24px',borderTop:'1px solid #F3F4F6',display:'flex',gap:10,justifyContent:'flex-end' }}>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="dangerOutline" icon={XCircle} loading={actionLoading === `reject-${vehicle.id}`} onClick={() => setRejectConfirm(true)}>Reject</Button>
-          <Button variant="primary" icon={CheckCircle} loading={actionLoading === `approve-${vehicle.id}`} onClick={() => onApprove(vehicle)}>Approve Vehicle</Button>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
         </div>
       </div>
-      <ConfirmDialog open={rejectConfirm} title="Reject this vehicle?" description={`${vehicle.registrationNumber} will be rejected.`} confirmLabel="Reject Vehicle" danger loading={actionLoading === `reject-${vehicle.id}`} onClose={() => setRejectConfirm(false)} onConfirm={() => { setRejectConfirm(false); onReject(vehicle); }} />
+      <ConfirmDialog open={confirmInactive} title="Keep this vehicle inactive?" description={`${vehicle.registrationNumber} will remain out of the active fleet. This does not reject its verification, which is not tracked here.`} confirmLabel="Keep Inactive" danger loading={actionLoading === `inactive-${vehicle.id}`} onClose={() => setConfirmInactive(false)} onConfirm={() => { setConfirmInactive(false); onSetOperationalStatus(vehicle, false); }} />
     </div>
   );
 }
@@ -192,13 +196,14 @@ function FleetTab({ canManage }) {
 
   const columns = [
     { key: 'registrationNumber', header: 'Reg. No.', sortable: true, render: (r) => <p style={{ fontWeight: 700, color: '#1F2937', fontFamily: 'monospace' }}>{r.registrationNumber}</p> },
-    { key: 'vehicle', header: 'Vehicle', render: (r) => (<div style={{ maxWidth: 200 }}><p className="truncate" style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{titleCase(r.vehicleClass)}{r.year ? ` · ${r.year}` : ''}</p></div>) },
+    { key: 'vehicle', header: 'Vehicle', render: (r) => (<div style={{ maxWidth: 200 }}><p className="truncate" style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 2 }}>{titleCase(r.vehicleClass)}{r.year ? ` · ${r.year}` : ''}</p></div>) },
     { key: 'seatingCapacity', header: 'Seats', sortable: true, render: (r) => <span className="flex items-center gap-1 text-sm font-semibold" style={{ color: '#1F2937' }}><Users size={13} style={{ color: '#6B7280' }} />{r.seatingCapacity}</span> },
     { key: 'odometerKm', header: 'Odometer', sortable: true, render: (r) => <span style={{ color: '#6B7280', fontSize: 13 }}>{Number(r.odometerKm || 0).toLocaleString('en-IN')} km</span> },
     { key: 'compliance', header: 'Doc Status', render: (r) => <button onClick={(e) => { e.stopPropagation(); setDocView(r); }} className="focus-ring rounded"><ComplianceChips vehicle={r} /></button> },
     { key: 'insuranceExpiry', header: 'Insurance', render: (r) => <ExpiryChip dateStr={r.insuranceExpiry} /> },
     { key: 'pucExpiry', header: 'PUC', render: (r) => <ExpiryChip dateStr={r.pucExpiry} /> },
-    { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
+    { key: 'status', header: 'Operational Status', render: (r) => <StatusBadge status={r.status} /> },
+    { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
     ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); setDocView(r); }} /><IconButton icon={Pencil} label="Edit" onClick={() => { setEditing(r); setFormOpen(true); }} /><IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} /></div>) }] : []),
   ];
 
@@ -233,6 +238,7 @@ function FleetTab({ canManage }) {
       <DataTable columns={columns} rows={list.rows} status={list.status} error={list.error} onRetry={list.refetch}
         sortBy={list.sortBy} sortDir={list.sortDir} onSort={list.onSort}
         page={list.page} limit={list.meta?.limit} total={list.meta?.total} totalPages={list.meta?.totalPages} onPageChange={list.setPage}
+        onLimitChange={list.setLimit}
         emptyTitle="No vehicles found" emptyDescription="Try adjusting your filters." />
       <VehicleFormDrawer open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); }} initial={editing} onSubmit={handleSubmit} />
       <DocDetailModal open={!!docView} vehicle={docView} onClose={() => setDocView(null)} />
@@ -242,54 +248,59 @@ function FleetTab({ canManage }) {
 }
 
 // ── Pending tab ───────────────────────────────────────────────────────────────
+// NOTE ON HONESTY: the backend has no verificationStatus filter or field on
+// /admin/vehicles (see VEHICLE_SELECT in vehicle.service.js — it only returns
+// operational fields: status, isActive, etc.). This tab uses status=INACTIVE
+// + isActive=false purely as the closest available PROXY for "not yet in
+// active fleet use" — it is NOT the same thing as verification, and is
+// labelled accordingly throughout. There is also no VehicleClaim approval
+// endpoint anywhere, so approving/rejecting an actual verification decision
+// is not possible from this dashboard at all right now.
 function PendingTab() {
   const toast = useToast();
   const [actionLoading, setActionLoading] = useState(null);
   const [reviewVehicle, setReviewVehicle] = useState(null);
 
-  // Backend /admin/vehicles has no verificationStatus filter — that field only
-  // exists on driver-self-submitted vehicles. Filter by INACTIVE + isActive=false
-  // which covers unverified/pending vehicles submitted via the driver app.
   const { data, status, error, refetch } = useApi(
     () => apiClient.get('/admin/vehicles', { params: { status: 'INACTIVE', isActive: 'false', limit: 50, page: 1 } }),
     []
   );
   const pendingVehicles = data?.data ?? data?.items ?? [];
 
-  async function approve(vehicle) {
-    setActionLoading(`approve-${vehicle.id}`);
+  // Changes ONLY the operational status/availability flag — a real, existing
+  // backend capability. This intentionally does NOT call itself "approve" or
+  // "reject": it has no effect on verificationStatus or any VehicleClaim,
+  // and does not make the vehicle dispatch-ready.
+  async function setOperationalStatus(vehicle, active) {
+    const key = active ? `active-${vehicle.id}` : `inactive-${vehicle.id}`;
+    setActionLoading(key);
     try {
-      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { status: 'AVAILABLE', isActive: true });
-      toast.success(`${vehicle.registrationNumber} approved`);
+      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, active ? { status: 'AVAILABLE', isActive: true } : { status: 'INACTIVE', isActive: false });
+      toast.success(active ? `${vehicle.registrationNumber} marked active in fleet` : `${vehicle.registrationNumber} kept inactive`);
       setReviewVehicle(null); refetch();
-    } catch (e) { toast.error(e.message || 'Could not approve'); }
-    finally { setActionLoading(null); }
-  }
-
-  async function reject(vehicle) {
-    setActionLoading(`reject-${vehicle.id}`);
-    try {
-      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { status: 'INACTIVE', isActive: false });
-      toast.success(`${vehicle.registrationNumber} rejected`);
-      setReviewVehicle(null); refetch();
-    } catch (e) { toast.error(e.message || 'Could not reject'); }
+    } catch (e) { toast.error(e.message || 'Could not update operational status'); }
     finally { setActionLoading(null); }
   }
 
   const columns = [
     { key: 'registrationNumber', header: 'Reg. No.', render: (r) => <p style={{ fontWeight: 700, color: '#1F2937', fontFamily: 'monospace' }}>{r.registrationNumber}</p> },
-    { key: 'vehicle', header: 'Vehicle', render: (r) => (<div><p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 11, color: '#6B7280' }}>{titleCase(r.vehicleClass)} · {r.seatingCapacity} seats</p></div>) },
-    { key: 'driver', header: 'Submitted By', render: (r) => r.ownerDriver ? (<div><p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.ownerDriver.user?.name || '—'}</p><p style={{ fontSize: 11, color: '#6B7280' }}>{r.ownerDriver.user?.phone}</p></div>) : <span style={{ color: '#9CA3AF' }}>—</span> },
+    { key: 'vehicle', header: 'Vehicle', render: (r) => (<div><p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 12.5, color: '#6B7280' }}>{titleCase(r.vehicleClass)} · {r.seatingCapacity} seats</p></div>) },
+    { key: 'driver', header: 'Submitted By', render: () => <span style={{ color: '#9CA3AF', fontSize: 13.5 }}>Not available</span> },
+    { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
     { key: 'documents', header: 'Documents', render: (r) => { const count = Object.keys(r.documents || {}).length; return count > 0 ? <Badge tone="green">{count} uploaded</Badge> : <Badge tone="slate">None</Badge>; } },
     { key: 'createdAt', header: 'Submitted', render: (r) => formatDateTime(r.createdAt) },
-    { key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex gap-2 justify-end"><Button size="sm" variant="secondary" icon={Eye} onClick={() => setReviewVehicle(r)}>Review</Button><Button size="sm" variant="primary" icon={CheckCircle} loading={actionLoading === `approve-${r.id}`} onClick={() => approve(r)}>Approve</Button><Button size="sm" variant="dangerOutline" icon={XCircle} disabled={!!actionLoading} onClick={() => reject(r)}>Reject</Button></div>) },
+    { key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex gap-2 justify-end"><Button size="sm" variant="secondary" icon={Eye} onClick={() => setReviewVehicle(r)}>Review</Button></div>) },
   ];
 
   return (
     <div>
-      {pendingVehicles.length > 0 && <Alert type="warning" className="mb-4">{pendingVehicles.length} vehicle{pendingVehicles.length > 1 ? 's' : ''} waiting for verification.</Alert>}
-      <DataTable columns={columns} rows={pendingVehicles} status={status} error={error} onRetry={refetch} emptyTitle="No pending submissions" emptyDescription="Vehicles submitted from the driver app will appear here." />
-      {reviewVehicle && <PendingVehicleModal vehicle={reviewVehicle} onClose={() => setReviewVehicle(null)} onApprove={approve} onReject={reject} actionLoading={actionLoading} />}
+      <Alert type="warning" className="mb-4">
+        Vehicle verification approval is currently unavailable because the existing backend does not
+        provide a vehicle verification/claim approval API. The list below is filtered by operational
+        status as the closest available proxy, not a real verification queue.
+      </Alert>
+      <DataTable columns={columns} rows={pendingVehicles} status={status} error={error} onRetry={refetch} emptyTitle="No inactive vehicles" emptyDescription="Vehicles submitted from the driver app will appear here." />
+      {reviewVehicle && <PendingVehicleModal vehicle={reviewVehicle} onClose={() => setReviewVehicle(null)} onSetOperationalStatus={setOperationalStatus} actionLoading={actionLoading} />}
     </div>
   );
 }
@@ -304,7 +315,7 @@ export default function Vehicles() {
 
   const tabs = [
     { key: 'fleet',   label: 'Fleet Vehicles' },
-    { key: 'pending', label: `Pending Verification${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+    { key: 'pending', label: `Inactive Vehicles${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
   ];
 
   return (
@@ -316,7 +327,7 @@ export default function Vehicles() {
             className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring"
             style={{ borderColor: tab === t.key ? '#3B65DB' : 'transparent', color: tab === t.key ? '#3B65DB' : '#6B7280' }}>
             {t.label}
-            {t.key === 'pending' && pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>{pendingCount}</span>}
+            {t.key === 'pending' && pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[11.5px] font-bold" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>{pendingCount}</span>}
           </button>
         ))}
       </div>

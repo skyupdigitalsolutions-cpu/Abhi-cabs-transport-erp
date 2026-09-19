@@ -17,7 +17,7 @@ export default function StatusBadge({ status, className }) {
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap tracking-wide uppercase', className)}
+      className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11.5px] font-bold whitespace-nowrap tracking-wide uppercase', className)}
       style={style}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: style.color }} />

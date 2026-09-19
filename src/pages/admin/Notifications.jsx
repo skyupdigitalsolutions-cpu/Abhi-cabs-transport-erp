@@ -30,10 +30,53 @@ const KIND_CONFIG = {
   'trip:status':       { label: 'Status Changed',    tone: 'blue',  Icon: Car },
   'booking:allocated': { label: 'Vehicle Allocated', tone: 'purple',Icon: Car },
   'payment:received':  { label: 'Payment Received',  tone: 'green', Icon: CreditCard },
+  // NEW — polled, not pushed live. See AdminRealtimeContext.jsx for why.
+  'booking:abandoned': { label: 'Abandoned Booking',  tone: 'amber', Icon: AlertTriangle },
 };
 
 function kindConfig(kind) {
   return KIND_CONFIG[kind] || { label: kind, tone: 'slate', Icon: Info };
+}
+
+/**
+ * FIX: every booking a customer made showed up as its own fully separate
+ * row — a customer who booked 3 times in one session produced 3 identical-
+ * looking "New Booking" entries, cluttering the feed and making it look
+ * like 3 different customers were active rather than one repeat customer.
+ * Groups consecutive booking:created events by customerId into one row
+ * with a "×N" count and the full list of booking numbers, instead of N
+ * separate rows. Other event kinds (payments, trip status, alerts) are
+ * left exactly as they were — only repeat NEW BOOKINGS get grouped, since
+ * that's specifically what was asked for.
+ */
+function groupFeed(feed) {
+  const grouped = [];
+  const byCustomer = new Map(); // customerId -> the group object already pushed into `grouped`
+
+  for (const item of feed) {
+    if (item.kind !== 'booking:created' || !item.customerId) {
+      grouped.push(item);
+      continue;
+    }
+    const existing = byCustomer.get(item.customerId);
+    if (existing) {
+      existing.bookingNumbers.push(item.bookingNumber || item.bookingId);
+      existing.count += 1;
+      // Keep the most recent timestamp/status for display, but the group
+      // stays in its ORIGINAL (first-seen) position in the feed order.
+      existing.at = item.at;
+      existing.status = item.status;
+    } else {
+      const group = {
+        ...item,
+        bookingNumbers: [item.bookingNumber || item.bookingId],
+        count: 1,
+      };
+      byCustomer.set(item.customerId, group);
+      grouped.push(group);
+    }
+  }
+  return grouped;
 }
 
 function NotificationRow({ item, isNew }) {
@@ -41,12 +84,20 @@ function NotificationRow({ item, isNew }) {
 
   // Build a human-readable summary from the payload
   let summary = '';
-  if (item.bookingNumber) summary += `Booking ${item.bookingNumber}`;
-  if (item.vehicleClass)  summary += summary ? ` · ${item.vehicleClass}` : item.vehicleClass;
-  if (item.status)        summary += summary ? ` · ${item.status}` : item.status;
-  if (item.amount)        summary += summary ? ` · ₹${item.amount}` : `₹${item.amount}`;
-  if (item.reason)        summary += summary ? ` · ${item.reason}` : item.reason;
-  if (!summary)           summary = label;
+  if (item.count > 1) {
+    // Grouped repeat-customer bookings — show the count and every booking
+    // number involved, rather than the single most-recent one.
+    summary = `${item.count} bookings: ${item.bookingNumbers.join(', ')}`;
+  } else if (item.kind === 'booking:abandoned') {
+    summary = `${item.name} (${item.mobile})`;
+  } else {
+    if (item.bookingNumber) summary += `Booking ${item.bookingNumber}`;
+    if (item.vehicleClass)  summary += summary ? ` · ${item.vehicleClass}` : item.vehicleClass;
+    if (item.status)        summary += summary ? ` · ${item.status}` : item.status;
+    if (item.amount)        summary += summary ? ` · ₹${item.amount}` : `₹${item.amount}`;
+    if (item.reason)        summary += summary ? ` · ${item.reason}` : item.reason;
+    if (!summary)           summary = label;
+  }
 
   return (
     <div
@@ -68,6 +119,14 @@ function NotificationRow({ item, isNew }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           <Badge tone={tone}>{label}</Badge>
+          {item.count > 1 && (
+            <span
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: '#EEF2FF', color: '#4338CA' }}
+            >
+              ×{item.count}
+            </span>
+          )}
           {isNew && (
             <span
               className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
@@ -94,7 +153,8 @@ export default function Notifications() {
   const [localFeed, setLocalFeed] = useState(null);
 
   // Allow clearing the in-memory feed
-  const displayFeed = localFeed ?? feed;
+  const rawFeed = localFeed ?? feed;
+  const displayFeed = groupFeed(rawFeed);
   const handleClear = () => setLocalFeed([]);
 
   // Mark first 5 as "new" (arrived in this session)

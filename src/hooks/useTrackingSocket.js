@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { createTrackingSocket } from '../services/socketService';
 
 /**
- * Wires the tracking UI to the (mock) realtime socket, exposing connection
- * state, per-driver last-known positions and stale-location detection.
+ * Wires the tracking UI to the realtime socket (real Socket.IO connection to
+ * the backend when VITE_USE_MOCK=false, a simulated ticker only in mock mode
+ * — see services/socketService.js), exposing connection state, per-driver
+ * last-known positions and stale-location detection.
  */
 export function useTrackingSocket(driverIds) {
   const [connection, setConnection] = useState('connecting'); // connecting | open | reconnecting | closed

@@ -15,13 +15,13 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
   const toast    = useToast();
 
   // Use live feed length as unread count — no REST endpoint exists
-  const { feed, lastBookingEventId } = useAdminRealtimeContext();
+  const { feed, lastEventId } = useAdminRealtimeContext();
 
-  // Each new socket event increments unread count
+  // Every new socket event increments unread count, not just new bookings.
   // Reset to 0 when user opens notifications page
   useEffect(() => {
-    if (lastBookingEventId) setUnreadCount((c) => c + 1);
-  }, [lastBookingEventId]);
+    if (lastEventId) setUnreadCount((c) => c + 1);
+  }, [lastEventId]);
 
   // Firebase foreground push
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
       <div className="flex-1 min-w-0">
         <p className="font-bold text-sm truncate" style={{ color: '#1F2937' }}>{title}</p>
         {typeof liveConnected === 'boolean' && (
-          <p className="text-[10px] font-medium" style={{ color: liveConnected ? '#38B763' : '#9CA3AF' }}>
+          <p className="text-[11.5px] font-medium" style={{ color: liveConnected ? '#38B763' : '#9CA3AF' }}>
             {liveConnected ? '● Live updates on' : '○ Live updates offline'}
           </p>
         )}
@@ -76,7 +76,7 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
         style={{ backgroundColor: '#F7F8FC' }}>
         <Bell size={17} style={{ color: '#6B7280' }} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 grid place-items-center rounded-full text-[10px] font-bold text-white"
+          <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 grid place-items-center rounded-full text-[11.5px] font-bold text-white"
             style={{ backgroundColor: '#EF4444' }}>
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
@@ -94,7 +94,7 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
           </div>
           <div className="hidden sm:block text-left">
             <p className="text-xs font-bold leading-none" style={{ color: '#1F2937' }}>{name}</p>
-            <p className="text-[10px] mt-0.5" style={{ color: '#6B7280' }}>{role}</p>
+            <p className="text-[11.5px] mt-0.5" style={{ color: '#6B7280' }}>{role}</p>
           </div>
           <ChevronDown size={14} style={{ color: '#6B7280' }}
             className={`transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -105,7 +105,7 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
             style={{ backgroundColor: '#fff', borderColor: '#E5E7EB' }}>
             <div className="px-4 py-3 border-b" style={{ borderColor: '#F7F8FC' }}>
               <p className="text-xs font-bold" style={{ color: '#1F2937' }}>{name}</p>
-              <p className="text-[10px] mt-0.5 truncate" style={{ color: '#6B7280' }}>{email}</p>
+              <p className="text-[11.5px] mt-0.5 truncate" style={{ color: '#6B7280' }}>{email}</p>
             </div>
             <div className="py-1">
               <MenuItem icon={UserIcon}  label="Profile"  onClick={() => { setOpen(false); navigate('/admin/settings'); }} />

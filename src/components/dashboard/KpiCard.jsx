@@ -18,17 +18,17 @@ export default function KpiCard({ label, value, sub, delta, icon: Icon, tone = '
   return (
     <Card className="flex items-start justify-between gap-4">
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest truncate" style={{ color: '#9A9A9A' }}>
+        <p className="text-[11.5px] font-bold uppercase tracking-widest truncate" style={{ color: '#9A9A9A' }}>
           {label}
         </p>
         <p className="text-2xl font-extrabold mt-1 tracking-tight leading-none" style={{ color: '#111111', letterSpacing: '-0.5px' }}>
           {value}
         </p>
         {sub && (
-          <p className="text-[10px] mt-1 font-medium" style={{ color: '#9A9A9A' }}>{sub}</p>
+          <p className="text-[11.5px] mt-1 font-medium" style={{ color: '#9A9A9A' }}>{sub}</p>
         )}
         {delta !== undefined && (
-          <p className="flex items-center gap-0.5 text-[10px] mt-1.5 font-bold"
+          <p className="flex items-center gap-0.5 text-[11.5px] mt-1.5 font-bold"
             style={{ color: positive ? '#22A65A' : '#DC2626' }}>
             {positive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
             {Math.abs(delta)}% vs last week

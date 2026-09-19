@@ -65,11 +65,11 @@ export default function DocumentUploader({ label, hint, value, onChange, require
             </p>
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] px-2 py-0.5 rounded font-medium"
+            <span className="text-[11.5px] px-2 py-0.5 rounded font-medium"
               style={{ backgroundColor:'#eef2fb', color:'#3B65DB' }}>
               📎 Browse File
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded font-medium"
+            <span className="text-[11.5px] px-2 py-0.5 rounded font-medium"
               style={{ backgroundColor:'#f0fdf4', color:'#38B763' }}>
               📸 Camera
             </span>
