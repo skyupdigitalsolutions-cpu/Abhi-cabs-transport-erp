@@ -90,7 +90,7 @@ function DocDetailModal({ open, vehicle, onClose }) {
                   {meta.expiry && <ExpiryChip dateStr={meta.expiry} />}
                 </div>
                 {Object.entries(fields).filter(([k, v]) => v && k !== 'fileSelected' && k !== 'fileName').length > 0 && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {Object.entries(fields).filter(([k, v]) => v && k !== 'fileSelected' && k !== 'fileName').map(([k, v]) => (
                       <div key={k}>
                         <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>{k.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}</p>

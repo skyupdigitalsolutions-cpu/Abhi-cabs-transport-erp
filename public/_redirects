@@ -1,0 +1,7 @@
+# Cloudflare Pages doesn't know about React Router's client-side routes
+# (/admin/dashboard, /admin/masters, etc.) — without this, refreshing or
+# directly visiting any route other than "/" 404s, because Cloudflare looks
+# for a literal file/folder at that path and finds none. This sends every
+# path that isn't a real static asset to index.html instead, and lets
+# React Router take over from there.
+/*    /index.html   200

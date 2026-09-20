@@ -89,10 +89,16 @@ export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
 
   return (
     <>
-      {/* Desktop sidebar — always visible, fixed */}
-      <aside style={{
+      {/* Desktop sidebar — fixed, but only from the lg breakpoint up.
+          FIX: this previously had no responsive hiding at all (no `hidden
+          lg:flex`), so it was permanently visible and permanently reserved
+          240px on every screen size, phones included — while the separate
+          mobile overlay sidebar below could ALSO open on top of it. The
+          hamburger button in Navbar.jsx already correctly used `lg:hidden`;
+          this was the missing other half of that same breakpoint contract. */}
+      <aside className="hidden lg:flex" style={{
         width: SIDEBAR_W, position: 'fixed', left: 0, top: 0, bottom: 0,
-        zIndex: 20, backgroundColor: '#111111', display: 'flex', flexDirection: 'column',
+        zIndex: 20, backgroundColor: '#111111', flexDirection: 'column',
       }}>
         {content}
       </aside>

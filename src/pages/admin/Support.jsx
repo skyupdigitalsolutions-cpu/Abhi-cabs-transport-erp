@@ -155,7 +155,7 @@ export default function Support() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
         {[
           { label: 'New messages',   value: list.meta?.total ?? rows.length, Icon: Clock,        bg: '#fffbeb', color: '#92400e' },
           { label: 'Unread',         value: newCount,                         Icon: AlertOctagon, bg: '#fef2f2', color: '#DC2626' },

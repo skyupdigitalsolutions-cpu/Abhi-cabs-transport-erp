@@ -34,8 +34,13 @@ import { useAuth }   from '../../hooks/useAuth';
 //   { id, name, email, role, isActive, createdAt, updatedAt }
 // NOTE: the key is `id` not `userId` — all activate/deactivate calls use id.
 
+// Sent straight to POST /admin/users, so these values must match the
+// backend's Role enum exactly (uppercase) — ROLES.ADMIN from constants/index.js
+// is lowercase 'admin' (used elsewhere for auth/route-guard comparisons
+// against a differently-cased source) and would have made every "Admin"
+// user-creation submission here fail backend validation with a 400.
 const ROLE_OPTS = [
-  { value: ROLES.ADMIN,   label: 'Admin — full access' },
+  { value: 'ADMIN',       label: 'Admin — full access' },
   { value: 'OPS',         label: 'OPS — bookings & dispatch' },
   { value: 'FINANCE',     label: 'Finance — payments & invoices' },
   { value: 'FLEET',       label: 'Fleet — vehicles & drivers' },
@@ -49,7 +54,7 @@ const ROLE_TONE = {
 
 function UserFormDrawer({ open, onClose, onSubmit }) {
   const { values, errors, touched, submitting, setValue, setFieldTouched, handleSubmit } = useForm({
-    initialValues: { name: '', email: '', password: 'TempPass@123', role: ROLES.ADMIN },
+    initialValues: { name: '', email: '', password: 'TempPass@123', role: 'ADMIN' },
     onSubmit: async (vals) => { await onSubmit(vals); onClose(); },
   });
   return (
@@ -120,7 +125,7 @@ export default function UsersRoles() {
   });
 
   const [formOpen,     setFormOpen]     = useState(false);
-  const [selectedRole, setSelectedRole] = useState(ROLES.ADMIN);
+  const [selectedRole, setSelectedRole] = useState('ADMIN');
 
   const handleInvite = async (vals) => {
     try {

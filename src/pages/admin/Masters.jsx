@@ -120,7 +120,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
               one instead. This keeps it clear which rate card actually priced a past booking.
             </Alert>
           )}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <FormField label="City" required>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityId} />
@@ -148,7 +148,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#2F55C7' }}>
             💰 Fare (required)
           </p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <FormField label="Base fare (₹)" required>
               <Input type="number" min="0" value={form.baseFare} onChange={(e) => set('baseFare', e.target.value)} placeholder="e.g. 100" />
             </FormField>
@@ -185,7 +185,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
               <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#d97706' }}>
                 🛣️ Outstation &amp; round trip
               </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FormField label="Return-empty % (one way)" hint="Outstation one-way only">
                   <Input type="number" min="0" max="100" value={form.returnEmptyPct} onChange={(e) => set('returnEmptyPct', e.target.value)} />
                 </FormField>
@@ -208,7 +208,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
               <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7c3aed' }}>
                 🌙 Night charge
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormField label="Flat night allowance (₹)">
                   <Input type="number" min="0" value={form.nightAllowance} onChange={(e) => set('nightAllowance', e.target.value)} />
                 </FormField>
@@ -236,7 +236,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
               <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#0369a1' }}>
                 ✈️ Airport &amp; ⏱ Hourly rental
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormField label="Airport surcharge (₹)" hint="Airport trip type only">
                   <Input type="number" min="0" value={form.airportSurcharge} onChange={(e) => set('airportSurcharge', e.target.value)} />
                 </FormField>
@@ -407,7 +407,7 @@ function VehicleRatesTab() {
     setLoadError(null);
     Promise.all([fareConfigService.list(), fareConfigService.cities()])
       .then(([{ rows }, cityRows]) => { setRates(rows || []); setCities(cityRows || []); })
-      .catch((e) => setLoadError(e.message || 'Could not load rate cards'))
+      .catch((e) => setLoadError(e))
       .finally(() => setLoading(false));
   };
 
@@ -466,10 +466,33 @@ function VehicleRatesTab() {
   if (loading) return <LoadingState label="Loading vehicle rate cards…" />;
 
   if (loadError) {
+    // Distinguish WHY it failed rather than showing one generic message —
+    // "the route doesn't exist" (backend not updated yet) and "you lack
+    // FARE_EDIT" (backend is fine, this account isn't) need different fixes,
+    // and neither should look like a raw app crash.
+    const isMissingRoute = loadError.code === 'ENDPOINT_NOT_IMPLEMENTED' || loadError.status === 404;
+    const isForbidden = loadError.status === 403;
+
+    if (isMissingRoute) {
+      return (
+        <Alert type="warning">
+          <strong>Vehicle Rate Cards isn't available on this backend yet.</strong> The pricing endpoints
+          this tab needs haven't been deployed here. Deploy the updated backend, then reload this page —
+          nothing else in the app is affected.
+        </Alert>
+      );
+    }
+    if (isForbidden) {
+      return (
+        <Alert type="error">
+          <strong>You don't have permission to manage rate cards.</strong> This needs the FARE_EDIT
+          permission — ask an Admin to grant it, or sign in as a user who already has it.
+        </Alert>
+      );
+    }
     return (
       <Alert type="error">
-        Could not load rate cards: {loadError}. This needs the FARE_EDIT permission — check you're
-        signed in as a user who has it.
+        Could not load rate cards: {loadError.message || 'Unknown error'}.
       </Alert>
     );
   }

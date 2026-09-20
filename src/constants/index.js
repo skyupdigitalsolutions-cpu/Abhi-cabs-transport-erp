@@ -39,16 +39,38 @@ export const PERMISSIONS = {
   BOOKING_CREATE:  'BOOKING_CREATE',
 };
 
-// Backend permission strings granted to ADMIN role (from seeded role_permissions table)
+// Backend permission strings granted to each staff role — copied verbatim
+// from the actual seeded grants (prisma/migrations/.../day1_constraints,
+// the INSERT INTO role_permissions block), not guessed from the role names.
+// Keyed by the real, uppercase Role enum values (ADMIN/OPS/FINANCE/FLEET/
+// SUPPORT) — this is what UsersRoles.jsx's PermissionsPanel looks up by the
+// role actually selected in that form, which is one of those 5 uppercase
+// values, not ROLES.ADMIN (lowercase, used elsewhere for auth/route-guard
+// comparisons and unrelated to this).
 export const ROLE_PERMISSIONS = {
-  [ROLES.ADMIN]: [
-    'BOOKING_MANAGE', 'BOOKING_CREATE', 'BOOKING_CANCEL',
-    'DISPATCH_MANAGE', 'DRIVER_APPROVE', 'VEHICLE_MANAGE',
-    'CUSTOMER_MANAGE', 'PAYMENT_VIEW', 'PAYMENT_REFUND',
-    'REPORT_VIEW', 'USER_MANAGE', 'SETTINGS_MANAGE',
-    'AUDIT_VIEW', 'SUPPORT_MANAGE',
+  // ADMIN also bypasses permission checks entirely at the backend middleware
+  // level (role === 'ADMIN' short-circuits before any permission lookup),
+  // so this list is for display only — it doesn't limit what ADMIN can do.
+  ADMIN: [
+    'CORPORATE_MANAGE', 'BOOKING_CREATE', 'BOOKING_MANAGE', 'BOOKING_CANCEL',
+    'FARE_EDIT', 'DISPATCH_MANAGE', 'VEHICLE_MANAGE', 'DRIVER_APPROVE',
+    'PAYMENT_VIEW', 'PAYMENT_REFUND', 'INVOICE_MANAGE', 'REPORT_VIEW',
+    'SETTINGS_MANAGE', 'AUDIT_VIEW',
   ],
-  [ROLES.DRIVER]: ['BOOKING_MANAGE'],
+  OPS: [
+    'CUSTOMER_MANAGE', 'BOOKING_CREATE', 'BOOKING_MANAGE', 'BOOKING_CANCEL',
+    'DISPATCH_MANAGE', 'REPORT_VIEW',
+  ],
+  FINANCE: [
+    'PAYMENT_VIEW', 'PAYMENT_REFUND', 'INVOICE_MANAGE', 'CORPORATE_MANAGE', 'REPORT_VIEW',
+  ],
+  FLEET: [
+    'VEHICLE_MANAGE', 'DRIVER_APPROVE', 'DISPATCH_MANAGE', 'REPORT_VIEW',
+  ],
+  SUPPORT: [
+    'CUSTOMER_MANAGE', 'BOOKING_MANAGE', 'BOOKING_CANCEL', 'PAYMENT_VIEW',
+  ],
+  [ROLES.DRIVER]: ['TRIP_MANAGE'],
 };
 
 // Real backend enum (src/models/booking.model.js) — confirmed uppercase,
