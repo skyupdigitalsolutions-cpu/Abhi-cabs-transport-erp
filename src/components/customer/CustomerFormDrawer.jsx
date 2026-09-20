@@ -25,7 +25,7 @@ import Alert     from '../ui/Alert';
 import { useForm } from '../../hooks/useForm';
 
 const ACCOUNT_TYPE_OPTS = [
-  { value: 'RETAIL',    label: 'Retail — individual customer' },
+  { value: 'RETAIL',    label: 'Personal — individual customer' },
   { value: 'CORPORATE', label: 'Corporate — business account' },
 ];
 

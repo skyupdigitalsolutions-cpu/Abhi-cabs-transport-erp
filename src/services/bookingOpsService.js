@@ -83,11 +83,19 @@ export const bookingOpsService = {
     );
   },
 
-  /** POST /admin/bookings/:id/cancel */
-  async cancel(bookingId, { reason, cancelledBy = 'ADMIN' } = {}) {
+  /**
+   * POST /admin/bookings/:id/cancel
+   * Body field is `cancelledByType` (CUSTOMER/DRIVER/ADMIN/SYSTEM) — matches
+   * lifecycle.schemas.js's adminCancelSchema. This used to send
+   * `cancelledBy`, a key the backend doesn't recognize; Zod silently strips
+   * unknown keys rather than rejecting them, so it never errored — it just
+   * meant the value was never actually received, and the service fell back
+   * to its own 'ADMIN' default every time regardless of what was passed.
+   */
+  async cancel(bookingId, { reason, cancelledByType = 'ADMIN' } = {}) {
     return withMockFallback(
-      () => apiClient.post(`/admin/bookings/${bookingId}/cancel`, { reason, cancelledBy }),
-      () => mockTransition(bookingId, 'CANCELLED', { cancelReason: reason, cancelledBy })
+      () => apiClient.post(`/admin/bookings/${bookingId}/cancel`, { reason, cancelledByType }),
+      () => mockTransition(bookingId, 'CANCELLED', { cancelReason: reason, cancelledByType })
     );
   },
 

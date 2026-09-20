@@ -11,7 +11,7 @@ import CustomerFormDrawer from '../../components/customer/CustomerFormDrawer';
 import { useResourceList }       from '../../hooks/useResourceList';
 import { adminCustomersService, bookingService } from '../../services';
 import { useToast }  from '../../hooks/useToast';
-import { formatDate, titleCase } from '../../utils/formatters';
+import { formatDate, titleCase, accountTypeLabel } from '../../utils/formatters';
 import { PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
 
@@ -168,7 +168,7 @@ export default function Customers() {
       key: 'accountType', header: 'Type',
       render: (r) => (
         <Badge tone={r.accountType === 'CORPORATE' ? 'blue' : 'slate'}>
-          {r.accountType || 'RETAIL'}
+          {accountTypeLabel(r.accountType)}
         </Badge>
       ),
     },
@@ -232,7 +232,7 @@ export default function Customers() {
             onChange: (v) => list.setFilter('accountType', v),
             placeholder: 'All account types',
             options: [
-              { value: 'RETAIL',    label: 'Retail'    },
+              { value: 'RETAIL',    label: 'Personal'  },
               { value: 'CORPORATE', label: 'Corporate' },
             ],
           },

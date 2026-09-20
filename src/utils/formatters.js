@@ -45,3 +45,16 @@ export function titleCase(str = '') {
 export function truncate(str = '', len = 40) {
   return str.length > len ? `${str.slice(0, len)}…` : str;
 }
+
+/**
+ * The backend's AccountType enum is RETAIL/CORPORATE (that's what's actually
+ * stored and what customer.schemas.js validates on write — changing the
+ * value itself would break every create/update request). "Retail" reads
+ * oddly for an individual rider though, so this is purely a display-label
+ * mapping: the wire value never changes, only what a human sees for it.
+ */
+export function accountTypeLabel(accountType) {
+  if (accountType === 'RETAIL') return 'Personal';
+  if (accountType === 'CORPORATE') return 'Corporate';
+  return titleCase(accountType || 'Personal');
+}

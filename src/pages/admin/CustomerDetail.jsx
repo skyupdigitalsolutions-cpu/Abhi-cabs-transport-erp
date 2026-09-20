@@ -17,7 +17,7 @@ import Input        from '../../components/ui/Input';
 import Select       from '../../components/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useForm }  from '../../hooks/useForm';
-import { formatCurrency, formatDate, formatDateTime, titleCase } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatDateTime, titleCase, accountTypeLabel } from '../../utils/formatters';
 
 function addr(val) {
   if (!val) return '—';
@@ -148,7 +148,7 @@ export default function CustomerDetail() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold" style={{ color: '#1F2937' }}>{c.user?.name || '—'}</h1>
-              <Badge tone={c.accountType === 'CORPORATE' ? 'blue' : 'slate'}>{c.accountType || 'RETAIL'}</Badge>
+              <Badge tone={c.accountType === 'CORPORATE' ? 'blue' : 'slate'}>{accountTypeLabel(c.accountType)}</Badge>
               {c.user?.isActive === false && <Badge tone="red">Inactive</Badge>}
             </div>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -190,7 +190,7 @@ export default function CustomerDetail() {
               ['Name',         c.user?.name],
               ['Phone',        c.user?.phone],
               ['Email',        c.user?.email],
-              ['Account type', titleCase(c.accountType || 'RETAIL')],
+              ['Account type', accountTypeLabel(c.accountType)],
               ['Joined',       formatDate(c.createdAt)],
               ...(c.corporate ? [['Company', c.corporate.companyName], ['GSTIN', c.corporate.gstin]] : []),
             ].map(([label, value]) => (
@@ -251,7 +251,7 @@ export default function CustomerDetail() {
           <FormField label="Account type">
             <Select value={values.accountType}
               onChange={(e) => setValue('accountType', e.target.value)}
-              options={[{ value:'RETAIL', label:'Retail' }, { value:'CORPORATE', label:'Corporate' }]} />
+              options={[{ value:'RETAIL', label:'Personal' }, { value:'CORPORATE', label:'Corporate' }]} />
           </FormField>
           <FormField label="Internal notes">
             <Input as="textarea" rows={3} value={values.notes || ''}
