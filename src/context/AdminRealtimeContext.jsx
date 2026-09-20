@@ -22,6 +22,7 @@ import { useToast } from '../hooks/useToast';
 import { API_BASE_URL, USE_MOCK, apiClient } from '../services/apiClient';
 import { getToken } from '../services/authStorage';
 import { contactService } from '../services';
+import { playNotificationSound } from '../lib/notificationSound';
 
 const AdminRealtimeContext = createContext({ connected: false, feed: [], lastEventId: null });
 
@@ -33,8 +34,15 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
   const [connected, setConnected] = useState(false);
   const [feed, setFeed] = useState([]);
 
+  // FIX: nothing in this app ever played a sound — every event only ever
+  // produced a toast + a feed entry. pushFeedItem is the one place every
+  // realtime event (booking created, attempted, allocated, trip status,
+  // payment received, abandoned checkout) already funnels through, so a
+  // single ping call here covers all of them without touching each
+  // individual socket.on handler below.
   const pushFeedItem = useCallback((item) => {
     setFeed((prev) => [{ ...item, id: `${Date.now()}-${Math.random()}`, at: item.at || new Date().toISOString() }, ...prev].slice(0, MAX_FEED_ITEMS));
+    playNotificationSound();
   }, []);
 
   // NEW: abandoned-checkout notifications, via polling — NOT a real-time
@@ -130,8 +138,19 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
           // screen assigns a driver or vehicle on its own.
         });
 
+        // FIX: an attempt only ever silently joined the feed list — no
+        // toast at all unless it went on to FAIL. So "someone is trying to
+        // book right now" produced no visible notification, only a change
+        // to the bell badge count and (as of the sound fix) a ping — easy
+        // to miss if the admin wasn't already looking at the bell dropdown.
+        // Every attempt now visibly announces itself the moment it happens,
+        // not just the ones that go wrong.
         socket.on('booking:attempted', (payload) => {
-          if (payload.outcome === 'FAILED') return; // admin:alert covers this louder
+          if (payload.outcome === 'FAILED') return; // admin:alert covers this louder, below
+          const route = payload.pickupAddress && payload.dropAddress
+            ? ` — ${String(payload.pickupAddress).split(',')[0]} → ${String(payload.dropAddress).split(',')[0]}`
+            : '';
+          toast.info(`Booking attempt in progress${route}`, { duration: 5000 });
           pushFeedItem({ kind: 'booking:attempted', ...payload });
         });
 

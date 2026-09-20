@@ -49,25 +49,70 @@ const TRANSITION_BTN = {
 // Drivers page and Dispatch board already use) — the previous version of
 // this modal claimed otherwise and only ever sent vehicleId, so a booking
 // could be assigned a vehicle but never a driver from this screen.
-function AssignModal({ open, onClose, onAssign }) {
+//
+// FIX: online drivers are now ranked by LIVE distance to this booking's
+// pickup point, not just listed alphabetically. A driver who's online only
+// means their GPS ping reached the backend recently (see location.service.js
+// markOnline/ingestPing) — it says nothing about where they physically are
+// relative to this specific pickup. Without ranking by distance, "easy to
+// assign" really meant "guess which of these names is actually nearby."
+// This reuses the exact same GET /admin/location/nearby lookup the Dispatch
+// board's own "Suggest drivers" feature already uses, so both screens agree
+// on who's closest.
+function AssignModal({ open, onClose, onAssign, booking }) {
   const [vehicleId, setVehicleId] = useState('');
   const [driverId, setDriverId] = useState('');
   const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [loadingDistances, setLoadingDistances] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     apiClient.get('/admin/dispatch/vehicles')
       .then((r) => setVehicles(r.vehicles || []));
+
     // Online + KYC-verified only — an offline or unverified driver can't
     // actually take the trip, so offering them here would just set up a
-    // failed pickup. This mirrors the same filter Dispatch's own driver
-    // suggestions use.
+    // failed pickup.
+    setLoadingDistances(true);
     apiClient.get('/admin/drivers', { params: { kycStatus: 'VERIFIED', status: 'online', limit: 100 } })
-      .then((r) => setDrivers(r.data || r.items || []))
-      .catch(() => setDrivers([]));
-  }, [open]);
+      .then(async (r) => {
+        const list = r.data || r.items || [];
+        const lat = booking?.pickupLat, lng = booking?.pickupLng;
+        if (!list.length || lat == null || lng == null) {
+          setDrivers(list.map((d) => ({ ...d, distanceKm: null })));
+          return;
+        }
+        try {
+          const nearby = await apiClient.get('/admin/location/nearby', {
+            params: { lat: Number(lat), lng: Number(lng), radiusKm: 25, limit: 100 },
+          });
+          const distanceByDriverId = new Map(
+            (nearby.data?.drivers || nearby.drivers || []).map((n) => [n.driverId, n.distanceKm])
+          );
+          const withDistance = list.map((d) => ({
+            ...d,
+            distanceKm: distanceByDriverId.has(d.userId)
+              ? Number(distanceByDriverId.get(d.userId).toFixed(2))
+              : null,
+          }));
+          withDistance.sort((a, b) => {
+            if (a.distanceKm == null && b.distanceKm == null) return 0;
+            if (a.distanceKm == null) return 1;
+            if (b.distanceKm == null) return -1;
+            return a.distanceKm - b.distanceKm;
+          });
+          setDrivers(withDistance);
+        } catch {
+          // Redis/location lookup down is not a reason to hide the driver
+          // list — just fall back to unranked.
+          setDrivers(list.map((d) => ({ ...d, distanceKm: null })));
+        }
+      })
+      .catch(() => setDrivers([]))
+      .finally(() => setLoadingDistances(false));
+  }, [open, booking?.pickupLat, booking?.pickupLng]);
 
   const submit = async () => {
     if (!vehicleId) return;
@@ -90,11 +135,17 @@ function AssignModal({ open, onClose, onAssign }) {
           <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} placeholder="Select vehicle"
             options={vehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.makeModel} (${v.seatingCapacity} seats)` }))} />
         </FormField>
-        <FormField label="Driver" hint="Optional — only online, KYC-verified drivers are listed.">
+        <FormField
+          label="Driver"
+          hint={loadingDistances ? 'Ranking by live distance to pickup…' : 'Nearest online, KYC-verified drivers listed first.'}
+        >
           <Select value={driverId} onChange={(e) => setDriverId(e.target.value)} placeholder="Select driver (optional)"
-            options={drivers.map((d) => ({ value: d.userId, label: `${d.user?.name || 'Unnamed'} · ${d.user?.phone || ''}` }))} />
+            options={drivers.map((d, i) => ({
+              value: d.userId,
+              label: `${i === 0 && d.distanceKm != null ? '⭐ ' : ''}${d.user?.name || 'Unnamed'} · ${d.user?.phone || ''}${d.distanceKm != null ? ` — ${d.distanceKm} km away` : ' — location unavailable'}`,
+            }))} />
         </FormField>
-        {drivers.length === 0 && (
+        {drivers.length === 0 && !loadingDistances && (
           <Alert type="info">No online, KYC-verified drivers right now — you can still assign the vehicle and add a driver later via Reassign.</Alert>
         )}
       </div>
@@ -392,7 +443,7 @@ export default function BookingDetail() {
         )}
       </div>
 
-      <AssignModal open={assignOpen} onClose={() => setAssignOpen(false)} onAssign={handleAssign} />
+      <AssignModal open={assignOpen} onClose={() => setAssignOpen(false)} onAssign={handleAssign} booking={booking} />
       <CancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={handleCancel} />
     </div>
   );
