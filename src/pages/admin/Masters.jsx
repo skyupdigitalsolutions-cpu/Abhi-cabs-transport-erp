@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Search, Car, MapPin, IndianRupee, Clock, Gauge,
-  Users, Tag, ChevronDown, ChevronUp, Filter,
+  Search, Car, MapPin, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
-import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import IconButton from '../../components/ui/IconButton';
 import Badge from '../../components/ui/Badge';
@@ -13,154 +11,257 @@ import Modal from '../../components/ui/Modal';
 import FormField from '../../components/ui/FormField';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import Textarea from '../../components/ui/Textarea';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Alert from '../../components/ui/Alert';
 import { useToast } from '../../hooks/useToast';
-import { mastersService } from '../../services';
+import { fareConfigService } from '../../services';
 import LoadingState from '../../components/ui/LoadingState';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
-const MASTER_TABS = [
-  { key: 'vehicleRates', label: 'Vehicle Rate Cards' },
-  { key: 'cargoTypes',   label: 'Cargo Types'        },
-  { key: 'zones',        label: 'Zones'              },
-  { key: 'ratecards',    label: 'Rate Cards'         },
+
+// The 4 vehicle classes and 4 trip types the real backend actually prices —
+// kept identical to BookingFormDrawer.jsx so this form can't drift from what
+// a real booking can be created with.
+const VEHICLE_CLASSES = ['hatchback', 'sedan', 'suv', 'tempo'];
+const TRIP_TYPES = [
+  { value: 'ONE_WAY',    label: 'One Way' },
+  { value: 'ROUND_TRIP', label: 'Round Trip' },
+  { value: 'AIRPORT',    label: 'Airport' },
+  { value: 'HOURLY',     label: 'Hourly Rental' },
 ];
 
-const CATEGORIES = [
-  'Sedan', 'MUV', 'MUV Premium', 'Tempo Traveler',
-  'Mini Coach', 'Luxury Coach', 'Executive Coach',
-];
-
-const AC_OPTIONS = [
-  { value: 'A/C',     label: 'A/C'     },
-  { value: 'Non A/C', label: 'Non A/C' },
-];
-
-const EMPTY_VEHICLE_RATE = {
-  name: '', bsCategory: '', seater: '', acType: 'A/C', category: 'Sedan', active: true,
-  local:      { hours: 8,  km: 80, packageRate: '', extraHourRate: '', extraKmRate: '' },
-  outstation: { perKmRate: '', minKmPerDay: 300, driverBhata: '' },
+const EMPTY_RATE_CARD = {
+  cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
+  baseFare: '', perKm: '', minimumFare: '',
+  // Advanced (all optional — left unset means "not using this feature" for this rate card)
+  perMinute: '', cancellationFee: '',
+  returnEmptyPct: '',
+  minKmPerDay: '', waitingPerHour: '', freeWaitingMin: '',
+  driverAllowance: '',
+  nightAllowance: '', nightChargePct: '', nightStartHour: 21, nightStartMinute: 55, nightEndHour: 6, nightEndMinute: 0,
+  airportSurcharge: '',
+  hourlyRate: '', hourlyKmPerHour: 10,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vehicle Rate Card Form
+// Vehicle Rate Card Form — Simple / Advanced, matching the REAL FareConfig
+// fields (city + vehicleClass + tripType + baseFare/perKm/minimumFare, plus
+// optional outstation/round-trip/night/airport/hourly/surge fields).
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleRateForm({ initial, onSubmit, onClose }) {
-  const [form, setForm] = useState(
-    initial
-      ? JSON.parse(JSON.stringify(initial))   // deep copy so edits don't mutate
-      : JSON.parse(JSON.stringify(EMPTY_VEHICLE_RATE))
-  );
+function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
+  const isEdit = !!initial;
+  const [form, setForm] = useState(() => {
+    if (!initial) return { ...EMPTY_RATE_CARD, cityId: cities[0]?.id || '' };
+    // Backend returns Decimal fields as strings — coerce to plain numbers/strings for inputs.
+    const flat = { ...initial };
+    return { ...EMPTY_RATE_CARD, ...flat, cityId: initial.cityId };
+  });
+  const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
   const [loading, setLoading] = useState(false);
 
-  const set     = (k, v)    => setForm(f => ({ ...f, [k]: v }));
-  const setLocal= (k, v)    => setForm(f => ({ ...f, local:      { ...f.local,      [k]: v } }));
-  const setOut  = (k, v)    => setForm(f => ({ ...f, outstation: { ...f.outstation, [k]: v } }));
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    if (!form.name.trim()) return;
+    if (form.cityId === '' || form.baseFare === '' || form.perKm === '' || form.minimumFare === '') return;
     setLoading(true);
-    await onSubmit({
-      ...form,
-      seater: Number(form.seater),
-      local: {
-        hours:         Number(form.local.hours),
-        km:            Number(form.local.km),
-        packageRate:   Number(form.local.packageRate),
-        extraHourRate: Number(form.local.extraHourRate),
-        extraKmRate:   Number(form.local.extraKmRate),
-      },
-      outstation: {
-        perKmRate:   Number(form.outstation.perKmRate),
-        minKmPerDay: Number(form.outstation.minKmPerDay),
-        driverBhata: Number(form.outstation.driverBhata),
-      },
-    });
-    setLoading(false);
+    try {
+      // Identity fields only sent on create — the backend rejects them on update anyway.
+      const base = {
+        baseFare: Number(form.baseFare),
+        perKm: Number(form.perKm),
+        minimumFare: Number(form.minimumFare),
+      };
+      const advanced = mode === 'advanced' ? {
+        ...(form.perMinute !== ''        && { perMinute: Number(form.perMinute) }),
+        ...(form.cancellationFee !== ''  && { cancellationFee: Number(form.cancellationFee) }),
+        ...(form.returnEmptyPct !== ''   && { returnEmptyPct: Number(form.returnEmptyPct) }),
+        ...(form.minKmPerDay !== ''      && { minKmPerDay: Number(form.minKmPerDay) }),
+        ...(form.waitingPerHour !== ''   && { waitingPerHour: Number(form.waitingPerHour) }),
+        ...(form.freeWaitingMin !== ''   && { freeWaitingMin: Number(form.freeWaitingMin) }),
+        ...(form.driverAllowance !== ''  && { driverAllowance: Number(form.driverAllowance) }),
+        ...(form.nightAllowance !== ''   && { nightAllowance: Number(form.nightAllowance) }),
+        ...(form.nightChargePct !== ''   && { nightChargePct: Number(form.nightChargePct) }),
+        nightStartHour: Number(form.nightStartHour), nightStartMinute: Number(form.nightStartMinute),
+        nightEndHour: Number(form.nightEndHour), nightEndMinute: Number(form.nightEndMinute),
+        ...(form.airportSurcharge !== '' && { airportSurcharge: Number(form.airportSurcharge) }),
+        ...(form.hourlyRate !== ''       && { hourlyRate: Number(form.hourlyRate) }),
+        hourlyKmPerHour: Number(form.hourlyKmPerHour || 10),
+      } : {};
+
+      if (isEdit) {
+        await onSubmit({ ...base, ...advanced });
+      } else {
+        await onSubmit({
+          cityId: Number(form.cityId),
+          vehicleClass: form.vehicleClass,
+          tripType: form.tripType,
+          ...base,
+          ...advanced,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <>
       <div className="space-y-5 overflow-y-auto max-h-[65vh] pr-1">
-        {/* Basic info */}
+        {/* Identity — fixed once created */}
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#6B7280' }}>Vehicle Details</p>
-          <div className="space-y-3">
-            <FormField label="Vehicle name" required>
-              <Input value={form.name} onChange={e => set('name', e.target.value)}
-                placeholder="e.g. 22 Seater Bharat Benz Luxury A/C Coach" />
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#6B7280' }}>
+            What this rate card prices
+          </p>
+          {isEdit && (
+            <Alert type="info" className="mb-3">
+              City, vehicle class and trip type can't be changed on an existing rate card — create a new
+              one instead. This keeps it clear which rate card actually priced a past booking.
+            </Alert>
+          )}
+          <div className="grid grid-cols-3 gap-3">
+            <FormField label="City" required>
+              {isEdit ? (
+                <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityId} />
+              ) : (
+                <Select value={form.cityId} onChange={(e) => set('cityId', e.target.value)}
+                  options={cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` }))} />
+              )}
             </FormField>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Seater capacity" required>
-                <Input type="number" min="1" value={form.seater} onChange={e => set('seater', e.target.value)} placeholder="e.g. 22" />
-              </FormField>
-              <FormField label="AC Type">
-                <Select value={form.acType} onChange={e => set('acType', e.target.value)} options={AC_OPTIONS} />
-              </FormField>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Category">
-                <Select value={form.category} onChange={e => set('category', e.target.value)}
-                  options={CATEGORIES.map(c => ({ value: c, label: c }))} />
-              </FormField>
-              <FormField label="BS Category" hint="e.g. BSVI 2024">
-                <Input value={form.bsCategory} onChange={e => set('bsCategory', e.target.value)} placeholder="BSVI 2024" />
-              </FormField>
-            </div>
+            <FormField label="Vehicle class" required>
+              {isEdit ? <Input disabled value={form.vehicleClass} /> : (
+                <Select value={form.vehicleClass} onChange={(e) => set('vehicleClass', e.target.value)}
+                  options={VEHICLE_CLASSES.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))} />
+              )}
+            </FormField>
+            <FormField label="Trip type" required>
+              {isEdit ? <Input disabled value={TRIP_TYPES.find((t) => t.value === form.tripType)?.label || form.tripType} /> : (
+                <Select value={form.tripType} onChange={(e) => set('tripType', e.target.value)} options={TRIP_TYPES} />
+              )}
+            </FormField>
           </div>
         </div>
 
-        {/* Local rates */}
+        {/* Core fare — required, always visible */}
         <div className="rounded-xl p-4" style={{ backgroundColor: '#eef2fb' }}>
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#2F55C7' }}>
-            🏙️ Local City Tour Rates
+            💰 Fare (required)
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Package Hours">
-              <Input type="number" value={form.local.hours} onChange={e => setLocal('hours', e.target.value)} />
+          <div className="grid grid-cols-3 gap-3">
+            <FormField label="Base fare (₹)" required>
+              <Input type="number" min="0" value={form.baseFare} onChange={(e) => set('baseFare', e.target.value)} placeholder="e.g. 100" />
             </FormField>
-            <FormField label="Package KM">
-              <Input type="number" value={form.local.km} onChange={e => setLocal('km', e.target.value)} />
+            <FormField label="Per KM (₹)" required>
+              <Input type="number" min="0" value={form.perKm} onChange={(e) => set('perKm', e.target.value)} placeholder="e.g. 14" />
             </FormField>
-            <FormField label="Package Rate (₹)" required>
-              <Input type="number" value={form.local.packageRate} onChange={e => setLocal('packageRate', e.target.value)} placeholder="e.g. 3000" />
-            </FormField>
-            <FormField label="Extra Hour Rate (₹)">
-              <Input type="number" value={form.local.extraHourRate} onChange={e => setLocal('extraHourRate', e.target.value)} placeholder="e.g. 250" />
-            </FormField>
-            <FormField label="Extra KM Rate (₹)" className="col-span-2">
-              <Input type="number" value={form.local.extraKmRate} onChange={e => setLocal('extraKmRate', e.target.value)} placeholder="e.g. 20" />
+            <FormField label="Minimum fare (₹)" required>
+              <Input type="number" min="0" value={form.minimumFare} onChange={(e) => set('minimumFare', e.target.value)} placeholder="e.g. 250" />
             </FormField>
           </div>
         </div>
 
-        {/* Out of station rates */}
-        <div className="rounded-xl p-4" style={{ backgroundColor: '#fff8ec' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#d97706' }}>
-            🛣️ Out of Station Rates
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Per KM Rate (₹)" required>
-              <Input type="number" value={form.outstation.perKmRate} onChange={e => setOut('perKmRate', e.target.value)} placeholder="e.g. 20" />
-            </FormField>
-            <FormField label="Min KM / Day">
-              <Input type="number" value={form.outstation.minKmPerDay} onChange={e => setOut('minKmPerDay', e.target.value)} />
-            </FormField>
-            <FormField label="Driver Bhata / Day (₹)" className="col-span-2">
-              <Input type="number" value={form.outstation.driverBhata} onChange={e => setOut('driverBhata', e.target.value)} placeholder="e.g. 500" />
-            </FormField>
-          </div>
+        {/* Mode toggle */}
+        <div className="flex items-center gap-2 rounded-xl border p-1 w-fit" style={{ borderColor: '#E5E7EB' }}>
+          {[['simple', 'Simple'], ['advanced', 'Advanced pricing']].map(([v, label]) => (
+            <button key={v} type="button" onClick={() => setMode(v)}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors"
+              style={{ backgroundColor: mode === v ? '#111111' : 'transparent', color: mode === v ? '#fff' : '#6B7280' }}>
+              {label}
+            </button>
+          ))}
         </div>
+        {mode === 'simple' && (
+          <p className="text-xs -mt-3" style={{ color: '#9A9A9A' }}>
+            Simple mode: this rate card will just charge base fare + (distance × per-KM rate), with no
+            outstation, night, driver-allowance, airport or hourly-rental rules. Switch to Advanced to
+            configure any of those.
+          </p>
+        )}
+
+        {mode === 'advanced' && (
+          <div className="space-y-4">
+            <div className="rounded-xl p-4" style={{ backgroundColor: '#fff8ec' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#d97706' }}>
+                🛣️ Outstation &amp; round trip
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <FormField label="Return-empty % (one way)" hint="Outstation one-way only">
+                  <Input type="number" min="0" max="100" value={form.returnEmptyPct} onChange={(e) => set('returnEmptyPct', e.target.value)} />
+                </FormField>
+                <FormField label="Min KM / day" hint="Round trip only">
+                  <Input type="number" min="0" value={form.minKmPerDay} onChange={(e) => set('minKmPerDay', e.target.value)} />
+                </FormField>
+                <FormField label="Driver allowance / day (₹)" hint="All trip types except Airport">
+                  <Input type="number" min="0" value={form.driverAllowance} onChange={(e) => set('driverAllowance', e.target.value)} />
+                </FormField>
+                <FormField label="Waiting ₹/hour" hint="Round trip only">
+                  <Input type="number" min="0" value={form.waitingPerHour} onChange={(e) => set('waitingPerHour', e.target.value)} />
+                </FormField>
+                <FormField label="Free waiting (min)" hint="Round trip only">
+                  <Input type="number" min="0" value={form.freeWaitingMin} onChange={(e) => set('freeWaitingMin', e.target.value)} />
+                </FormField>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ backgroundColor: '#f5f3ff' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#7c3aed' }}>
+                🌙 Night charge
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Flat night allowance (₹)">
+                  <Input type="number" min="0" value={form.nightAllowance} onChange={(e) => set('nightAllowance', e.target.value)} />
+                </FormField>
+                <FormField label="Night surcharge (%)">
+                  <Input type="number" min="0" max="100" value={form.nightChargePct} onChange={(e) => set('nightChargePct', e.target.value)} />
+                </FormField>
+                <FormField label="Night window starts">
+                  <div className="flex gap-1.5 items-center">
+                    <Input type="number" min="0" max="23" value={form.nightStartHour} onChange={(e) => set('nightStartHour', e.target.value)} />
+                    <span style={{ color: '#9A9A9A' }}>:</span>
+                    <Input type="number" min="0" max="59" value={form.nightStartMinute} onChange={(e) => set('nightStartMinute', e.target.value)} />
+                  </div>
+                </FormField>
+                <FormField label="Night window ends">
+                  <div className="flex gap-1.5 items-center">
+                    <Input type="number" min="0" max="23" value={form.nightEndHour} onChange={(e) => set('nightEndHour', e.target.value)} />
+                    <span style={{ color: '#9A9A9A' }}>:</span>
+                    <Input type="number" min="0" max="59" value={form.nightEndMinute} onChange={(e) => set('nightEndMinute', e.target.value)} />
+                  </div>
+                </FormField>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ backgroundColor: '#f0f9ff' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#0369a1' }}>
+                ✈️ Airport &amp; ⏱ Hourly rental
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Airport surcharge (₹)" hint="Airport trip type only">
+                  <Input type="number" min="0" value={form.airportSurcharge} onChange={(e) => set('airportSurcharge', e.target.value)} />
+                </FormField>
+                <FormField label="Cancellation fee (₹)">
+                  <Input type="number" min="0" value={form.cancellationFee} onChange={(e) => set('cancellationFee', e.target.value)} />
+                </FormField>
+                <FormField label="Hourly rate (₹/hr)" hint="Hourly rental only, if no fixed package chosen">
+                  <Input type="number" min="0" value={form.hourlyRate} onChange={(e) => set('hourlyRate', e.target.value)} />
+                </FormField>
+                <FormField label="KM included per hour" hint="Hourly rental only">
+                  <Input type="number" min="1" value={form.hourlyKmPerHour} onChange={(e) => set('hourlyKmPerHour', e.target.value)} />
+                </FormField>
+                <FormField label="Per extra minute (₹)" className="col-span-2">
+                  <Input type="number" min="0" value={form.perMinute} onChange={(e) => set('perMinute', e.target.value)} />
+                </FormField>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end gap-2 mt-4 pt-4" style={{ borderTop: '1px solid #E5E7EB' }}>
         <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
         <Button size="sm" loading={loading} onClick={submit}>
-          {initial ? 'Save Changes' : 'Add Vehicle Rate'}
+          {isEdit ? 'Save Changes' : 'Create Rate Card'}
         </Button>
       </div>
     </>
@@ -168,132 +269,107 @@ function VehicleRateForm({ initial, onSubmit, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vehicle Rate Card Display
+// Vehicle Rate Card Display — real FareConfig shape
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleRateCard({ rate, onEdit, onDelete, onToggle }) {
-  const [expanded, setExpanded] = useState(false);
+const CLASS_COLORS = {
+  hatchback: ['#eef2fb', '#3B65DB'],
+  sedan:     ['#f0fdf4', '#38B763'],
+  suv:       ['#fff8ec', '#F59E0B'],
+  tempo:     ['#f5f3ff', '#7c3aed'],
+};
 
-  const categoryColors = {
-    'Sedan':          ['#eef2fb', '#3B65DB'],
-    'MUV':            ['#f0fdf4', '#38B763'],
-    'MUV Premium':    ['#f5f3ff', '#7c3aed'],
-    'Tempo Traveler': ['#fff8ec', '#F59E0B'],
-    'Mini Coach':     ['#fef2f2', '#EF4444'],
-    'Luxury Coach':   ['#fdf4ff', '#a855f7'],
-    'Executive Coach':['#f0f9ff', '#0369a1'],
-  };
-  const [catBg, catColor] = categoryColors[rate.category] || ['#F7F8FC', '#6B7280'];
+function money(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : '—';
+}
+
+function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
+  const [expanded, setExpanded] = useState(false);
+  const [catBg, catColor] = CLASS_COLORS[rate.vehicleClass] || ['#F7F8FC', '#6B7280'];
+  const tripLabel = TRIP_TYPES.find((t) => t.value === rate.tripType)?.label || rate.tripType;
+
+  const advancedTags = [
+    Number(rate.driverAllowance) > 0 && 'Driver allowance',
+    (Number(rate.nightAllowance) > 0 || Number(rate.nightChargePct) > 0) && 'Night charge',
+    Number(rate.returnEmptyPct) > 0 && 'Return-empty %',
+    Number(rate.minKmPerDay) > 0 && 'Min km/day',
+    Number(rate.airportSurcharge) > 0 && 'Airport surcharge',
+    Number(rate.hourlyRate) > 0 && 'Hourly rate',
+  ].filter(Boolean);
 
   return (
     <div
       className="rounded-2xl border overflow-hidden transition-all"
-      style={{ backgroundColor: '#ffffff', borderColor: '#E5E7EB', opacity: rate.active ? 1 : 0.6 }}
+      style={{ backgroundColor: '#ffffff', borderColor: '#E5E7EB', opacity: rate.isActive ? 1 : 0.6 }}
     >
-      {/* Card header */}
       <div className="flex items-start gap-3 p-4">
-        {/* Seater badge */}
-        <div
-          className="h-12 w-12 rounded-xl grid place-items-center shrink-0 text-center"
-          style={{ backgroundColor: catBg }}
-        >
-          <Users size={14} style={{ color: catColor }} />
-          <p className="text-[11.5px] font-bold leading-none mt-0.5" style={{ color: catColor }}>
-            {rate.seater}
-          </p>
+        <div className="h-12 w-12 rounded-xl grid place-items-center shrink-0 text-center" style={{ backgroundColor: catBg }}>
+          <Car size={16} style={{ color: catColor }} />
         </div>
 
-        {/* Title */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start gap-2 flex-wrap">
-            <p className="text-sm font-bold leading-snug" style={{ color: '#1F2937' }}>{rate.name}</p>
-          </div>
+          <p className="text-sm font-bold leading-snug capitalize" style={{ color: '#1F2937' }}>
+            {rate.vehicleClass} · {tripLabel}
+          </p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-[12.5px] px-2 py-0.5 rounded-full font-semibold"
-              style={{ backgroundColor: catBg, color: catColor }}>{rate.category}</span>
-            <span className="text-[12.5px] px-2 py-0.5 rounded-full font-medium"
-              style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>{rate.acType}</span>
-            {rate.bsCategory && (
-              <span className="text-[12.5px] px-2 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>{rate.bsCategory}</span>
-            )}
-            {!rate.active && <Badge tone="slate">Inactive</Badge>}
+            <span className="text-[12.5px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: catBg, color: catColor }}>
+              <MapPin size={10} className="inline -mt-0.5 mr-0.5" />{cityName || `City #${rate.cityId}`}
+            </span>
+            {!rate.isActive && <Badge tone="slate">Inactive</Badge>}
+            {advancedTags.map((tag) => (
+              <span key={tag} className="text-[11.5px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>{tag}</span>
+            ))}
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          <button onClick={() => onToggle(rate)} className="p-1.5 rounded-lg focus-ring" title={rate.active ? 'Deactivate':'Activate'}
-            style={{ color: rate.active ? '#38B763':'#6B7280' }}>
-            {rate.active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+          <button onClick={() => onToggle(rate)} className="p-1.5 rounded-lg focus-ring" title={rate.isActive ? 'Deactivate' : 'Activate'}
+            style={{ color: rate.isActive ? '#38B763' : '#6B7280' }}>
+            {rate.isActive ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
           </button>
           <IconButton icon={Pencil} label="Edit" onClick={() => onEdit(rate)} />
           <IconButton icon={Trash2} label="Delete" variant="danger" onClick={() => onDelete(rate)} />
         </div>
       </div>
 
-      {/* Rate summary — always visible */}
-      <div className="grid grid-cols-2 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
-        {/* Local */}
+      <div className="grid grid-cols-3 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
         <div className="p-3" style={{ borderRight: '1px solid #F7F8FC' }}>
-          <div className="flex items-center gap-1 mb-2">
-            <div className="h-4 w-4 rounded grid place-items-center" style={{ backgroundColor: '#eef2fb' }}>
-              <Clock size={9} style={{ color: '#3B65DB' }} />
-            </div>
-            <p className="text-[11.5px] font-bold uppercase tracking-wider" style={{ color: '#3B65DB' }}>Local City Tour</p>
-          </div>
-          <p className="text-base font-black" style={{ color: '#1F2937' }}>
-            ₹{rate.local.packageRate?.toLocaleString('en-IN')}
-          </p>
-          <p className="text-[12.5px]" style={{ color: '#6B7280' }}>
-            {rate.local.hours} hrs / {rate.local.km} km
-          </p>
+          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#3B65DB' }}>Base fare</p>
+          <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.baseFare)}</p>
         </div>
-
-        {/* Outstation */}
+        <div className="p-3" style={{ borderRight: '1px solid #F7F8FC' }}>
+          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#F59E0B' }}>Per KM</p>
+          <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.perKm)}</p>
+        </div>
         <div className="p-3">
-          <div className="flex items-center gap-1 mb-2">
-            <div className="h-4 w-4 rounded grid place-items-center" style={{ backgroundColor: '#fff8ec' }}>
-              <Gauge size={9} style={{ color: '#F59E0B' }} />
-            </div>
-            <p className="text-[11.5px] font-bold uppercase tracking-wider" style={{ color: '#F59E0B' }}>Out of Station</p>
-          </div>
-          <p className="text-base font-black" style={{ color: '#1F2937' }}>
-            ₹{rate.outstation.perKmRate}/km
-          </p>
-          <p className="text-[12.5px]" style={{ color: '#6B7280' }}>
-            Min {rate.outstation.minKmPerDay} km/day
-          </p>
+          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#7c3aed' }}>Minimum</p>
+          <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.minimumFare)}</p>
         </div>
       </div>
 
-      {/* Expand button */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-center gap-1 py-2 text-xs font-medium focus-ring"
-        style={{ borderTop: '1px solid #F7F8FC', color: '#6B7280', backgroundColor: '#FAFAFA' }}
-      >
-        {expanded ? <><ChevronUp size={13}/> Hide details</> : <><ChevronDown size={13}/> Show full rates</>}
-      </button>
-
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="grid grid-cols-2 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
-          {/* Local detail */}
-          <div className="p-3 space-y-1.5" style={{ borderRight: '1px solid #F7F8FC', backgroundColor: '#f8faff' }}>
-            <p className="text-[11.5px] font-bold uppercase tracking-wider mb-2" style={{ color: '#3B65DB' }}>Local Rates</p>
-            <RateRow icon="⏱" label="Package" value={`${rate.local.hours} hrs / ${rate.local.km} km`} />
-            <RateRow icon="₹" label="Package rate" value={`₹${rate.local.packageRate?.toLocaleString('en-IN')}`} highlight />
-            <RateRow icon="+" label="Extra hour" value={`₹${rate.local.extraHourRate}/-`} />
-            <RateRow icon="+" label="Extra km"   value={`₹${rate.local.extraKmRate}/-`} />
-          </div>
-          {/* Outstation detail */}
-          <div className="p-3 space-y-1.5" style={{ backgroundColor: '#fffcf5' }}>
-            <p className="text-[11.5px] font-bold uppercase tracking-wider mb-2" style={{ color: '#F59E0B' }}>Outstation Rates</p>
-            <RateRow icon="📍" label="Per km"       value={`₹${rate.outstation.perKmRate}/-`} highlight />
-            <RateRow icon="🗓" label="Min km/day"   value={`${rate.outstation.minKmPerDay} km`} />
-            <RateRow icon="👤" label="Driver bhata" value={`₹${rate.outstation.driverBhata}/day`} />
-          </div>
-        </div>
+      {advancedTags.length > 0 && (
+        <>
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            className="w-full flex items-center justify-center gap-1 py-2 text-xs font-medium focus-ring"
+            style={{ borderTop: '1px solid #F7F8FC', color: '#6B7280', backgroundColor: '#FAFAFA' }}
+          >
+            {expanded ? <><ChevronUp size={13} /> Hide advanced details</> : <><ChevronDown size={13} /> Show advanced details</>}
+          </button>
+          {expanded && (
+            <div className="p-3 space-y-1.5" style={{ borderTop: '1px solid #F7F8FC', backgroundColor: '#fffcf5' }}>
+              {Number(rate.driverAllowance) > 0 && <RateRow icon="👤" label="Driver allowance/day" value={money(rate.driverAllowance)} />}
+              {(Number(rate.nightAllowance) > 0 || Number(rate.nightChargePct) > 0) && (
+                <RateRow icon="🌙" label={`Night (${String(rate.nightStartHour).padStart(2, '0')}:${String(rate.nightStartMinute).padStart(2, '0')}–${String(rate.nightEndHour).padStart(2, '0')}:${String(rate.nightEndMinute).padStart(2, '0')})`}
+                  value={`${money(rate.nightAllowance)}${Number(rate.nightChargePct) > 0 ? ` + ${rate.nightChargePct}%` : ''}`} />
+              )}
+              {Number(rate.returnEmptyPct) > 0 && <RateRow icon="↩" label="Return-empty %" value={`${rate.returnEmptyPct}%`} />}
+              {Number(rate.minKmPerDay) > 0 && <RateRow icon="🗓" label="Min km/day" value={`${rate.minKmPerDay} km`} />}
+              {Number(rate.airportSurcharge) > 0 && <RateRow icon="✈️" label="Airport surcharge" value={money(rate.airportSurcharge)} />}
+              {Number(rate.hourlyRate) > 0 && <RateRow icon="⏱" label="Hourly rate" value={`${money(rate.hourlyRate)}/hr · ${rate.hourlyKmPerHour} km/hr included`} />}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -309,43 +385,52 @@ function RateRow({ icon, label, value, highlight }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vehicle Rates Tab — main panel
+
+// Vehicle Rates Tab — main panel, wired to the real fareConfigService
 // ─────────────────────────────────────────────────────────────────────────────
 function VehicleRatesTab() {
   const [rates, setRates] = useState([]);
+  const [cities, setCities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [delLoad, setDelLoad] = useState(false);
   const [search, setSearch] = useState('');
-  const [catFilter, setCatFilter] = useState('');
-  const [acFilter, setAcFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
+  const [tripFilter, setTripFilter] = useState('');
   const toast = useToast();
 
   const reload = () => {
     setLoading(true);
-    mastersService.vehicleRates.list().then((r) => setRates(r || [])).finally(() => setLoading(false));
+    setLoadError(null);
+    Promise.all([fareConfigService.list(), fareConfigService.cities()])
+      .then(([{ rows }, cityRows]) => { setRates(rows || []); setCities(cityRows || []); })
+      .catch((e) => setLoadError(e.message || 'Could not load rate cards'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { reload(); }, []);
 
-  const filtered = useMemo(() => rates.filter(r => {
+  const cityName = (id) => cities.find((c) => c.id === id)?.name;
+
+  const filtered = useMemo(() => rates.filter((r) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || r.name.toLowerCase().includes(q) || r.category.toLowerCase().includes(q) || r.bsCategory?.toLowerCase().includes(q);
-    const matchCat    = !catFilter || r.category === catFilter;
-    const matchAc     = !acFilter  || r.acType   === acFilter;
-    return matchSearch && matchCat && matchAc;
-  }), [rates, search, catFilter, acFilter]);
+    const matchSearch = !q || r.vehicleClass.toLowerCase().includes(q) || (cityName(r.cityId) || '').toLowerCase().includes(q);
+    const matchClass  = !classFilter || r.vehicleClass === classFilter;
+    const matchTrip   = !tripFilter  || r.tripType === tripFilter;
+    return matchSearch && matchClass && matchTrip;
+  }), [rates, cities, search, classFilter, tripFilter]);
 
   const handleSubmit = async (values) => {
     try {
       if (editing) {
-        await mastersService.vehicleRates.update(editing.id, values);
-        toast.success('Vehicle rate updated');
+        await fareConfigService.update(editing.id, values);
+        toast.success('Rate card updated — new quotes use this immediately');
       } else {
-        await mastersService.vehicleRates.create(values);
-        toast.success('Vehicle rate added');
+        await fareConfigService.create(values);
+        toast.success('Rate card created — new quotes use this immediately');
       }
       setEditing(null); setFormOpen(false); reload();
     } catch (e) {
@@ -355,8 +440,8 @@ function VehicleRatesTab() {
 
   const handleToggle = async (rate) => {
     try {
-      await mastersService.vehicleRates.toggle(rate.id);
-      toast.success(`${rate.name} ${rate.active ? 'deactivated' : 'activated'}`);
+      await fareConfigService.setActive(rate.id, !rate.isActive);
+      toast.success(rate.isActive ? 'Rate card deactivated' : 'Rate card activated');
       reload();
     } catch (e) {
       toast.error(e.message || 'Update failed');
@@ -366,8 +451,8 @@ function VehicleRatesTab() {
   const handleDelete = async () => {
     setDelLoad(true);
     try {
-      await mastersService.vehicleRates.remove(deleting.id);
-      toast.success('Vehicle rate deleted');
+      await fareConfigService.remove(deleting.id);
+      toast.success('Rate card deleted');
     } catch (e) {
       toast.error(e.message || 'Delete failed');
     } finally {
@@ -375,21 +460,34 @@ function VehicleRatesTab() {
     }
   };
 
-  // Stats
-  const totalActive   = rates.filter(r => r.active).length;
-  const categories    = [...new Set(rates.map(r => r.category))];
+  const totalActive = rates.filter((r) => r.isActive).length;
+  const classes = [...new Set(rates.map((r) => r.vehicleClass))];
 
-  if (loading) return <LoadingState label="Loading vehicle rates…" />;
+  if (loading) return <LoadingState label="Loading vehicle rate cards…" />;
+
+  if (loadError) {
+    return (
+      <Alert type="error">
+        Could not load rate cards: {loadError}. This needs the FARE_EDIT permission — check you're
+        signed in as a user who has it.
+      </Alert>
+    );
+  }
 
   return (
     <>
+      <Alert type="success" className="mb-4">
+        <strong>Connected to live pricing.</strong> This tab reads and writes the real fare configuration
+        — changes here take effect on the next quote a customer requests.
+      </Alert>
+
       {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[
-          { label: 'Total Vehicles',  value: rates.length,   color: '#3B65DB', bg: '#eef2fb' },
-          { label: 'Active',          value: totalActive,    color: '#38B763', bg: '#f0fdf4' },
-          { label: 'Categories',      value: categories.length, color: '#7c3aed', bg: '#f5f3ff' },
-          { label: 'Inactive',        value: rates.length - totalActive, color: '#F59E0B', bg: '#fffbeb' },
+          { label: 'Total Rate Cards', value: rates.length,  color: '#3B65DB', bg: '#eef2fb' },
+          { label: 'Active',           value: totalActive,   color: '#38B763', bg: '#f0fdf4' },
+          { label: 'Vehicle Classes',  value: classes.length, color: '#7c3aed', bg: '#f5f3ff' },
+          { label: 'Inactive',         value: rates.length - totalActive, color: '#F59E0B', bg: '#fffbeb' },
         ].map(s => (
           <div key={s.label} className="rounded-xl border px-4 py-3" style={{ backgroundColor: s.bg, borderColor: s.bg }}>
             <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
@@ -404,38 +502,46 @@ function VehicleRatesTab() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#6B7280' }} />
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search vehicle name, category, BS standard…"
+            placeholder="Search vehicle class or city…"
             className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border focus-ring"
             style={{ borderColor: '#E5E7EB', color: '#1F2937', outline: 'none', backgroundColor: '#fff' }}
           />
         </div>
-        <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+        <select value={classFilter} onChange={e => setClassFilter(e.target.value)}
           className="px-3 py-2 text-sm rounded-lg border focus-ring"
-          style={{ borderColor: '#E5E7EB', color: catFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
-          <option value="">All categories</option>
-          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          style={{ borderColor: '#E5E7EB', color: classFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
+          <option value="">All vehicle classes</option>
+          {VEHICLE_CLASSES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
         </select>
-        <select value={acFilter} onChange={e => setAcFilter(e.target.value)}
+        <select value={tripFilter} onChange={e => setTripFilter(e.target.value)}
           className="px-3 py-2 text-sm rounded-lg border focus-ring"
-          style={{ borderColor: '#E5E7EB', color: acFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
-          <option value="">A/C & Non A/C</option>
-          <option value="A/C">A/C only</option>
-          <option value="Non A/C">Non A/C only</option>
+          style={{ borderColor: '#E5E7EB', color: tripFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
+          <option value="">All trip types</option>
+          {TRIP_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
-        <Button icon={Plus} onClick={() => { setEditing(null); setFormOpen(true); }}>Add Vehicle</Button>
+        <Button icon={Plus} disabled={cities.length === 0} onClick={() => { setEditing(null); setFormOpen(true); }}>
+          Add Rate Card
+        </Button>
       </div>
+
+      {cities.length === 0 && (
+        <Alert type="warning" className="mb-4">
+          No cities are configured on the backend yet, so a rate card can't be created (every rate card
+          needs a city). Add a city first.
+        </Alert>
+      )}
 
       {/* Rate cards grid */}
       {filtered.length === 0 ? (
         <div className="text-center py-12" style={{ color: '#6B7280' }}>
           <Car size={36} className="mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No vehicles match your filters.</p>
+          <p className="text-sm">{rates.length === 0 ? 'No rate cards configured yet.' : 'No rate cards match your filters.'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
           {filtered.map(rate => (
             <VehicleRateCard
-              key={rate.id} rate={rate}
+              key={rate.id} rate={rate} cityName={cityName(rate.cityId)}
               onEdit={r => { setEditing(r); setFormOpen(true); }}
               onDelete={r => setDeleting(r)}
               onToggle={handleToggle}
@@ -448,11 +554,12 @@ function VehicleRatesTab() {
       <Modal
         open={formOpen}
         onClose={() => { setFormOpen(false); setEditing(null); }}
-        title={editing ? 'Edit Vehicle Rate Card' : 'Add Vehicle Rate Card'}
+        title={editing ? 'Edit Rate Card' : 'Add Rate Card'}
         size="lg"
       >
         <VehicleRateForm
           initial={editing}
+          cities={cities}
           onSubmit={handleSubmit}
           onClose={() => { setFormOpen(false); setEditing(null); }}
         />
@@ -460,171 +567,9 @@ function VehicleRatesTab() {
 
       <ConfirmDialog
         open={!!deleting} onClose={() => setDeleting(null)} onConfirm={handleDelete}
-        loading={delLoad} danger title="Delete vehicle rate?"
+        loading={delLoad} danger title="Delete rate card?"
         confirmLabel="Delete"
-        description={`"${deleting?.name}" will be permanently removed from the rate sheet.`}
-      />
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Simple master list (Cargo, Zones, Rate Cards)
-// ─────────────────────────────────────────────────────────────────────────────
-function SimpleMasterList({ masterKey }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [deleting, setDeleting] = useState(null);
-  const [delLoad, setDelLoad] = useState(false);
-  const [form, setForm] = useState({});
-  const toast = useToast();
-
-  const reload = () => {
-    setLoading(true);
-    mastersService[masterKey].list().then((r) => setRows(r || [])).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { reload(); }, [masterKey]);
-
-  const FIELD_DEFS = {
-    cargoTypes: [
-      { key: 'name',        label: 'Name',        required: true  },
-      { key: 'description', label: 'Description', multiline: true },
-    ],
-    zones: [
-      { key: 'name',   label: 'Zone name', required: true },
-      { key: 'cities', label: 'Cities (comma-separated)', hint: 'e.g. Bengaluru, Chennai' },
-    ],
-    ratecards: [
-      { key: 'name',       label: 'Rate card name', required: true },
-      { key: 'baseRate',   label: 'Base rate (₹/day)', type: 'number' },
-      { key: 'perKmRate',  label: 'Per km rate (₹)',   type: 'number' },
-    ],
-  };
-
-  const TITLES = { cargoTypes: 'Cargo Type', zones: 'Zone', ratecards: 'Rate Card' };
-
-  const fields = FIELD_DEFS[masterKey] || [];
-  const title  = TITLES[masterKey] || 'Item';
-
-  const openForm = (row) => {
-    setEditing(row);
-    setForm(row ? { ...row } : {});
-    setFormOpen(true);
-  };
-
-  const handleSubmit = async () => {
-    const processed = { ...form };
-    if (masterKey === 'zones' && typeof processed.cities === 'string')
-      processed.cities = processed.cities.split(',').map(c => c.trim()).filter(Boolean);
-    if (masterKey === 'ratecards') {
-      processed.baseRate  = Number(processed.baseRate);
-      processed.perKmRate = Number(processed.perKmRate);
-    }
-
-    try {
-      if (editing) {
-        await mastersService[masterKey].update(editing.id, processed);
-        toast.success(`${title} updated`);
-      } else {
-        await mastersService[masterKey].create(processed);
-        toast.success(`${title} added`);
-      }
-      setFormOpen(false); setEditing(null); reload();
-    } catch (e) {
-      toast.error(e.message || 'Save failed');
-    }
-  };
-
-  const handleToggle = async (row) => {
-    try {
-      await mastersService[masterKey].toggle(row.id);
-      reload();
-    } catch (e) {
-      toast.error(e.message || 'Update failed');
-    }
-  };
-
-  const handleDelete = async () => {
-    setDelLoad(true);
-    try {
-      await mastersService[masterKey].remove(deleting.id);
-      toast.success(`${title} deleted`);
-    } catch (e) {
-      toast.error(e.message || 'Delete failed');
-    } finally {
-      setDeleting(null); setDelLoad(false); reload();
-    }
-  };
-
-  const renderExtra = (row) => {
-    if (masterKey === 'zones')     return (row.cities||[]).join(', ');
-    if (masterKey === 'ratecards') return `₹${row.baseRate}/day · ₹${row.perKmRate}/km`;
-    return row.description || '';
-  };
-
-  return (
-    <>
-      <div className="flex justify-between items-center mb-4">
-        <p className="text-sm" style={{ color: '#6B7280' }}>{rows.length} {title.toLowerCase()}s configured</p>
-        <Button size="sm" icon={Plus} onClick={() => openForm(null)}>Add {title}</Button>
-      </div>
-
-      <div className="space-y-2">
-        {rows.map(row => (
-          <div key={row.id} className="flex items-center gap-3 rounded-xl border px-4 py-3"
-            style={{ backgroundColor: '#ffffff', borderColor: '#E5E7EB', opacity: row.active ? 1 : 0.6 }}>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>{row.name}</p>
-                <Badge tone={row.active ? 'green' : 'slate'}>{row.active ? 'Active' : 'Inactive'}</Badge>
-              </div>
-              <p className="text-xs truncate mt-0.5" style={{ color: '#6B7280' }}>{renderExtra(row)}</p>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button onClick={() => handleToggle(row)} className="p-1.5 rounded-lg focus-ring"
-                style={{ color: row.active ? '#38B763':'#6B7280' }}>
-                {row.active ? <ToggleRight size={20}/> : <ToggleLeft size={20}/>}
-              </button>
-              <IconButton icon={Pencil} label="Edit"   onClick={() => openForm(row)} />
-              <IconButton icon={Trash2} label="Delete" variant="danger" onClick={() => setDeleting(row)} />
-            </div>
-          </div>
-        ))}
-        {rows.length === 0 && (
-          <p className="text-center py-10 text-sm" style={{ color: '#6B7280' }}>No {title.toLowerCase()}s yet.</p>
-        )}
-      </div>
-
-      {/* Generic form modal */}
-      <Modal open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); }}
-        title={editing ? `Edit ${title}` : `Add ${title}`} size="sm"
-        footer={<>
-          <Button variant="secondary" size="sm" onClick={() => { setFormOpen(false); setEditing(null); }}>Cancel</Button>
-          <Button size="sm" onClick={handleSubmit}>{editing ? 'Save' : 'Add'}</Button>
-        </>}
-      >
-        <div className="space-y-4">
-          {fields.map(f => (
-            <FormField key={f.key} label={f.label} hint={f.hint} required={f.required}>
-              {f.multiline
-                ? <Textarea rows={2} value={form[f.key]||''} onChange={e => setForm(p=>({...p,[f.key]:e.target.value}))} />
-                : <Input type={f.type||'text'} value={
-                    f.key==='cities' && Array.isArray(form.cities) ? form.cities.join(', ') : (form[f.key]||'')
-                  } onChange={e => setForm(p=>({...p,[f.key]:e.target.value}))} />
-              }
-            </FormField>
-          ))}
-        </div>
-      </Modal>
-
-      <ConfirmDialog
-        open={!!deleting} onClose={() => setDeleting(null)} onConfirm={handleDelete}
-        loading={delLoad} danger title={`Delete ${title}?`}
-        confirmLabel="Delete"
-        description={`"${deleting?.name}" will be permanently removed.`}
+        description={`This ${deleting?.vehicleClass} / ${TRIP_TYPES.find(t => t.value === deleting?.tripType)?.label} rate card will be permanently removed. Past bookings already priced against it keep their frozen fare and are unaffected.`}
       />
     </>
   );
@@ -632,58 +577,28 @@ function SimpleMasterList({ masterKey }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page root
+//
+// FIX: the Masters page used to have four tabs — Vehicle Rate Cards, Cargo
+// Types, Zones, and a standalone "Rate Cards" tab. Only Vehicle Rate Cards
+// was ever real. The other three had no backend table or endpoint at all —
+// Cargo Types was leftover from an unrelated freight-transport concept this
+// business doesn't have, Zones has no geographic-grouping concept anywhere
+// in the schema, and the standalone Rate Cards tab was a second, redundant,
+// disconnected pricing model that duplicated (and conflicted with) the real
+// one. All three, and the tab bar and generic mock-CRUD list that rendered
+// them, are removed rather than kept as permanent fake UI. If a real need
+// for cargo classification, service zones, or a separate rate-card concept
+// shows up later, it should be designed against an actual backend model,
+// not resurrected from this mock scaffolding.
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Masters() {
-  const [tab, setTab] = useState('vehicleRates');
-
   return (
     <div>
       <PageHeader
-        title="Masters"
-        description="Configure vehicle rate cards, cargo types, zones and pricing — all in one place."
+        title="Vehicle Rate Cards"
+        description="Set the fare — base fare, per-KM rate, and any outstation, night, driver-allowance or hourly-rental rules — for each vehicle class and trip type."
       />
-
-      {/* FIX: this whole page (Vehicle Rate Cards, Driver Allowance/Bata
-          included) runs entirely on mock data — mastersService uses
-          mockMastersCrud with no backend endpoint behind it at all
-          (confirmed directly: no admin route, and prisma.fareConfig is only
-          ever read elsewhere in the codebase, never written). Anything
-          saved here was previously indistinguishable from a real,
-          functioning settings page, which is actively misleading — an
-          admin could set a driver allowance here, see it save "successfully",
-          and have no idea it changed nothing about real trip pricing. This
-          banner makes that limitation visible instead of hidden. */}
-      <div
-        className="mb-4 px-4 py-3 rounded-xl text-sm flex items-start gap-2.5"
-        style={{ backgroundColor: '#FFFBEA', border: '1px solid #FDE68A', color: '#92400E' }}
-      >
-        <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
-        <span>
-          <strong>Preview only — not yet connected to live pricing.</strong> Changes made on this page
-          (including Driver Allowance / Bata) are saved locally for review, but do not affect real fares
-          charged to customers. Ask your developer to connect this to the live fare configuration when
-          you're ready to make it authoritative.
-        </span>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b overflow-x-auto" style={{ borderColor: '#E5E7EB' }}>
-        {MASTER_TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring whitespace-nowrap"
-            style={{ borderColor: tab===t.key ? '#3B65DB':'transparent', color: tab===t.key ? '#3B65DB':'#6B7280' }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'vehicleRates' ? (
-        <VehicleRatesTab />
-      ) : (
-        <Card>
-          <SimpleMasterList key={tab} masterKey={tab} />
-        </Card>
-      )}
+      <VehicleRatesTab />
     </div>
   );
 }
