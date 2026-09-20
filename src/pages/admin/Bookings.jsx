@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
@@ -44,6 +44,31 @@ export default function Bookings() {
 
   const [formOpen, setFormOpen] = useState(false);
 
+  // FRONTEND-ONLY fetch of cancellation reasons: the LIST endpoint
+  // (BOOKING_LIST_SELECT on the backend) never included cancellationReason
+  // at all — only the single-booking detail endpoint does. Changing that is
+  // a backend edit; per instruction this stays frontend-only instead, so
+  // for each CANCELLED row currently on screen, fetch its full detail once
+  // (bookingService.get already hits the real, existing GET /admin/bookings/:id)
+  // and cache the reason locally. Bounded cost: at most one extra request
+  // per cancelled booking actually visible on the current page (≤ page size),
+  // never re-fetched once cached.
+  const [reasons, setReasons] = useState({});
+  const fetchingRef = useRef(new Set());
+
+  useEffect(() => {
+    (list.rows || []).forEach((r) => {
+      if (r.status !== 'CANCELLED') return;
+      if (reasons[r.id] !== undefined) return;
+      if (fetchingRef.current.has(r.id)) return;
+      fetchingRef.current.add(r.id);
+      bookingService.get(r.id)
+        .then((full) => setReasons((prev) => ({ ...prev, [r.id]: full?.cancellationReason || null })))
+        .catch(() => setReasons((prev) => ({ ...prev, [r.id]: null })))
+        .finally(() => fetchingRef.current.delete(r.id));
+    });
+  }, [list.rows]);
+
   const columns = [
     {
       key: 'bookingNumber', header: 'Booking #',
@@ -61,12 +86,44 @@ export default function Bookings() {
       ),
     },
     {
+      // Moved right after Customer (was last) so it's visible without
+      // scrolling — the Route column's full addresses were pushing every
+      // other column, Status included, off-screen to the right.
+      key: 'status', header: 'Status',
+      render: (r) => {
+        const loaded = reasons[r.id];
+        const isLoading = r.status === 'CANCELLED' && loaded === undefined;
+        return (
+          <div>
+            <StatusBadge status={r.status} />
+            {r.status === 'CANCELLED' && (
+              <p
+                className="mt-1 truncate"
+                style={{ fontSize: 11.5, color: isLoading ? '#9CA3AF' : '#B91C1C', maxWidth: 160 }}
+                title={loaded || (isLoading ? 'Loading…' : 'No reason was recorded.')}
+              >
+                {isLoading ? 'Loading reason…' : (loaded || 'No reason recorded')}
+              </p>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: 'route', header: 'Route',
-      render: (r) => (
-        <span style={{ color: '#6B7280', fontSize: 13.5 }}>
-          {addr(r.pickupAddress)} → {addr(r.dropAddress)}
-        </span>
-      ),
+      render: (r) => {
+        const full = `${addr(r.pickupAddress)} → ${addr(r.dropAddress)}`;
+        // Full address is still there (title = hover tooltip, and it's
+        // still sent to the server unchanged) — just not forced into view
+        // for every row when the first line of each address already
+        // identifies the pickup/drop clearly enough for a list scan.
+        const short = `${addr(r.pickupAddress).split(',')[0]} → ${addr(r.dropAddress).split(',')[0]}`;
+        return (
+          <span style={{ color: '#6B7280', fontSize: 13.5 }} title={full}>
+            {short}
+          </span>
+        );
+      },
     },
     {
       key: 'tripType', header: 'Type',
@@ -83,10 +140,6 @@ export default function Bookings() {
     {
       key: 'pickupAt', header: 'Pickup', sortable: true,
       render: (r) => formatDateTime(r.pickupAt),
-    },
-    {
-      key: 'status', header: 'Status',
-      render: (r) => <StatusBadge status={r.status} />,
     },
   ];
 

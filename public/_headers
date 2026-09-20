@@ -1,0 +1,21 @@
+# Cloudflare Pages caching rules.
+#
+# index.html must NEVER be cached anywhere (Cloudflare's edge, an
+# intermediate proxy, or the browser) — it's the file that tells the browser
+# which hashed JS/CSS bundle to load. If it gets cached, every future deploy
+# is invisible: the browser keeps re-loading the same old index.html forever,
+# which keeps pointing at the same old bundle, no matter how many times a
+# new build succeeds behind it.
+#
+# The actual JS/CSS files ARE safe to cache forever, because Vite gives each
+# one a content hash in its filename (e.g. index-Cs8Rss0W.js) — if the file
+# changes, the filename changes, so a stale cached copy of an old filename is
+# simply never requested again; there's nothing to invalidate.
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.svg
+  Cache-Control: public, max-age=86400
