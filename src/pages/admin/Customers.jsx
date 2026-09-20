@@ -149,7 +149,23 @@ export default function Customers() {
       key: 'name', header: 'Customer',
       render: (r) => (
         <div>
-          <p style={{ fontWeight: 600, color: '#1F2937' }}>{r.user?.name || '—'}</p>
+          <p style={{ fontWeight: 600, color: '#1F2937' }} className="flex items-center gap-1.5">
+            {r.user?.name || '—'}
+            {/* Real presence — an actual open Socket.IO connection right
+                now (see backend presence.service.js), not a guess based on
+                "logged in recently". Goes away the instant the app closes
+                or the connection drops, same as a driver's online dot. */}
+            {r.isLive && (
+              <span
+                className="inline-flex items-center gap-1 text-[10.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                style={{ backgroundColor: '#f0fdf4', color: '#22A65A' }}
+                title="Customer's app is open right now"
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#22A65A' }} />
+                Live
+              </span>
+            )}
+          </p>
           <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1">
             <Mail size={11} />{r.user?.email || '—'}
           </p>

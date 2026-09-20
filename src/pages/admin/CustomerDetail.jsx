@@ -150,6 +150,16 @@ export default function CustomerDetail() {
               <h1 className="text-xl font-bold" style={{ color: '#1F2937' }}>{c.user?.name || '—'}</h1>
               <Badge tone={c.accountType === 'CORPORATE' ? 'blue' : 'slate'}>{accountTypeLabel(c.accountType)}</Badge>
               {c.user?.isActive === false && <Badge tone="red">Inactive</Badge>}
+              {c.isLive && (
+                <span
+                  className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide"
+                  style={{ backgroundColor: '#f0fdf4', color: '#22A65A' }}
+                  title="Customer's app is open right now"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#22A65A' }} />
+                  Live now
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               {c.user?.phone && (
