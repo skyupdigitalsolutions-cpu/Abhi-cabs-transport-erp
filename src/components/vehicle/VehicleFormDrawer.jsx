@@ -242,6 +242,7 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
   const [activeTab, setActiveTab] = useState('info');
   const [docValues, setDocValues] = useState({});
   const [files, setFiles] = useState({});
+  const [existingDocs, setExistingDocs] = useState({}); // cfg.key -> { url, publicId, uploadedAt }
   const [uploadStatus, setUploadStatus] = useState({}); // cfg.key -> 'uploading' | 'done' | 'error'
   const toast = useToast();
 
@@ -346,8 +347,25 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
       if (initial.permitExpiry) preDoc.permitExpiry = initial.permitExpiry.slice(0, 10);
       if (initial.pucExpiry) preDoc.pucExpiry = initial.pucExpiry.slice(0, 10);
       setDocValues(preDoc);
+
+      // FIX: a real upload (via the /admin/vehicles/:id/documents endpoint)
+      // stores its result at documents[docType] — e.g. documents.PHOTO,
+      // documents.INSURANCE, uppercase — completely separate from the
+      // lowercase reference-field keys read above (documents.photo,
+      // documents.insurance). Nothing ever read the uppercase keys, so a
+      // vehicle's actual uploaded photo/documents never appeared when
+      // reopening it for editing, even though they were sitting in
+      // Cloudinary the whole time. This reads them into their own state so
+      // DocumentUploader can actually show what's already there.
+      const existing = {};
+      DOC_CONFIG.forEach((cfg) => {
+        const uploaded = initial.documents[cfg.docType];
+        if (uploaded?.url) existing[cfg.key] = uploaded;
+      });
+      setExistingDocs(existing);
     } else {
       setDocValues({});
+      setExistingDocs({});
     }
     setFiles({});
     setActiveTab('info');
@@ -427,7 +445,8 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
           {DOC_CONFIG.map((cfg) => (
             <DocPanel key={cfg.key} cfg={cfg} docValues={docValues}
               onChangeField={(fieldKey, val) => setDocValues((prev) => ({ ...prev, [fieldKey]: val }))}
-              fileValue={files[cfg.key]} onChangeFile={(file) => setFiles((prev) => ({ ...prev, [cfg.key]: file }))}
+              fileValue={files[cfg.key] || existingDocs[cfg.key]}
+              onChangeFile={(file) => setFiles((prev) => ({ ...prev, [cfg.key]: file }))}
               uploadStatus={uploadStatus[cfg.key]} />
           ))}
         </div>

@@ -1,14 +1,48 @@
-import { useState, useRef } from 'react';
-import { Upload, FileText, X, CheckCircle, AlertTriangle, Camera } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Upload, FileText, X, CheckCircle, AlertTriangle, Camera, ExternalLink } from 'lucide-react';
 
 const ALLOWED = ['image/jpeg','image/png','image/webp','application/pdf'];
 const MAX_MB   = 5;
 
+/**
+ * FIX: `value` was accepted as a prop but never actually read anywhere in
+ * this component — only a file picked THIS session (via handleFile, kept in
+ * local `preview` state) ever rendered a preview. A vehicle reopened for
+ * editing after a real upload already happened therefore always looked like
+ * nothing had ever been uploaded, even though it genuinely had — the file
+ * was sitting in Cloudinary the whole time, just never shown.
+ *
+ * `value` now accepts either shape:
+ *   - a string/object with `.url` — an already-uploaded file (from the real
+ *     backend, e.g. vehicle.documents.PHOTO = { url, uploadedAt })
+ *   - the local { name, dataUrl, ... } shape this component itself produces
+ *     when a NEW file is picked in this session (unchanged)
+ * Selecting a new file always takes over the display — replacing an
+ * existing upload is exactly what re-uploading means here.
+ */
 export default function DocumentUploader({ label, hint, value, onChange, required }) {
   const inputRef  = useRef(null);
   const [dragging,setDragging] = useState(false);
   const [preview, setPreview]  = useState(null);
   const [error,   setError]    = useState('');
+
+  // Only seed from an existing remote upload if nothing has been picked
+  // locally this session yet — a fresh selection must never be clobbered by
+  // the old value re-rendering.
+  useEffect(() => {
+    if (preview) return;
+    const existingUrl = typeof value === 'string' ? value : value?.url;
+    if (existingUrl) {
+      setPreview({
+        name: value?.name || 'Uploaded file',
+        uploadedAt: value?.uploadedAt || null,
+        type: /\.(png|jpe?g|webp)(\?|$)/i.test(existingUrl) ? 'image/*' : 'application/pdf',
+        dataUrl: existingUrl,
+        isExisting: true,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   const handleFile = (file) => {
     setError('');
@@ -17,7 +51,7 @@ export default function DocumentUploader({ label, hint, value, onChange, require
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      setPreview({ name: file.name, size: (file.size/1024).toFixed(0)+'KB', type: file.type, dataUrl: e.target.result });
+      setPreview({ name: file.name, size: (file.size/1024).toFixed(0)+'KB', type: file.type, dataUrl: e.target.result, isExisting: false });
       onChange?.({ name: file.name, size: file.size, type: file.type, dataUrl: e.target.result, file });
     };
     reader.readAsDataURL(file);
@@ -78,9 +112,10 @@ export default function DocumentUploader({ label, hint, value, onChange, require
       ) : (
         <div className="rounded-xl border overflow-hidden" style={{ borderColor:'#E5E7EB' }}>
           {isImage && (
-            <div className="h-32 overflow-hidden" style={{ backgroundColor:'#F7F8FC' }}>
+            <a href={preview.dataUrl} target="_blank" rel="noopener noreferrer"
+              className="h-32 overflow-hidden block" style={{ backgroundColor:'#F7F8FC' }}>
               <img src={preview.dataUrl} alt="preview" className="w-full h-full object-contain" />
-            </div>
+            </a>
           )}
           <div className="flex items-center gap-3 px-3 py-2.5" style={{ backgroundColor:'#F7F8FC' }}>
             <div className="h-8 w-8 rounded-lg grid place-items-center shrink-0"
@@ -91,9 +126,19 @@ export default function DocumentUploader({ label, hint, value, onChange, require
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate" style={{ color:'#1F2937' }}>{preview.name}</p>
-              <p className="text-xs" style={{ color:'#6B7280' }}>{preview.size}</p>
+              <p className="text-xs" style={{ color:'#6B7280' }}>
+                {preview.isExisting
+                  ? `Already uploaded${preview.uploadedAt ? ` · ${new Date(preview.uploadedAt).toLocaleDateString()}` : ''}`
+                  : preview.size}
+              </p>
             </div>
-            <button onClick={clear} className="p-1 rounded focus-ring" style={{ color:'#EF4444' }}>
+            {preview.isExisting && (
+              <a href={preview.dataUrl} target="_blank" rel="noopener noreferrer"
+                className="p-1 rounded focus-ring" style={{ color:'#3B65DB' }} title="View full size">
+                <ExternalLink size={15} />
+              </a>
+            )}
+            <button onClick={clear} className="p-1 rounded focus-ring" style={{ color:'#EF4444' }} title={preview.isExisting ? 'Remove and replace' : 'Remove'}>
               <X size={16} />
             </button>
           </div>
