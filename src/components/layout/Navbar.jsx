@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Menu, Bell, ChevronDown, LogOut, Settings, User as UserIcon, Calendar, AlertTriangle, Truck, CreditCard, MessageSquareWarning, Car } from 'lucide-react';
+import { Menu, Bell, ChevronDown, LogOut, Calendar, AlertTriangle, Truck, CreditCard, MessageSquareWarning, Car } from 'lucide-react';
 import { useAuth }    from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useToast }   from '../../hooks/useToast';
@@ -151,9 +151,6 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
               <p className="text-[11.5px] mt-0.5 truncate" style={{ color: '#6B7280' }}>{email}</p>
             </div>
             <div className="py-1">
-              <MenuItem icon={UserIcon}  label="Profile"  onClick={() => { setOpen(false); navigate('/admin/settings'); }} />
-              <MenuItem icon={Settings}  label="Settings" onClick={() => { setOpen(false); navigate('/admin/settings'); }} />
-              <div className="border-t my-1" style={{ borderColor: '#F7F8FC' }} />
               <MenuItem icon={LogOut}    label="Log out"  danger onClick={() => { setOpen(false); logout(); navigate('/admin/login'); }} />
             </div>
           </div>

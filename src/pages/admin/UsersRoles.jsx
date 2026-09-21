@@ -83,7 +83,7 @@ function UserFormDrawer({ open, onClose, onSubmit }) {
             placeholder="Min 8 chars" />
         </FormField>
         <Alert type="info">
-          The user can change their password from Settings after first login.
+          Share this temporary password with the user securely — they'll need it to log in.
         </Alert>
       </div>
     </Drawer>

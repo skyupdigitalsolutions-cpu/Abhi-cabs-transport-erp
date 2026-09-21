@@ -31,7 +31,6 @@ const Support        = lazy(() => import('../pages/admin/Support'));
 const WhatsApp       = lazy(() => import('../pages/admin/WhatsApp'));
 const Discounts      = lazy(() => import('../pages/admin/Discounts'));
 const UsersRoles     = lazy(() => import('../pages/admin/UsersRoles'));
-const Settings       = lazy(() => import('../pages/admin/Settings'));
 
 const NotFound       = lazy(() => import('../pages/NotFound'));
 const Unauthorized   = lazy(() => import('../pages/Unauthorized'));
@@ -73,7 +72,6 @@ export default function AppRoutes() {
           <Route path="whatsapp"     element={<P permission={PERMISSIONS.SETTINGS_MANAGE}><WhatsApp /></P>} />
           <Route path="discounts"    element={<P permission={PERMISSIONS.SETTINGS_MANAGE}><Discounts /></P>} />
           <Route path="users"        element={<P permission={PERMISSIONS.USERS_MANAGE}><UsersRoles /></P>} />
-          <Route path="settings"     element={<Settings />} />
         </Route>
 
         {/* ── Utility ── */}

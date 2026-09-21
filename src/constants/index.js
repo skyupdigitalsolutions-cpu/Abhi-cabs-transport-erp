@@ -263,7 +263,6 @@ export const ADMIN_NAV = [
   { label: 'WhatsApp',         to: '/admin/whatsapp',         icon: 'MessageCircle',  permission: PERMISSIONS.SETTINGS_MANAGE },
   { label: 'Discounts & Offers', to: '/admin/discounts',  icon: 'Tag',            permission: PERMISSIONS.SETTINGS_MANAGE },
   { label: 'Users & Roles',      to: '/admin/users',      icon: 'ShieldCheck',    permission: PERMISSIONS.USERS_MANAGE },
-  { label: 'Settings',     to: '/admin/settings',   icon: 'Settings' },
 ];
 
 export const DRIVER_NAV = [
