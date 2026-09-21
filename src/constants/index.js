@@ -137,6 +137,16 @@ export const DRIVER_STATUS = {
   SUSPENDED: 'suspended',
 };
 
+// A TEMPORARY driver is a minimal, admin-created account (email only, no
+// phone/licence/KYC) that logs into the driver app via email OTP and sees a
+// single scoped screen (their assigned vehicle + current trip) instead of
+// the normal onboarding flow and full tab app. See POST /admin/drivers/temporary
+// on the backend contract. REGULAR is the existing full-onboarding driver.
+export const DRIVER_TYPE = {
+  REGULAR:   'REGULAR',
+  TEMPORARY: 'TEMPORARY',
+};
+
 export const VEHICLE_STATUS = {
   AVAILABLE:   'AVAILABLE',
   ASSIGNED:    'ASSIGNED',
@@ -175,6 +185,8 @@ export const STATUS_COLORS = {
   VERIFIED:    'green',
   REJECTED:    'red',
   SUSPENDED:   'red',
+  TEMPORARY:   'purple',
+  REGULAR:     'slate',
 
   pending:     'amber',
   confirmed:   'blue',

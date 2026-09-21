@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Star, PlusCircle, Phone, Mail, IdCard, CheckCircle, XCircle, Eye, FileText, Image, X } from 'lucide-react';
+import { Star, PlusCircle, UserPlus, Phone, Mail, IdCard, CheckCircle, XCircle, Eye, FileText, Image, X } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import Card          from '../../components/ui/Card';
 import Select        from '../../components/ui/Select';
@@ -10,6 +10,7 @@ import Badge         from '../../components/ui/Badge';
 import Alert         from '../../components/ui/Alert';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import DriverFormDrawer from '../../components/driver/DriverFormDrawer';
+import TemporaryDriverModal from '../../components/driver/TemporaryDriverModal';
 import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import { useApi }    from '../../hooks/useApi';
 import { useResourceList } from '../../hooks/useResourceList';
@@ -124,10 +125,26 @@ function RosterTab() {
   const [editing,       setEditing]       = useState(null);
   const [deleting,      setDeleting]      = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [tempFormOpen,  setTempFormOpen]  = useState(false);
+  const [assigning,     setAssigning]     = useState(null); // driver row needing a vehicle
 
   const handleSubmit = async (values) => {
     if (editing) { await driverService.update(editing.userId, values); toast.success('Driver updated'); }
     else         { await driverService.create(values);                 toast.success('Driver onboarded'); }
+    list.reload();
+  };
+
+  const handleCreateTemporary = async (payload) => {
+    await driverService.createTemporary(payload);
+    toast.success(payload.assignedVehicleId
+      ? `Temporary driver created — OTP sign-in sent to ${payload.email}`
+      : `Temporary driver created — OTP sign-in sent to ${payload.email}. Assign a vehicle when ready.`);
+    list.reload();
+  };
+
+  const handleAssignVehicle = async ({ assignedVehicleId }) => {
+    await driverService.assignVehicle(assigning.userId, assignedVehicleId);
+    toast.success('Vehicle assigned');
     list.reload();
   };
 
@@ -153,13 +170,23 @@ function RosterTab() {
     },
     { key: 'email', header: 'Email', render: (r) => r.user?.email ? <span className="flex items-center gap-1" style={{ color: '#6B7280', fontSize: 13 }}><Mail size={12} />{r.user.email}</span> : <span style={{ color: '#9CA3AF' }}>—</span> },
     {
-      key: 'licenceNumber', header: 'Licence',
-      render: (r) => (
-        <div>
-          <p className="flex items-center gap-1 font-mono" style={{ color: '#1F2937', fontSize: 13 }}><IdCard size={12} />{r.licenceNumber}</p>
-          {r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}
-        </div>
-      ),
+      key: 'type', header: 'Type',
+      render: (r) => r.driverType === 'TEMPORARY'
+        ? <Badge tone="purple">Temporary</Badge>
+        : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Regular</span>,
+    },
+    {
+      key: 'licenceNumber', header: 'Licence / Vehicle',
+      render: (r) => r.driverType === 'TEMPORARY'
+        ? (r.assignedVehicle?.registrationNumber
+            ? <span style={{ color: '#1F2937', fontSize: 13 }}>{r.assignedVehicle.registrationNumber}</span>
+            : <span style={{ color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>No vehicle yet</span>)
+        : (
+          <div>
+            <p className="flex items-center gap-1 font-mono" style={{ color: '#1F2937', fontSize: 13 }}><IdCard size={12} />{r.licenceNumber}</p>
+            {r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}
+          </div>
+        ),
     },
     { key: 'kycStatus', header: 'KYC', render: (r) => <Badge tone={KYC_TONE[r.kycStatus] || 'slate'}>{titleCase(r.kycStatus)}</Badge> },
     {
@@ -176,7 +203,13 @@ function RosterTab() {
       key: 'actions', header: '', className: 'text-right',
       render: (r) => (
         <div className="flex gap-2 justify-end">
-          <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
+          {/* Temp drivers skip the full onboarding form entirely — nothing there applies (no phone/licence). */}
+          {r.driverType === 'TEMPORARY' && !r.assignedVehicle?.registrationNumber && (
+            <Button size="sm" variant="primary" onClick={() => setAssigning(r)}>Assign Vehicle</Button>
+          )}
+          {r.driverType !== 'TEMPORARY' && (
+            <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
+          )}
           <Button size="sm" variant="dangerOutline" onClick={() => setDeleting(r)}>Deactivate</Button>
         </div>
       ),
@@ -185,7 +218,8 @@ function RosterTab() {
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end gap-2 mb-3">
+        <Button variant="secondary" icon={UserPlus} onClick={() => setTempFormOpen(true)}>Add Temporary Driver</Button>
         <Button icon={PlusCircle} onClick={() => { setEditing(null); setFormOpen(true); }}>Add Driver</Button>
       </div>
       <FilterBar
@@ -203,6 +237,8 @@ function RosterTab() {
         onLimitChange={list.setLimit}
         emptyTitle="No drivers found" emptyDescription="Try adjusting your filters." />
       <DriverFormDrawer open={formOpen} onClose={() => setFormOpen(false)} initial={editing} onSubmit={handleSubmit} />
+      <TemporaryDriverModal open={tempFormOpen} onClose={() => setTempFormOpen(false)} onSubmit={handleCreateTemporary} />
+      <TemporaryDriverModal open={!!assigning} onClose={() => setAssigning(null)} onSubmit={handleAssignVehicle} driver={assigning} />
       <ConfirmDialog open={!!deleting} title="Deactivate this driver?" description={deleting ? `${deleting.user?.name} will be deactivated and forced offline.` : ''} confirmLabel="Deactivate" danger loading={deleteLoading} onClose={() => setDeleting(null)} onConfirm={handleDeactivate} />
     </div>
   );

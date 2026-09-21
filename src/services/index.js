@@ -2,8 +2,10 @@
  * src/services/index.js
  */
 import { createCrudService } from './crudFactory';
-import { apiClient } from './apiClient';
+import { apiClient, withMockFallback } from './apiClient';
+import { mockResolve } from './mockUtils';
 import * as db from './mockDb';
+import { uid } from './mockDb';
 
 // Simple, real-only wrapper — used by Support.jsx and now also the
 // Dashboard's abandoned-bookings widget, the live Notifications feed
@@ -22,6 +24,61 @@ export const driverService = createCrudService({
   searchFields: ['name', 'phone', 'licenceNumber'],
   idPrefix:     'DRV',
 });
+
+// Temporary drivers: a separate, minimal creation endpoint rather than
+// driverService.create() — the real /admin/drivers schema requires name +
+// phone + licenceNumber (see DriverFormDrawer), which a temporary,
+// email-only account deliberately skips. Backend contract:
+//   POST /admin/drivers/temporary  { email, name?, assignedVehicleId }
+//   → creates User(role=DRIVER) + Driver{ driverType:'TEMPORARY',
+//     kycStatus:'VERIFIED', isOnline:false } with NO phone/licence, so it
+//     never enters the KYC/onboarding flow. The driver app logs this
+//     account in via email OTP (POST /auth/otp/request-email /
+//     /auth/otp/verify-email) instead of phone OTP.
+driverService.createTemporary = (payload) =>
+  withMockFallback(
+    () => apiClient.post('/admin/drivers/temporary', payload),
+    async () => {
+      await mockResolve(null);
+      const vehicle = db.vehicles.find((v) => v.id === payload.assignedVehicleId);
+      const item = {
+        id: uid('DRV'),
+        userId: uid('USR'),
+        createdAt: new Date().toISOString(),
+        driverType: 'TEMPORARY',
+        kycStatus: 'VERIFIED',
+        isOnline: false,
+        licenceNumber: null,
+        assignedVehicleId: payload.assignedVehicleId || null,
+        assignedVehicle: vehicle ? { registrationNumber: vehicle.registrationNumber, vehicleClass: vehicle.vehicleClass } : null,
+        user: { name: payload.name || 'Temporary Driver', email: payload.email },
+      };
+      db.drivers.unshift(item);
+      return item;
+    }
+  );
+
+// Assigning (or re-assigning) a vehicle after the fact — for a temp driver
+// created without one. A plain partial PATCH, deliberately NOT routed
+// through driverService.update() since that always sends the full
+// name/phone/licenceNumber payload the real driver schema expects, which a
+// temp driver doesn't have.
+driverService.assignVehicle = (driverId, assignedVehicleId) =>
+  withMockFallback(
+    () => apiClient.patch(`/admin/drivers/${driverId}`, { assignedVehicleId }),
+    async () => {
+      await mockResolve(null);
+      const idx = db.drivers.findIndex((d) => d.id === driverId || d.userId === driverId);
+      if (idx === -1) throw Object.assign(new Error('Not found'), { status: 404 });
+      const vehicle = db.vehicles.find((v) => v.id === assignedVehicleId);
+      db.drivers[idx] = {
+        ...db.drivers[idx],
+        assignedVehicleId,
+        assignedVehicle: vehicle ? { registrationNumber: vehicle.registrationNumber, vehicleClass: vehicle.vehicleClass } : null,
+      };
+      return db.drivers[idx];
+    }
+  );
 
 export const vehicleService = createCrudService({
   resource:     'admin/vehicles',
