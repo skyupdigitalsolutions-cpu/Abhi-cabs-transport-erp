@@ -10,7 +10,23 @@
  *   falls back to mock data (VITE_MOCK_FALLBACK, default true) so the UI
  *   keeps working while the backend is being stood up.
  */
-import { getToken, getRefreshToken, setTokens, clearSession } from './authStorage';
+import { getToken, getRefreshToken, setTokens, clearSession as clearStoredSession } from './authStorage';
+
+// apiClient has no access to AuthContext (importing it here would create a
+// circular dependency: AuthContext -> authService -> apiClient -> AuthContext).
+// So when the session is genuinely dead — refresh token invalid/missing, or a
+// 401 that can't be recovered from — clearing storage alone isn't enough:
+// AuthContext's `user` state (and therefore `isAuthenticated`) lives in React
+// state and has no way to find out storage was wiped out from under it. Every
+// mounted widget kept re-fetching against a dead session, each one
+// independently 401ing and re-clearing storage, forever, instead of the app
+// ever redirecting to login. Dispatching this event lets AuthProvider listen
+// once and reset its own state, which is what actually makes ProtectedRoute's
+// existing `if (!isAuthenticated) <Navigate to="/admin/login" />` fire.
+function clearSession() {
+  clearStoredSession();
+  window.dispatchEvent(new Event('auth:session-expired'));
+}
 
 // Trailing slash stripped defensively: every path elsewhere is called with a
 // leading slash (apiClient.get('/admin/...')), so `API_BASE_URL + path` must

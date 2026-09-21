@@ -1,4 +1,4 @@
-import { createContext, useCallback, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { authService } from '../services/authService';
 import { ROLE_PERMISSIONS } from '../constants';
 import { requestNotificationPermission } from '../lib/firebase';
@@ -29,6 +29,20 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     try { await authService.logout(); } catch { /* ignore */ }
     setUser(null);
+  }, []);
+
+  // apiClient dispatches this the moment it determines the session is truly
+  // dead (refresh token invalid/missing, or an unrecoverable 401) — see the
+  // comment on clearSession() in apiClient.js for why this event exists at
+  // all. Without this listener, storage gets wiped but `user` here stays
+  // populated forever, so isAuthenticated never flips to false and
+  // ProtectedRoute never redirects: every mounted widget just keeps
+  // re-fetching against a dead session and re-discovering the same 401,
+  // instead of the app ever bouncing back to the login screen.
+  useEffect(() => {
+    const onSessionExpired = () => setUser(null);
+    window.addEventListener('auth:session-expired', onSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', onSessionExpired);
   }, []);
 
   // ROLE_PERMISSIONS is keyed by the backend's uppercase role enum
