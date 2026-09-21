@@ -9,9 +9,11 @@ import DocumentUploader from '../ui/DocumentUploader';
 import { useForm } from '../../hooks/useForm';
 import { required } from '../../utils/validators';
 import { VEHICLE_STATUS } from '../../constants';
+import { apiClient } from '../../services/apiClient';
+import { useToast } from '../../hooks/useToast';
 import {
   CheckCircle, AlertTriangle, Clock, Upload,
-  FileText, Shield, Leaf, Key, ScrollText,
+  FileText, Shield, Leaf, Key, ScrollText, Camera,
 } from 'lucide-react';
 
 /**
@@ -20,6 +22,10 @@ import {
  *   registrationNumber, vehicleClass, makeModel, year, colour,
  *   seatingCapacity, status, cityId, insuranceExpiry, fitnessExpiry,
  *   permitExpiry, pucExpiry, odometerKm, documents (free-form JSON).
+ *   odometerKm is intentionally not exposed on this form (removed on
+ *   request) — omitted from the payload entirely rather than sent as 0, so
+ *   editing a vehicle never resets its actual reading; a new vehicle still
+ *   gets 0 from the backend's own schema default.
  *
  * There is no "masters/vehicle rate card" concept on this backend — vehicle
  * class is a free-text field the real schema validates loosely
@@ -37,7 +43,7 @@ const VEHICLE_CLASS_SUGGESTIONS = ['hatchback', 'sedan', 'suv', 'tempo'];
 
 const DOC_CONFIG = [
   {
-    key: 'rc', label: 'Registration Certificate (RC)', short: 'RC', icon: ScrollText,
+    key: 'rc', docType: 'RC', label: 'Registration Certificate (RC)', short: 'RC', icon: ScrollText,
     color: '#3B65DB', bg: '#eef2fb', required: true,
     fields: [
       { key: 'rcNumber', label: 'RC Number', placeholder: 'e.g. KA0520224567890', required: true },
@@ -47,7 +53,7 @@ const DOC_CONFIG = [
     ],
   },
   {
-    key: 'insurance', label: 'Insurance Policy', short: 'Insurance', icon: Shield,
+    key: 'insurance', docType: 'INSURANCE', label: 'Insurance Policy', short: 'Insurance', icon: Shield,
     color: '#38B763', bg: '#f0fdf4', required: true, expiryKey: 'insuranceExpiry',
     fields: [
       { key: 'insurancePolicyNo', label: 'Policy Number', placeholder: 'e.g. OG-24-1234-5678', required: true },
@@ -59,7 +65,7 @@ const DOC_CONFIG = [
     ],
   },
   {
-    key: 'puc', label: 'Pollution Under Control (PUC)', short: 'PUC', icon: Leaf,
+    key: 'puc', docType: 'PUC', label: 'Pollution Under Control (PUC)', short: 'PUC', icon: Leaf,
     color: '#10b981', bg: '#ecfdf5', required: true, expiryKey: 'pucExpiry',
     fields: [
       { key: 'pucCertNo', label: 'Certificate Number', placeholder: 'e.g. PUC2024KA001234', required: true },
@@ -69,7 +75,7 @@ const DOC_CONFIG = [
     ],
   },
   {
-    key: 'permit', label: 'Vehicle Permit', short: 'Permit', icon: Key,
+    key: 'permit', docType: 'PERMIT', label: 'Vehicle Permit', short: 'Permit', icon: Key,
     color: '#7c3aed', bg: '#f5f3ff', required: false, expiryKey: 'permitExpiry',
     fields: [
       { key: 'permitNumber', label: 'Permit Number', placeholder: 'e.g. KA/03/STG/2024', required: false },
@@ -80,7 +86,7 @@ const DOC_CONFIG = [
     ],
   },
   {
-    key: 'fitness', label: 'Fitness Certificate', short: 'Fitness', icon: FileText,
+    key: 'fitness', docType: 'FITNESS', label: 'Fitness Certificate', short: 'Fitness', icon: FileText,
     color: '#F59E0B', bg: '#fffbeb', required: false, expiryKey: 'fitnessExpiry',
     fields: [
       { key: 'fitnessCertNo', label: 'Certificate Number', placeholder: 'e.g. FC/KA/2024/001', required: false },
@@ -89,11 +95,21 @@ const DOC_CONFIG = [
       { key: 'fitnessIssuingRTO', label: 'Issuing RTO', placeholder: 'e.g. RTO Bengaluru', required: false },
     ],
   },
+  {
+    // Plain identifying photo of the vehicle — no expiry, no required
+    // reference fields, just an image. Uses the exact same real upload
+    // pipeline as the compliance documents above (docType: 'PHOTO' is
+    // accepted by the backend specifically for this — see
+    // ADMIN_VEHICLE_DOC_TYPES in vehicle.schemas.js).
+    key: 'photo', docType: 'PHOTO', label: 'Vehicle Photo', short: 'Photo', icon: Camera,
+    color: '#0ea5e9', bg: '#f0f9ff', required: false,
+    fields: [],
+  },
 ];
 
 const EMPTY_VEHICLE = {
   registrationNumber: '', vehicleClass: '', makeModel: '', year: '', colour: '',
-  seatingCapacity: 4, odometerKm: 0, status: 'AVAILABLE',
+  seatingCapacity: 4, status: 'AVAILABLE',
 };
 
 function expiryStatus(dateStr) {
@@ -104,7 +120,7 @@ function expiryStatus(dateStr) {
   return { label: 'Valid', color: '#38B763', bg: '#f0fdf4', icon: CheckCircle };
 }
 
-function DocPanel({ cfg, docValues, onChangeField, fileValue, onChangeFile }) {
+function DocPanel({ cfg, docValues, onChangeField, fileValue, onChangeFile, uploadStatus }) {
   const Icon = cfg.icon;
   const expiry = cfg.expiryKey ? expiryStatus(docValues[cfg.expiryKey]) : null;
 
@@ -139,6 +155,23 @@ function DocPanel({ cfg, docValues, onChangeField, fileValue, onChangeFile }) {
           </FormField>
         ))}
         <DocumentUploader label="Upload Document" hint="JPG, PNG or PDF · Max 5 MB" value={fileValue} onChange={onChangeFile} />
+        {/* Real upload feedback — appears only while/after Add Vehicle /
+            Save Changes actually runs the upload request for this file. */}
+        {uploadStatus === 'uploading' && (
+          <p className="text-[12px] font-medium flex items-center gap-1.5" style={{ color: '#3B65DB' }}>
+            <Clock size={12} className="animate-pulse" /> Uploading…
+          </p>
+        )}
+        {uploadStatus === 'done' && (
+          <p className="text-[12px] font-medium flex items-center gap-1.5" style={{ color: '#38B763' }}>
+            <CheckCircle size={12} /> Uploaded
+          </p>
+        )}
+        {uploadStatus === 'error' && (
+          <p className="text-[12px] font-medium flex items-center gap-1.5" style={{ color: '#EF4444' }}>
+            <AlertTriangle size={12} /> Upload failed — try again after saving
+          </p>
+        )}
       </div>
     </div>
   );
@@ -209,6 +242,8 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
   const [activeTab, setActiveTab] = useState('info');
   const [docValues, setDocValues] = useState({});
   const [files, setFiles] = useState({});
+  const [uploadStatus, setUploadStatus] = useState({}); // cfg.key -> 'uploading' | 'done' | 'error'
+  const toast = useToast();
 
   const toInitialValues = (v) => v ? {
     registrationNumber: v.registrationNumber || '',
@@ -217,7 +252,6 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
     year: v.year || '',
     colour: v.colour || '',
     seatingCapacity: v.seatingCapacity ?? 4,
-    odometerKm: v.odometerKm ?? 0,
     status: v.status || 'AVAILABLE',
   } : EMPTY_VEHICLE;
 
@@ -228,27 +262,31 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
       vehicleClass: [required('Vehicle class')],
     },
     onSubmit: async (vals) => {
-      // The rich per-document sub-fields captured on the Documents tab
-      // (policy numbers, issuing authorities, etc.) aren't individual
-      // backend columns — they're bundled into the real `documents` JSON
-      // field, which accepts arbitrary structured data.
+      // FIX: this previously only ever recorded whether a file was picked
+      // (fileSelected / fileName) — the actual File object was captured in
+      // browser state and then discarded, never sent anywhere. It's now
+      // really uploaded, per selected file, via the real
+      // POST /admin/vehicles/:id/documents endpoint (multipart, backed by
+      // Cloudinary through storageService on the backend — the same
+      // pipeline driverSelf.routes.js already used for a driver's own
+      // vehicle documents, just not previously wired up on the admin side).
+      //
+      // The reference sub-fields (policy numbers, issuing authorities, etc.)
+      // aren't individual backend columns — they still go into the vehicle's
+      // `documents` JSON field as before, entirely separately from the file
+      // upload itself.
       const documents = DOC_CONFIG.reduce((acc, cfg) => {
-        acc[cfg.key] = {
-          ...cfg.fields.reduce((f, field) => { f[field.key] = docValues[field.key] || ''; return f; }, {}),
-          fileSelected: !!files[cfg.key],
-          fileName: files[cfg.key]?.name || null,
-        };
+        acc[cfg.key] = cfg.fields.reduce((f, field) => { f[field.key] = docValues[field.key] || ''; return f; }, {});
         return acc;
       }, {});
 
-      await onSubmit({
+      const vehicle = await onSubmit({
         registrationNumber: vals.registrationNumber,
         vehicleClass: vals.vehicleClass,
         makeModel: vals.makeModel || null,
         year: vals.year ? Number(vals.year) : null,
         colour: vals.colour || null,
         seatingCapacity: Number(vals.seatingCapacity) || 4,
-        odometerKm: Number(vals.odometerKm) || 0,
         status: vals.status,
         // Real top-level compliance date columns — mapped from the matching
         // document panel's expiry field.
@@ -258,6 +296,39 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
         pucExpiry: docValues.pucExpiry || null,
         documents,
       });
+
+      // Vehicle record is saved at this point regardless of what happens
+      // next — a failed or slow document upload must never look like the
+      // whole "Add Vehicle" action failed, since the vehicle itself is
+      // already real and already in the fleet.
+      const vehicleId = vehicle?.id || initial?.id;
+      const selected = DOC_CONFIG.filter((cfg) => files[cfg.key]);
+      if (vehicleId && selected.length > 0) {
+        await Promise.all(selected.map(async (cfg) => {
+          setUploadStatus((p) => ({ ...p, [cfg.key]: 'uploading' }));
+          try {
+            const formData = new FormData();
+            formData.append('file', files[cfg.key]);
+            formData.append('docType', cfg.docType);
+            if (cfg.expiryKey && docValues[cfg.expiryKey]) formData.append('expiry', docValues[cfg.expiryKey]);
+            await apiClient.upload(`/admin/vehicles/${vehicleId}/documents`, formData);
+            setUploadStatus((p) => ({ ...p, [cfg.key]: 'done' }));
+          } catch (e) {
+            setUploadStatus((p) => ({ ...p, [cfg.key]: 'error' }));
+            // Distinguish "the upload endpoint isn't deployed on this
+            // backend yet" from a genuine upload failure (bad file, network
+            // blip, etc.) — the vehicle itself is still saved either way,
+            // this only affects the attached file for this one document.
+            const notDeployed = e.code === 'ENDPOINT_NOT_IMPLEMENTED' || e.status === 404;
+            toast.error(
+              notDeployed
+                ? `${cfg.label}: file upload isn't available on this backend yet — the vehicle was saved without it.`
+                : `${cfg.label} upload failed: ${e.message || 'unknown error'}`
+            );
+          }
+        }));
+      }
+
       onClose();
     },
   });
@@ -337,14 +408,9 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
               <Input value={values.colour} onChange={(e) => setValue('colour', e.target.value)} placeholder="White" maxLength={40} />
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Seating capacity">
-              <Input type="number" min={1} max={50} value={values.seatingCapacity} onChange={(e) => setValue('seatingCapacity', e.target.value)} />
-            </FormField>
-            <FormField label="Odometer (km)">
-              <Input type="number" min={0} value={values.odometerKm} onChange={(e) => setValue('odometerKm', e.target.value)} />
-            </FormField>
-          </div>
+          <FormField label="Seating capacity">
+            <Input type="number" min={1} max={50} value={values.seatingCapacity} onChange={(e) => setValue('seatingCapacity', e.target.value)} />
+          </FormField>
           <FormField label="Status" required>
             <Select value={values.status} onChange={(e) => setValue('status', e.target.value)}
               options={Object.values(VEHICLE_STATUS).map((s) => ({ value: s, label: s.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) }))} />
@@ -361,7 +427,8 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
           {DOC_CONFIG.map((cfg) => (
             <DocPanel key={cfg.key} cfg={cfg} docValues={docValues}
               onChangeField={(fieldKey, val) => setDocValues((prev) => ({ ...prev, [fieldKey]: val }))}
-              fileValue={files[cfg.key]} onChangeFile={(file) => setFiles((prev) => ({ ...prev, [cfg.key]: file }))} />
+              fileValue={files[cfg.key]} onChangeFile={(file) => setFiles((prev) => ({ ...prev, [cfg.key]: file }))}
+              uploadStatus={uploadStatus[cfg.key]} />
           ))}
         </div>
       )}

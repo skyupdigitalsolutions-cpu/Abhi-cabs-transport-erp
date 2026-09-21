@@ -208,9 +208,22 @@ function FleetTab({ canManage }) {
   ];
 
   const handleSubmit = async (values) => {
-    if (editing) { await vehicleService.update(editing.id, values); toast.success('Vehicle updated'); }
-    else         { await vehicleService.create(values);             toast.success('Vehicle added'); }
+    // crudFactory's create/update don't unwrap a single-resource envelope
+    // the way .get() does — the real backend returns { vehicle: {...} }, so
+    // without this, `result.id` would be undefined even though the vehicle
+    // was created successfully. Handled locally rather than changing the
+    // shared crudFactory, since other resources built on it haven't been
+    // re-checked for the same assumption.
+    let result;
+    if (editing) { result = await vehicleService.update(editing.id, values); toast.success('Vehicle updated'); }
+    else         { result = await vehicleService.create(values);             toast.success('Vehicle added'); }
+    const vehicle = result?.vehicle || result;
     setEditing(null); list.reload();
+    // Returned so VehicleFormDrawer knows the vehicle's real id — needed to
+    // upload any documents/photo selected on the Documents tab, since that
+    // upload hits /admin/vehicles/:id/documents and a brand-new vehicle has
+    // no id until this create call actually returns one.
+    return vehicle;
   };
   const handleDelete = async () => {
     setDeleteLoading(true);

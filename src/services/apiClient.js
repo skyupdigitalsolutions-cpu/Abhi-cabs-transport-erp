@@ -141,7 +141,15 @@ async function request(path, { method = 'GET', body, params, timeout = DEFAULT_T
     });
   }
 
-  const headers = { 'Content-Type': 'application/json' };
+  // FIX: this previously always set Content-Type: application/json and
+  // JSON.stringify'd the body unconditionally — there was no way to send an
+  // actual file anywhere in this app. A FormData body (used for real file
+  // uploads — see apiClient.upload below) must NOT be JSON-stringified and
+  // must NOT have its Content-Type set manually: the browser generates the
+  // multipart boundary itself only when it sets that header, so setting it
+  // by hand breaks the upload silently on the server side.
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -151,7 +159,7 @@ async function request(path, { method = 'GET', body, params, timeout = DEFAULT_T
         fetch(url.toString(), {
           method,
           headers,
-          body: body ? JSON.stringify(body) : undefined,
+          body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
           signal,
         }),
       timeout
@@ -252,6 +260,12 @@ export const apiClient = {
   put: (path, body, opts) => request(path, { ...opts, method: 'PUT', body }),
   patch: (path, body, opts) => request(path, { ...opts, method: 'PATCH', body }),
   del: (path, opts) => request(path, { ...opts, method: 'DELETE' }),
+  // Real file upload — pass a FormData instance (append the file under
+  // whatever field name the backend route expects, e.g. 'file', plus any
+  // text fields like docType). See the isFormData branch in request() above
+  // for why this can't just be apiClient.post with a FormData body passed
+  // as-is — it needs the Content-Type left for the browser to set.
+  upload: (path, formData, opts) => request(path, { ...opts, method: 'POST', body: formData }),
 };
 
 /**
