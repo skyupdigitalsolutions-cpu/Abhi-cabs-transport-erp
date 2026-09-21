@@ -285,6 +285,20 @@ export default function BookingDetail() {
 
   const infoRows = [
     { icon: MapPin, label: 'Pickup', value: booking.pickupAddress },
+    // The backend stores intermediate stops the customer added at booking
+    // time as booking.stops — a JSON array of { lat, lng, address, addressId },
+    // up to 10, always present (defaults to [] when there are none). This
+    // page never read it at all, so a customer's chosen stops were silently
+    // dropped from the admin view even though the data was there in every
+    // API response — Drop just appeared right after Pickup regardless of
+    // what was actually booked.
+    ...(Array.isArray(booking.stops) && booking.stops.length > 0
+      ? booking.stops.map((stop, i) => ({
+          icon: MapPin,
+          label: `Stop ${i + 1}`,
+          value: stop.address || (stop.lat && stop.lng ? `${stop.lat}, ${stop.lng}` : 'Unnamed stop'),
+        }))
+      : []),
     { icon: MapPin, label: 'Drop', value: booking.dropAddress },
     { icon: Package, label: 'Vehicle Class', value: `${booking.vehicleClass} · ${booking.tripType}` },
     { icon: IndianRupee, label: 'Fare', value: formatCurrency(fare) },
