@@ -66,32 +66,53 @@ function ComplianceChips({ vehicle }) {
 function DocDetailModal({ open, vehicle, onClose }) {
   if (!vehicle) return null;
   const docs = vehicle.documents || {};
+  // FIX: the real uploaded file (from POST /admin/vehicles/:id/documents)
+  // is stored at documents[docType] — uppercase, e.g. documents.INSURANCE —
+  // while the reference sub-fields typed into the form (policy numbers,
+  // issuing authorities) live at documents[cfg.key] — lowercase, e.g.
+  // documents.insurance. This modal previously only ever read the lowercase
+  // key, so `fields.url` was always undefined and "View document" never
+  // appeared even after a real upload succeeded. Photo was also missing
+  // entirely — it isn't a compliance document, so it never had reference
+  // fields, only ever the uppercase-keyed uploaded file.
   const DOC_META = {
-    rc:{ label:'Registration Certificate',icon:'📋' },
-    insurance:{ label:'Insurance Policy',icon:'🛡️',expiry:vehicle.insuranceExpiry },
-    puc:{ label:'Pollution Under Control',icon:'🌿',expiry:vehicle.pucExpiry },
-    permit:{ label:'Vehicle Permit',icon:'🔑',expiry:vehicle.permitExpiry },
-    fitness:{ label:'Fitness Certificate',icon:'📄',expiry:vehicle.fitnessExpiry },
+    rc:{ label:'Registration Certificate', icon:'📋', docType:'RC' },
+    insurance:{ label:'Insurance Policy', icon:'🛡️', expiry:vehicle.insuranceExpiry, docType:'INSURANCE' },
+    puc:{ label:'Pollution Under Control', icon:'🌿', expiry:vehicle.pucExpiry, docType:'PUC' },
+    permit:{ label:'Vehicle Permit', icon:'🔑', expiry:vehicle.permitExpiry, docType:'PERMIT' },
+    fitness:{ label:'Fitness Certificate', icon:'📄', expiry:vehicle.fitnessExpiry, docType:'FITNESS' },
+    photo:{ label:'Vehicle Photo', icon:'📷', docType:'PHOTO' },
   };
-  const entries = Object.entries(DOC_META).filter(([key]) => docs[key] && Object.values(docs[key]).some(Boolean));
+  const entries = Object.entries(DOC_META).filter(([key, meta]) => {
+    const hasReference = docs[key] && Object.values(docs[key]).some(Boolean);
+    const hasUpload = docs[meta.docType]?.url;
+    return hasReference || hasUpload;
+  });
   return (
     <Modal open={open} onClose={onClose} title={`Documents — ${vehicle.registrationNumber}`} size="md" footer={<Button variant="secondary" size="sm" onClick={onClose}>Close</Button>}>
       {entries.length === 0 ? <p className="text-sm text-center py-6" style={{ color: '#6B7280' }}>No documents on file yet.</p> : (
         <div className="space-y-3">
           {entries.map(([key, meta]) => {
             const fields = docs[key] || {};
+            const uploaded = docs[meta.docType]; // { url, publicId, uploadedAt } — the real file
             const days = getDaysUntil(meta.expiry);
             const expired = days !== null && days < 0;
             const expiring = days !== null && days >= 0 && days <= 30;
+            const referenceEntries = Object.entries(fields).filter(([k, v]) => v && k !== 'fileSelected' && k !== 'fileName');
             return (
               <div key={key} className="rounded-xl border p-4" style={{ borderColor: expired ? '#fecaca' : expiring ? '#fde68a' : '#E5E7EB' }}>
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2"><span className="text-xl">{meta.icon}</span><p className="text-sm font-bold" style={{ color: '#1F2937' }}>{meta.label}</p></div>
                   {meta.expiry && <ExpiryChip dateStr={meta.expiry} />}
                 </div>
-                {Object.entries(fields).filter(([k, v]) => v && k !== 'fileSelected' && k !== 'fileName').length > 0 && (
+                {uploaded?.url && (
+                  <a href={uploaded.url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden mb-3" style={{ backgroundColor: '#F9FAFB', height: 120 }}>
+                    <img src={uploaded.url} alt={meta.label} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  </a>
+                )}
+                {referenceEntries.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {Object.entries(fields).filter(([k, v]) => v && k !== 'fileSelected' && k !== 'fileName').map(([k, v]) => (
+                    {referenceEntries.map(([k, v]) => (
                       <div key={k}>
                         <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>{k.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}</p>
                         <p className="text-xs font-medium mt-0.5" style={{ color: '#1F2937' }}>{typeof v === 'string' && v.includes('T') && !isNaN(Date.parse(v)) ? new Date(v).toLocaleDateString('en-IN') : String(v)}</p>
@@ -99,7 +120,11 @@ function DocDetailModal({ open, vehicle, onClose }) {
                     ))}
                   </div>
                 )}
-                {fields.url && <a href={fields.url} target="_blank" rel="noopener noreferrer" className="text-xs mt-2 flex items-center gap-1" style={{ color: '#3B65DB' }}><Eye size={11} /> View document</a>}
+                {uploaded?.url ? (
+                  <a href={uploaded.url} target="_blank" rel="noopener noreferrer" className="text-xs mt-2 flex items-center gap-1" style={{ color: '#3B65DB' }}><Eye size={11} /> View document{uploaded.uploadedAt ? ` · uploaded ${new Date(uploaded.uploadedAt).toLocaleDateString('en-IN')}` : ''}</a>
+                ) : referenceEntries.length > 0 ? (
+                  <p className="text-xs mt-2" style={{ color: '#9CA3AF' }}>Reference details on file — no file has been uploaded for this yet.</p>
+                ) : null}
               </div>
             );
           })}
@@ -193,18 +218,52 @@ function FleetTab({ canManage }) {
   const [deleting,      setDeleting]      = useState(null);
   const [docView,       setDocView]       = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(null); // vehicle id currently being fetched
+
+  // FIX: the vehicles LIST endpoint doesn't include the `documents` field at
+  // all (confirmed against VEHICLE_SELECT on the backend — only the
+  // single-vehicle GET /admin/vehicles/:id already includes it). So opening
+  // Edit or Docs straight from a list row always showed stale/empty
+  // reference fields and no uploaded file, no matter what was actually
+  // saved — the list row genuinely never had that data to show. This
+  // fetches the real, full detail first, using an endpoint that already
+  // works today, rather than waiting on a backend change to the list.
+  const openEdit = async (row) => {
+    setDetailLoading(row.id);
+    try {
+      const full = await vehicleService.get(row.id);
+      setEditing(full);
+      setFormOpen(true);
+    } catch (e) {
+      toast.error(e.message || 'Could not load vehicle details');
+    } finally {
+      setDetailLoading(null);
+    }
+  };
+
+  const openDocs = async (row) => {
+    setDetailLoading(row.id);
+    try {
+      const full = await vehicleService.get(row.id);
+      setDocView(full);
+    } catch (e) {
+      toast.error(e.message || 'Could not load vehicle documents');
+    } finally {
+      setDetailLoading(null);
+    }
+  };
 
   const columns = [
     { key: 'registrationNumber', header: 'Reg. No.', sortable: true, render: (r) => <p style={{ fontWeight: 700, color: '#1F2937', fontFamily: 'monospace' }}>{r.registrationNumber}</p> },
     { key: 'vehicle', header: 'Vehicle', render: (r) => (<div style={{ maxWidth: 200 }}><p className="truncate" style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 2 }}>{titleCase(r.vehicleClass)}{r.year ? ` · ${r.year}` : ''}</p></div>) },
     { key: 'seatingCapacity', header: 'Seats', sortable: true, render: (r) => <span className="flex items-center gap-1 text-sm font-semibold" style={{ color: '#1F2937' }}><Users size={13} style={{ color: '#6B7280' }} />{r.seatingCapacity}</span> },
     { key: 'odometerKm', header: 'Odometer', sortable: true, render: (r) => <span style={{ color: '#6B7280', fontSize: 13 }}>{Number(r.odometerKm || 0).toLocaleString('en-IN')} km</span> },
-    { key: 'compliance', header: 'Doc Status', render: (r) => <button onClick={(e) => { e.stopPropagation(); setDocView(r); }} className="focus-ring rounded"><ComplianceChips vehicle={r} /></button> },
+    { key: 'compliance', header: 'Doc Status', render: (r) => <button onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} className="focus-ring rounded"><ComplianceChips vehicle={r} /></button> },
     { key: 'insuranceExpiry', header: 'Insurance', render: (r) => <ExpiryChip dateStr={r.insuranceExpiry} /> },
     { key: 'pucExpiry', header: 'PUC', render: (r) => <ExpiryChip dateStr={r.pucExpiry} /> },
     { key: 'status', header: 'Operational Status', render: (r) => <StatusBadge status={r.status} /> },
     { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
-    ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); setDocView(r); }} /><IconButton icon={Pencil} label="Edit" onClick={() => { setEditing(r); setFormOpen(true); }} /><IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} /></div>) }] : []),
+    ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} /><IconButton icon={Pencil} label="Edit" onClick={() => openEdit(r)} disabled={detailLoading === r.id} /><IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} /></div>) }] : []),
   ];
 
   const handleSubmit = async (values) => {
@@ -218,7 +277,16 @@ function FleetTab({ canManage }) {
     if (editing) { result = await vehicleService.update(editing.id, values); toast.success('Vehicle updated'); }
     else         { result = await vehicleService.create(values);             toast.success('Vehicle added'); }
     const vehicle = result?.vehicle || result;
-    setEditing(null); list.reload();
+    setEditing(null);
+    // FIX: list.reload() used to fire right here — BEFORE any selected
+    // document/photo actually finished uploading (those uploads run inside
+    // VehicleFormDrawer, after this function returns). So the list always
+    // refreshed one step too early: it showed the vehicle with no
+    // compliance dates and no photo, since the uploads that set those
+    // hadn't completed yet, and nothing reloaded a second time afterward —
+    // an admin had to leave the page and come back to see real data. Reload
+    // now happens in onClose instead, which VehicleFormDrawer only calls
+    // once everything (vehicle save + every upload) is actually finished.
     // Returned so VehicleFormDrawer knows the vehicle's real id — needed to
     // upload any documents/photo selected on the Documents tab, since that
     // upload hits /admin/vehicles/:id/documents and a brand-new vehicle has
@@ -253,7 +321,7 @@ function FleetTab({ canManage }) {
         page={list.page} limit={list.meta?.limit} total={list.meta?.total} totalPages={list.meta?.totalPages} onPageChange={list.setPage}
         onLimitChange={list.setLimit}
         emptyTitle="No vehicles found" emptyDescription="Try adjusting your filters." />
-      <VehicleFormDrawer open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); }} initial={editing} onSubmit={handleSubmit} />
+      <VehicleFormDrawer open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); list.reload(); }} initial={editing} onSubmit={handleSubmit} />
       <DocDetailModal open={!!docView} vehicle={docView} onClose={() => setDocView(null)} />
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={handleDelete} loading={deleteLoading} danger title="Deactivate vehicle?" confirmLabel="Deactivate" description={`${deleting?.registrationNumber} will be deactivated.`} />
     </div>
