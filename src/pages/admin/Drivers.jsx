@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Star, PlusCircle, UserPlus, Phone, Mail, IdCard, CheckCircle, XCircle, Eye, FileText, Image, X } from 'lucide-react';
+import { Star, PlusCircle, UserPlus, Phone, Mail, IdCard, CheckCircle, XCircle, Eye, FileText, Image, X, AlertTriangle } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import Card          from '../../components/ui/Card';
 import Select        from '../../components/ui/Select';
@@ -32,6 +32,11 @@ const DOC_LABELS = {
   RC: 'Vehicle RC', INSURANCE: 'Insurance', PUC: 'PUC Certificate',
 };
 
+// The three documents a driver must have uploaded before KYC can be
+// approved — matches the mobile app's DocumentUploadScreen. Vehicle docs
+// (RC/INSURANCE/PUC) are a separate, vehicle-linked concern, not gated here.
+const REQUIRED_DRIVER_DOCS = ['LICENCE', 'AADHAAR', 'PHOTO'];
+
 // ── Document Review Modal ───────────────────────────────────────────────────
 function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoading }) {
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -42,6 +47,8 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
   const fullDriver = data?.driver || data;
   const documents  = fullDriver?.documents || {};
   const docEntries = Object.entries(documents);
+  const missingRequired = REQUIRED_DRIVER_DOCS.filter((docType) => !documents[docType]?.url);
+  const canApprove = status !== 'loading' && missingRequired.length === 0;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
@@ -81,6 +88,14 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
               ))}
             </div>
           )}
+          {status !== 'loading' && missingRequired.length > 0 && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+              <AlertTriangle size={16} style={{ color: '#92400E', marginTop: 1, flexShrink: 0 }} />
+              <p style={{ fontSize: 13, color: '#92400E' }}>
+                Can't approve yet — missing {missingRequired.map((d) => DOC_LABELS[d] || titleCase(d)).join(', ')}.
+              </p>
+            </div>
+          )}
           <div style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: '12px 16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {[['Full Name', driver.user?.name], ['Phone', driver.user?.phone], ['Email', driver.user?.email], ['Licence', driver.licenceNumber], ['Applied', formatDateTime(driver.createdAt)]].map(([label, value]) => (
@@ -95,7 +110,7 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
         <div style={{ padding: '16px 24px', borderTop: '1px solid #F3F4F6', display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button variant="dangerOutline" icon={XCircle} loading={actionLoading === `reject-${driver.userId}`} onClick={() => onReject(driver)}>Reject</Button>
-          <Button variant="primary" icon={CheckCircle} loading={actionLoading === `approve-${driver.userId}`} onClick={() => onApprove(driver)}>Approve Driver</Button>
+          <Button variant="primary" icon={CheckCircle} disabled={!canApprove} loading={actionLoading === `approve-${driver.userId}`} onClick={() => onApprove(driver)}>Approve Driver</Button>
         </div>
       </div>
       {selectedDoc && (
@@ -281,7 +296,7 @@ function KycTab() {
     { key: 'name', header: 'Applicant', render: (r) => (<div><p style={{ fontWeight: 600, color: '#1F2937' }}>{r.user?.name}</p><p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Phone size={11} />{r.user?.phone}</p>{r.user?.email && <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Mail size={11} />{r.user.email}</p>}</div>) },
     { key: 'licenceNumber', header: 'Licence', render: (r) => (<div><p className="font-mono" style={{ color: '#1F2937', fontSize: 13 }}>{r.licenceNumber}</p>{r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}</div>) },
     { key: 'appliedAt', header: 'Applied', render: (r) => formatDateTime(r.createdAt) },
-    { key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex gap-2 justify-end"><Button size="sm" variant="secondary" icon={Eye} onClick={() => setReviewDriver(r)}>Review</Button><Button size="sm" variant="primary" icon={CheckCircle} loading={actionLoading === `approve-${r.userId}`} onClick={() => approve(r)}>Approve</Button><Button size="sm" variant="dangerOutline" icon={XCircle} disabled={!!actionLoading} onClick={() => setRejectDialog(r)}>Reject</Button></div>) },
+    { key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex gap-2 justify-end"><Button size="sm" variant="secondary" icon={Eye} onClick={() => setReviewDriver(r)}>Review</Button><Button size="sm" variant="dangerOutline" icon={XCircle} disabled={!!actionLoading} onClick={() => setRejectDialog(r)}>Reject</Button></div>) },
   ];
 
   return (
