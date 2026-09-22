@@ -142,8 +142,8 @@ function RosterTab() {
     list.reload();
   };
 
-  const handleAssignVehicle = async ({ assignedVehicleId }) => {
-    await driverService.assignVehicle(assigning.userId, assignedVehicleId);
+  const handleAssignVehicle = async (spec) => {
+    await driverService.assignVehicle(assigning.userId, spec);
     toast.success('Vehicle assigned');
     list.reload();
   };

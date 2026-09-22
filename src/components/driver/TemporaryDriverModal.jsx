@@ -18,16 +18,27 @@ import { vehicleService } from '../../services';
  *    know it, or skipped and added later.
  *  - Assign vehicle (`driver` prop passed): for a temp driver created
  *    without one — just the vehicle picker, nothing else to fill in.
+ *
+ * The vehicle itself can be given two ways, toggled with vehicleMode:
+ *  - "fleet": pick an existing, available Vehicle record → assignedVehicleId.
+ *  - "manual": just type a registration number → vehicleNumber (a plain
+ *    string, not tied to any Vehicle record). For a borrowed/one-off vehicle
+ *    that was never added to the fleet — the whole point of a temporary
+ *    driver is not having to set up records ahead of time.
  */
-const EMPTY = { email: '', assignedVehicleId: '' };
+const EMPTY = { email: '', assignedVehicleId: '', manualVehicleNumber: '' };
 
 export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }) {
   const isAssignOnly = !!driver;
   const [vehicles, setVehicles] = useState([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehicleMode, setVehicleMode] = useState('fleet'); // 'fleet' | 'manual'
+  const [vehicleError, setVehicleError] = useState(null);
 
   useEffect(() => {
     if (!open) return;
+    setVehicleMode('fleet');
+    setVehicleError(null);
     setVehiclesLoading(true);
     // Only vehicles that are actually free right now. Nested under `filters`
     // so it works against both the mock store (mockUtils.paginate reads
@@ -41,23 +52,73 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
 
   const { values, errors, touched, submitting, submitError, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
     initialValues: EMPTY,
-    schema: isAssignOnly
-      ? { assignedVehicleId: [required('Vehicle')] }
-      : { email: [required('Email'), isEmail] }, // vehicle intentionally NOT required here
+    // Vehicle presence/validity is checked below, in onSubmit, since which
+    // field is required depends on vehicleMode (fleet vs manual) rather
+    // than being a fixed schema.
+    schema: isAssignOnly ? {} : { email: [required('Email'), isEmail] },
     onSubmit: async (vals) => {
+      const manualNumber = vals.manualVehicleNumber.trim().toUpperCase().replace(/\s+/g, '');
+
       if (isAssignOnly) {
-        await onSubmit({ assignedVehicleId: vals.assignedVehicleId });
+        if (vehicleMode === 'manual') {
+          if (!manualNumber) { setVehicleError('Enter a vehicle number'); return; }
+          await onSubmit({ vehicleNumber: manualNumber });
+        } else {
+          if (!vals.assignedVehicleId) { setVehicleError('Select a vehicle'); return; }
+          await onSubmit({ assignedVehicleId: vals.assignedVehicleId });
+        }
       } else {
-        await onSubmit({
-          email: vals.email.trim().toLowerCase(),
-          assignedVehicleId: vals.assignedVehicleId || undefined,
-        });
+        const payload = { email: vals.email.trim().toLowerCase() };
+        if (vehicleMode === 'manual' && manualNumber) {
+          payload.vehicleNumber = manualNumber;
+        } else if (vehicleMode === 'fleet' && vals.assignedVehicleId) {
+          payload.assignedVehicleId = vals.assignedVehicleId;
+        }
+        await onSubmit(payload);
       }
       onClose();
     },
   });
 
   useEffect(() => { if (open) setValues(EMPTY); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ModeToggle = (
+    <div className="inline-flex rounded-lg border border-gray-200 p-0.5 mb-3">
+      {[
+        { key: 'fleet', label: 'From fleet' },
+        { key: 'manual', label: 'Enter manually' },
+      ].map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => { setVehicleMode(opt.key); setVehicleError(null); }}
+          className={
+            'px-3 py-1.5 rounded-md text-xs font-medium transition-colors ' +
+            (vehicleMode === opt.key ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700')
+          }
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const VehicleField = (
+    <>
+      {ModeToggle}
+      {vehicleMode === 'fleet' ? (
+        <Select value={values.assignedVehicleId} onChange={(e) => { setValue('assignedVehicleId', e.target.value); setVehicleError(null); }}
+          onBlur={() => setFieldTouched('assignedVehicleId')} autoFocus={isAssignOnly}
+          placeholder={vehiclesLoading ? 'Loading…' : (isAssignOnly ? 'Select a vehicle' : 'Assign later')}
+          options={vehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.vehicleClass}` }))} />
+      ) : (
+        <Input value={values.manualVehicleNumber}
+          onChange={(e) => { setValue('manualVehicleNumber', e.target.value.toUpperCase()); setVehicleError(null); }}
+          placeholder="e.g. KA01AB1234" autoFocus={isAssignOnly} />
+      )}
+      {vehicleError && <p className="text-xs text-red-600 mt-1">{vehicleError}</p>}
+    </>
+  );
 
   return (
     <Drawer
@@ -76,11 +137,9 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
       {isAssignOnly ? (
         <>
           <Alert type="info" className="mb-4">Assigning a vehicle to <strong>{driver.user?.email}</strong>.</Alert>
-          <FormField label="Vehicle" required error={touched.assignedVehicleId && errors.assignedVehicleId}
-            hint={vehiclesLoading ? 'Loading available vehicles…' : 'Only vehicles marked Available are listed.'}>
-            <Select value={values.assignedVehicleId} onChange={(e) => setValue('assignedVehicleId', e.target.value)}
-              onBlur={() => setFieldTouched('assignedVehicleId')} placeholder="Select a vehicle" autoFocus
-              options={vehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.vehicleClass}` }))} />
+          <FormField label="Vehicle" required
+            hint={vehicleMode === 'fleet' && !vehicleError ? (vehiclesLoading ? 'Loading available vehicles…' : 'Only vehicles marked Available are listed.') : undefined}>
+            {VehicleField}
           </FormField>
         </>
       ) : (
@@ -94,10 +153,9 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
               <Input type="email" value={values.email} onChange={(e) => setValue('email', e.target.value)}
                 onBlur={() => setFieldTouched('email')} placeholder="driver@example.com" autoFocus />
             </FormField>
-            <FormField label="Vehicle (optional)" hint="Skip this and assign it later from the roster if you don't know it yet.">
-              <Select value={values.assignedVehicleId} onChange={(e) => setValue('assignedVehicleId', e.target.value)}
-                placeholder={vehiclesLoading ? 'Loading…' : 'Assign later'}
-                options={vehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.vehicleClass}` }))} />
+            <FormField label="Vehicle (optional)"
+              hint={vehicleMode === 'fleet' && !vehicleError ? "Skip this and assign it later from the roster if you don't know it yet." : undefined}>
+              {VehicleField}
             </FormField>
           </form>
         </>

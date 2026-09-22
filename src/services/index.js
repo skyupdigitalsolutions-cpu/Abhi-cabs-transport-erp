@@ -29,7 +29,12 @@ export const driverService = createCrudService({
 // driverService.create() — the real /admin/drivers schema requires name +
 // phone + licenceNumber (see DriverFormDrawer), which a temporary,
 // email-only account deliberately skips. Backend contract:
-//   POST /admin/drivers/temporary  { email, name?, assignedVehicleId }
+//   POST /admin/drivers/temporary
+//   { email, name?, assignedVehicleId? }   — pick from the fleet, OR
+//   { email, name?, vehicleNumber? }       — a plain registration number,
+//     typed manually, not tied to any Vehicle record (a borrowed/one-off
+//     vehicle that was never added to the fleet). Exactly one of the two
+//     vehicle fields is sent, never both.
 //   → creates User(role=DRIVER) + Driver{ driverType:'TEMPORARY',
 //     kycStatus:'VERIFIED', isOnline:false } with NO phone/licence, so it
 //     never enters the KYC/onboarding flow. The driver app logs this
@@ -40,7 +45,12 @@ driverService.createTemporary = (payload) =>
     () => apiClient.post('/admin/drivers/temporary', payload),
     async () => {
       await mockResolve(null);
-      const vehicle = db.vehicles.find((v) => v.id === payload.assignedVehicleId);
+      const assignedVehicle = payload.vehicleNumber
+        ? { registrationNumber: payload.vehicleNumber, vehicleClass: null }
+        : (() => {
+            const vehicle = db.vehicles.find((v) => v.id === payload.assignedVehicleId);
+            return vehicle ? { registrationNumber: vehicle.registrationNumber, vehicleClass: vehicle.vehicleClass } : null;
+          })();
       const item = {
         id: uid('DRV'),
         userId: uid('USR'),
@@ -50,7 +60,7 @@ driverService.createTemporary = (payload) =>
         isOnline: false,
         licenceNumber: null,
         assignedVehicleId: payload.assignedVehicleId || null,
-        assignedVehicle: vehicle ? { registrationNumber: vehicle.registrationNumber, vehicleClass: vehicle.vehicleClass } : null,
+        assignedVehicle,
         user: { name: payload.name || 'Temporary Driver', email: payload.email },
       };
       db.drivers.unshift(item);
@@ -62,19 +72,25 @@ driverService.createTemporary = (payload) =>
 // created without one. A plain partial PATCH, deliberately NOT routed
 // through driverService.update() since that always sends the full
 // name/phone/licenceNumber payload the real driver schema expects, which a
-// temp driver doesn't have.
-driverService.assignVehicle = (driverId, assignedVehicleId) =>
+// temp driver doesn't have. `spec` is either { assignedVehicleId } (from the
+// fleet) or { vehicleNumber } (typed manually) — see createTemporary above.
+driverService.assignVehicle = (driverId, spec) =>
   withMockFallback(
-    () => apiClient.patch(`/admin/drivers/${driverId}`, { assignedVehicleId }),
+    () => apiClient.patch(`/admin/drivers/${driverId}`, spec),
     async () => {
       await mockResolve(null);
       const idx = db.drivers.findIndex((d) => d.id === driverId || d.userId === driverId);
       if (idx === -1) throw Object.assign(new Error('Not found'), { status: 404 });
-      const vehicle = db.vehicles.find((v) => v.id === assignedVehicleId);
+      const assignedVehicle = spec.vehicleNumber
+        ? { registrationNumber: spec.vehicleNumber, vehicleClass: null }
+        : (() => {
+            const vehicle = db.vehicles.find((v) => v.id === spec.assignedVehicleId);
+            return vehicle ? { registrationNumber: vehicle.registrationNumber, vehicleClass: vehicle.vehicleClass } : null;
+          })();
       db.drivers[idx] = {
         ...db.drivers[idx],
-        assignedVehicleId,
-        assignedVehicle: vehicle ? { registrationNumber: vehicle.registrationNumber, vehicleClass: vehicle.vehicleClass } : null,
+        assignedVehicleId: spec.assignedVehicleId || null,
+        assignedVehicle,
       };
       return db.drivers[idx];
     }
