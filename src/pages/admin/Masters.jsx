@@ -16,21 +16,16 @@ import Alert from '../../components/ui/Alert';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
 import LoadingState from '../../components/ui/LoadingState';
+import { TRIP_TYPES } from '../../constants';
+import { vehicleCatalogService } from '../../services';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The 4 vehicle classes and 4 trip types the real backend actually prices —
-// kept identical to BookingFormDrawer.jsx so this form can't drift from what
-// a real booking can be created with.
-const VEHICLE_CLASSES = ['hatchback', 'sedan', 'suv', 'tempo'];
-const TRIP_TYPES = [
-  { value: 'ONE_WAY',    label: 'One Way' },
-  { value: 'ROUND_TRIP', label: 'Round Trip' },
-  { value: 'AIRPORT',    label: 'Airport' },
-  { value: 'HOURLY',     label: 'Hourly Rental' },
-];
+// Vehicle classes and trip types now live in constants/index.js so this form,
+// BookingFormDrawer and Vehicles can't drift apart — they were three separate
+// copies of the same list.
 
 const EMPTY_RATE_CARD = {
   cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
@@ -60,6 +55,18 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   });
   const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
   const [loading, setLoading] = useState(false);
+
+  // Vehicle classes come from the backend's vehicle_catalog, never a
+  // hardcoded list — see services/vehicleCatalogService.js. includeInactive
+  // so a retired class (e.g. `sedan`) still shows when editing an existing
+  // card priced against it, rather than the dropdown silently blanking.
+  const [classOptions, setClassOptions] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    vehicleCatalogService.classOptions({ includeInactive: true })
+      .then((opts) => { if (!cancelled) setClassOptions(opts); });
+    return () => { cancelled = true; };
+  }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -132,7 +139,10 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             <FormField label="Vehicle class" required>
               {isEdit ? <Input disabled value={form.vehicleClass} /> : (
                 <Select value={form.vehicleClass} onChange={(e) => set('vehicleClass', e.target.value)}
-                  options={VEHICLE_CLASSES.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))} />
+                  options={classOptions.map((c) => ({
+                    value: c.value,
+                    label: c.isActive ? c.label : `${c.label} (retired)`,
+                  }))} />
               )}
             </FormField>
             <FormField label="Trip type" required>
@@ -276,6 +286,12 @@ const CLASS_COLORS = {
   sedan:     ['#f0fdf4', '#38B763'],
   suv:       ['#fff8ec', '#F59E0B'],
   tempo:     ['#f5f3ff', '#7c3aed'],
+  ertiga:    ['#fff8ec', '#D97706'],
+  innova:    ['#fef3c7', '#B45309'],
+  crysta:    ['#ffedd5', '#C2410C'],
+  hycross:   ['#ffe4e6', '#BE123C'],
+  fortuner:  ['#ede9fe', '#6D28D9'],
+  luxury:    ['#111111', '#FFC107'],
 };
 
 function money(v) {
@@ -534,7 +550,10 @@ function VehicleRatesTab() {
           className="px-3 py-2 text-sm rounded-lg border focus-ring"
           style={{ borderColor: '#E5E7EB', color: classFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
           <option value="">All vehicle classes</option>
-          {VEHICLE_CLASSES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+          {/* Derived from the rate cards actually present, not a static
+              list — so it can never offer a class that has no cards, or
+              omit one the backend has. */}
+          {classes.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={tripFilter} onChange={e => setTripFilter(e.target.value)}
           className="px-3 py-2 text-sm rounded-lg border focus-ring"

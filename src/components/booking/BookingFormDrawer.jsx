@@ -8,6 +8,7 @@ import Alert from '../ui/Alert';
 import { useForm } from '../../hooks/useForm';
 import { required } from '../../utils/validators';
 import { adminCustomersService } from '../../services';
+import { VEHICLE_CLASSES, TRIP_TYPES } from '../../constants';
 
 /**
  * Matches the real, confirmed createBookingSchema (customer-facing /bookings
@@ -22,13 +23,8 @@ import { adminCustomersService } from '../../services';
  * a client sends for price is ignored, so there's no fare field to fill in.
  */
 const DEFAULT_CITY_ID = 1; // only Bengaluru is seeded on this backend today
-const VEHICLE_CLASSES = ['hatchback', 'sedan', 'suv', 'tempo']; // the 4 classes this backend actually prices
-const TRIP_TYPES = [
-  { value: 'ONE_WAY', label: 'One Way' },
-  { value: 'ROUND_TRIP', label: 'Round Trip' },
-  { value: 'AIRPORT', label: 'Airport' },
-  { value: 'HOURLY', label: 'Hourly Rental' },
-];
+// Shared with Masters.jsx and Vehicles.jsx via constants/index.js — these
+// were three separate hardcoded copies that could silently drift apart.
 const PAYMENT_MODES = [
   { value: 'FULL', label: 'Full payment now' },
   { value: 'PARTIAL', label: 'Partial advance' },

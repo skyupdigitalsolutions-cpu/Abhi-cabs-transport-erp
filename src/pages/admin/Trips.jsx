@@ -69,15 +69,29 @@ export default function Trips() {
     },
     {
       key: 'route', header: 'Route',
-      render: (r) => (
-        <span style={{ color: '#6B7280', fontSize: 13.5 }}>
-          {addr(r.pickupAddress)} → {addr(r.dropAddress)}
-        </span>
-      ),
+      // Full addresses here are 100+ chars each. DataTable sizes to
+      // max-content, so rendering them whole pushed Type / Class / Fare /
+      // Status off the right edge of the screen. Show the locality (the part
+      // that actually distinguishes one trip from another), capped and
+      // truncated, with the full address on hover.
+      render: (r) => {
+        const from = addr(r.pickupAddress);
+        const to   = addr(r.dropAddress);
+        return (
+          <div style={{ maxWidth: 260 }} title={`${from} → ${to}`}>
+            <p style={{ color: '#1F2937', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {from?.split(',')[0]}
+            </p>
+            <p style={{ color: '#6B7280', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              → {to?.split(',')[0]}
+            </p>
+          </div>
+        );
+      },
     },
     {
       key: 'tripType', header: 'Type',
-      render: (r) => <span style={{ fontSize: 13.5 }}>{r.tripType?.replace(/_/g, ' ')}</span>,
+      render: (r) => <span style={{ fontSize: 13.5, whiteSpace: 'nowrap' }}>{r.tripType?.replace(/_/g, ' ')}</span>,
     },
     {
       key: 'vehicleClass', header: 'Class',
@@ -89,7 +103,7 @@ export default function Trips() {
     },
     {
       key: 'pickupAt', header: 'Pickup', sortable: true,
-      render: (r) => formatDateTime(r.pickupAt),
+      render: (r) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(r.pickupAt)}</span>,
     },
     {
       key: 'status', header: 'Status',

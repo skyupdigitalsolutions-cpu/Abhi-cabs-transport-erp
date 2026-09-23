@@ -19,12 +19,12 @@ import { useToast }  from '../../hooks/useToast';
 import { VEHICLE_STATUS, PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
 import { formatDateTime, titleCase } from '../../utils/formatters';
+import { VEHICLE_CLASSES } from '../../constants';
 
 // Backend listVehiclesQuerySchema accepts:
 //   search, status, vehicleClass, isActive, sortBy, order, page, limit
 // ALL SERVER-SIDE.
 
-const VEHICLE_CLASSES = ['hatchback','sedan','suv','tempo'];
 const SORT_OPTIONS    = ['createdAt','registrationNumber','vehicleClass','status','odometerKm'];
 
 function getDaysUntil(dateStr) {

@@ -115,6 +115,17 @@ input[type="checkbox"],
 input[type="radio"],
 input[type="file"],
 input[type="file"]::file-selector-button,
+/* Date/time fields open a picker on click — they behave like buttons, not
+   like free-text fields, so they get the hand cursor rather than a caret.
+   The calendar glyph inside them needs it set explicitly in WebKit. */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"],
+input[type="week"],
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
 .cursor-pointer {
   cursor: pointer;
 }
@@ -146,8 +157,6 @@ input[type="number"],
 input[type="search"],
 input[type="tel"],
 input[type="url"],
-input[type="date"],
-input[type="datetime-local"],
 textarea {
   cursor: text;
 }

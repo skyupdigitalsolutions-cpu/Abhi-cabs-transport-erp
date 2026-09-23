@@ -130,6 +130,35 @@ export const KYC_STATUS = {
   SUSPENDED: 'SUSPENDED',
 };
 
+// Vehicle classes are MODEL tiers, not size buckets, and they live in the
+// backend's `vehicle_catalog` table — fetch them with vehicleCatalogService
+// rather than reading this list. It exists only as a fallback and for tests.
+//
+// The old hardcoded ['hatchback','sedan','suv','tempo'] was already wrong:
+// migrations 20260922140000_fleet_models and 20260923120000_oneway_and_luxury
+// seeded 13 model-level classes (swift-dzire, ertiga, innova, innova-crysta,
+// innova-hycross, fortuner, mercedes-e, tempo-12, urbania-*, benz-*) and
+// RETIRED `sedan`, because it duplicated swift-dzire at the same price and the
+// app was listing the same car twice.
+export const VEHICLE_CLASSES = [
+  'swift-dzire', 'ertiga', 'innova', 'innova-crysta', 'innova-hycross',
+  'fortuner', 'mercedes-e', 'tempo-12', 'tempo-17',
+  'urbania-13', 'urbania-16', 'urbania-maharaja',
+  'benz-22', 'benz-28', 'benz-33',
+  // Generic size classes, kept ACTIVE on purpose: they are the only classes
+  // with ROUND_TRIP and AIRPORT fare cards, so retiring them before per-model
+  // rates exist for those trip types would remove airport and round-trip
+  // booking entirely.
+  'hatchback', 'suv', 'tempo', 'bus', 'luxury',
+];
+
+export const TRIP_TYPES = [
+  { value: 'ONE_WAY',    label: 'One Way' },
+  { value: 'ROUND_TRIP', label: 'Round Trip' },
+  { value: 'AIRPORT',    label: 'Airport' },
+  { value: 'HOURLY',     label: 'Hourly Rental' },
+];
+
 export const DRIVER_STATUS = {
   ACTIVE:    'active',
   INACTIVE:  'inactive',
