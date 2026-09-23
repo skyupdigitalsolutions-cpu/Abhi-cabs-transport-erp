@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { Navigation, MapPin, Truck, Radio, RefreshCw } from 'lucide-react';
+import { Navigation, MapPin, Truck, Radio, RefreshCw, AlertTriangle } from 'lucide-react';
 import PageHeader      from '../../components/ui/PageHeader';
 import Card            from '../../components/ui/Card';
 import Badge           from '../../components/ui/Badge';
@@ -10,8 +10,8 @@ import ErrorState      from '../../components/ui/ErrorState';
 import ConnectionBadge from '../../components/tracking/ConnectionBadge';
 import { useTrackingSocket } from '../../hooks/useTrackingSocket';
 import { useApi }      from '../../hooks/useApi';
-import { bookingService } from '../../services';
-import { apiClient }   from '../../services/apiClient';
+import { bookingService, driverService } from '../../services';
+import { apiClient, USE_MOCK }   from '../../services/apiClient';
 import { formatDateTime } from '../../utils/formatters';
 
 const STALE_MS  = 20_000;
@@ -63,7 +63,10 @@ function truckSvg(color) {
 }
 
 // ── Live Map ─────────────────────────────────────────────────────────────────
-function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
+// Renders one marker per ONLINE driver (drivers[], see main component below) —
+// not per active trip. A driver with no trip yet still gets a marker, just
+// with "Waiting for a trip" in its info window instead of a route.
+function LiveMap({ drivers, positions, now, selectedDriver, onSelectDriver }) {
   const mapRef     = useRef(null);
   const gmapRef    = useRef(null);   // google.maps.Map instance
   const markersRef = useRef({});     // driverId → google.maps.Marker
@@ -95,17 +98,17 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
     gmapRef.current.setMapTypeId(mapType);
   }, [mapType]);
 
-  // Update markers whenever positions or trips change
+  // Update markers whenever positions or the online-driver list changes
   useEffect(() => {
     if (!gmapRef.current || !ready) return;
     const G = window.google.maps;
 
-    trips.forEach((trip) => {
-      const pos   = positions[trip.driverId];
+    drivers.forEach((driver) => {
+      const pos   = positions[driver.driverId];
       if (!pos) return;
       const stale = now - pos.at > STALE_MS;
-      const isSelected = selectedDriver === trip.driverId;
-      const color = stale ? '#9CA3AF' : isSelected ? '#FFC107' : '#3B65DB';
+      const isSelected = selectedDriver === driver.driverId;
+      const color = stale ? '#9CA3AF' : isSelected ? '#FFC107' : driver.trip ? '#3B65DB' : '#22A65A';
 
       const icon = {
         url:        truckSvg(color),
@@ -113,8 +116,8 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
         anchor:     new G.Point(18, 18),
       };
 
-      if (markersRef.current[trip.driverId]) {
-        const marker = markersRef.current[trip.driverId];
+      if (markersRef.current[driver.driverId]) {
+        const marker = markersRef.current[driver.driverId];
         marker.setPosition({ lat: pos.lat, lng: pos.lng });
         marker.setIcon(icon);
       } else {
@@ -122,17 +125,21 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
           position: { lat: pos.lat, lng: pos.lng },
           map:      gmapRef.current,
           icon,
-          title:    trip.driverName || 'Driver',
+          title:    driver.driverName || 'Driver',
         });
+
+        const routeLine = driver.trip
+          ? `<p style="font-size:11px;color:#666;margin:0 0 6px">
+               ${addr(driver.trip.pickupAddress)?.split(',')[0]} → ${addr(driver.trip.dropAddress)?.split(',')[0]}
+             </p>`
+          : `<p style="font-size:11px;color:#9A9A9A;margin:0 0 6px;font-style:italic">Waiting for a trip</p>`;
 
         const info = new G.InfoWindow({
           content: `
             <div style="font-family:-apple-system,sans-serif;min-width:160px;padding:2px 0">
-              <p style="font-weight:700;margin:0 0 3px;color:#111;font-size:13px">${trip.driverName || 'Driver'}</p>
-              <p style="font-size:11px;color:#666;margin:0 0 2px">${trip.vehicleRegNo || ''}</p>
-              <p style="font-size:11px;color:#666;margin:0 0 6px">
-                ${addr(trip.pickupAddress)?.split(',')[0]} → ${addr(trip.dropAddress)?.split(',')[0]}
-              </p>
+              <p style="font-weight:700;margin:0 0 3px;color:#111;font-size:13px">${driver.driverName || 'Driver'}</p>
+              <p style="font-size:11px;color:#666;margin:0 0 2px">${driver.vehicleRegNo || ''}</p>
+              ${routeLine}
               <span style="font-size:11px;background:#eef2fb;color:#3B65DB;padding:2px 8px;border-radius:99px;font-weight:600">
                 ${pos.speedKmph ?? 0} km/h
               </span>
@@ -140,23 +147,23 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
         });
 
         marker.addListener('click', () => {
-          onSelectDriver(trip.driverId);
+          onSelectDriver(driver.driverId);
           info.open(gmapRef.current, marker);
         });
 
-        markersRef.current[trip.driverId] = marker;
+        markersRef.current[driver.driverId] = marker;
       }
     });
 
-    // Remove markers for drivers no longer in the list
-    const activeIds = new Set(trips.map((t) => t.driverId));
+    // Remove markers for drivers no longer online
+    const activeIds = new Set(drivers.map((d) => d.driverId));
     Object.keys(markersRef.current).forEach((id) => {
       if (!activeIds.has(id)) {
         markersRef.current[id].setMap(null);
         delete markersRef.current[id];
       }
     });
-  }, [trips, positions, now, selectedDriver, ready]);
+  }, [drivers, positions, now, selectedDriver, ready]);
 
   // Pan/zoom to selected driver
   useEffect(() => {
@@ -208,31 +215,40 @@ function LiveMap({ trips, positions, now, selectedDriver, onSelectDriver }) {
 }
 
 // ── Driver card ──────────────────────────────────────────────────────────────
-function DriverCard({ trip, pos, now, selected, onSelect }) {
+// `driver` is an ONLINE driver, not necessarily one with a trip — driver.trip
+// is null while they're just waiting for a dispatch assignment.
+function DriverCard({ driver, pos, now, selected, onSelect }) {
   const stale = pos && (now - pos.at > STALE_MS);
+  const trip = driver.trip;
   return (
-    <div onClick={() => onSelect(trip.driverId)}
+    <div onClick={() => onSelect(driver.driverId)}
       className="rounded-2xl border p-4 cursor-pointer"
       style={{ backgroundColor: selected ? '#eef2fb' : '#fff', borderColor: selected ? '#3B65DB' : '#E8E8E4', outline: selected ? '2px solid #3B65DB' : 'none' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-full grid place-items-center font-bold text-white text-xs shrink-0"
             style={{ backgroundColor: '#111111' }}>
-            {(trip.driverName || 'D')[0]}
+            {(driver.driverName || 'D')[0]}
           </div>
           <div>
-            <p className="font-bold text-xs" style={{ color: '#111111' }}>{trip.driverName || 'Driver'}</p>
-            <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>{trip.vehicleRegNo || trip.vehicleClass || '—'}</p>
+            <p className="font-bold text-xs" style={{ color: '#111111' }}>{driver.driverName || 'Driver'}</p>
+            <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>{driver.vehicleRegNo || '—'}</p>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: !pos ? '#E8E8E4' : stale ? '#F59E0B' : '#22A65A' }} />
-          <StatusBadge status={trip.status} />
+          {trip ? <StatusBadge status={trip.status} /> : <Badge tone="green">Online</Badge>}
         </div>
       </div>
-      <p className="text-[11.5px] truncate mb-2" style={{ color: '#9A9A9A' }}>
-        {addr(trip.pickupAddress)?.split(',')[0]} → {addr(trip.dropAddress)?.split(',')[0]}
-      </p>
+      {trip ? (
+        <p className="text-[11.5px] truncate mb-2" style={{ color: '#9A9A9A' }}>
+          {addr(trip.pickupAddress)?.split(',')[0]} → {addr(trip.dropAddress)?.split(',')[0]}
+        </p>
+      ) : (
+        <p className="text-[11.5px] truncate mb-2 italic" style={{ color: '#9A9A9A' }}>
+          Waiting for a trip assignment
+        </p>
+      )}
       {pos ? (
         <div className="grid grid-cols-3 gap-1.5">
           {[
@@ -254,7 +270,7 @@ function DriverCard({ trip, pos, now, selected, onSelect }) {
 }
 
 // ── Empty state ──────────────────────────────────────────────────────────────
-function NoActiveTrips({ recentBookings, refetch }) {
+function NoDriversOnline({ recentBookings, refetch }) {
   return (
     <div>
       <div className="rounded-2xl border p-5 mb-5 flex items-center gap-4"
@@ -264,10 +280,10 @@ function NoActiveTrips({ recentBookings, refetch }) {
           <Navigation size={22} style={{ color: '#9A9A9A' }} />
         </div>
         <div className="flex-1">
-          <p className="font-bold text-sm" style={{ color: '#111111' }}>No active trips right now</p>
+          <p className="font-bold text-sm" style={{ color: '#111111' }}>No drivers online right now</p>
           <p className="text-xs mt-0.5" style={{ color: '#9A9A9A' }}>
-            Driver positions will appear here in real time once a trip is in progress.
-            Use <strong>Dispatch</strong> to assign a vehicle to a pending booking.
+            Driver positions appear here the moment a driver goes online in the app —
+            whether or not they have a trip yet.
           </p>
         </div>
         <Button size="sm" variant="secondary" icon={RefreshCw} onClick={refetch}>Refresh</Button>
@@ -276,7 +292,7 @@ function NoActiveTrips({ recentBookings, refetch }) {
       <div className="rounded-2xl border mb-5 overflow-hidden"
         style={{ height: 320, borderColor: '#E8E8E4', backgroundColor: '#EEF2FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
         <MapPin size={36} style={{ color: '#c7d7f6' }} />
-        <p style={{ color: '#9A9A9A', fontSize: 13, fontWeight: 600 }}>Map will activate when trips are live</p>
+        <p style={{ color: '#9A9A9A', fontSize: 13, fontWeight: 600 }}>Map will activate once a driver goes online</p>
       </div>
 
       {recentBookings.length > 0 && (
@@ -285,9 +301,10 @@ function NoActiveTrips({ recentBookings, refetch }) {
             <p className="text-sm font-bold" style={{ color: '#111111' }}>Recent bookings</p>
             <p className="text-xs mt-0.5" style={{ color: '#9A9A9A' }}>Latest confirmed and pending bookings awaiting dispatch</p>
           </div>
-          <div className="divide-y" style={{ borderColor: '#F5F5F3' }}>
-            {recentBookings.map((b) => (
-              <div key={b.id} className="flex items-center justify-between px-5 py-3 gap-4">
+          <div>
+            {recentBookings.map((b, idx) => (
+              <div key={b.id} className="flex items-center justify-between px-5 py-3 gap-4"
+                style={{ borderBottom: idx < recentBookings.length - 1 ? '1px solid #F5F5F3' : 'none' }}>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="font-mono text-[11.5px] font-bold" style={{ color: '#9A9A9A' }}>
@@ -319,8 +336,18 @@ function NoActiveTrips({ recentBookings, refetch }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function LiveTracking() {
+  // Primary source of truth: every driver who is currently ONLINE — not just
+  // ones with an active trip. This was the actual gap: the socket already
+  // broadcasts every online driver's location unfiltered (see
+  // socketService.js), but the page only ever looked at ONGOING bookings, so
+  // a driver waiting for their next assignment was invisible here even
+  // though their GPS was already arriving.
+  const onlineApi  = useApi(
+    () => driverService.list({ filters: { isOnline: true }, limit: 200 }),
+    []
+  );
   const activeApi  = useApi(
-    () => bookingService.list({ status: 'ONGOING', limit: 20 }),
+    () => bookingService.list({ status: 'ONGOING', limit: 50 }),
     []
   );
   const recentApi  = useApi(
@@ -328,19 +355,16 @@ export default function LiveTracking() {
     []
   );
 
+  const onlineDrivers  = onlineApi.data?.data ?? onlineApi.data?.items ?? [];
   const activeTripsRaw = activeApi.data?.data  ?? activeApi.data?.items  ?? [];
   const recentBookings = recentApi.data?.data  ?? recentApi.data?.items  ?? [];
 
-  // FIX: the admin booking list (/admin/bookings, used by bookingService) never
-  // includes an allocation/driverId field — BOOKING_LIST_SELECT on the backend
-  // only returns booking columns, not the assigned driver. Every trip.driverId
-  // read below was always undefined, so positions[trip.driverId] never matched
-  // anything and the map never plotted a single live marker, regardless of
-  // whether the tracking socket itself had real data.
-  //
-  // The existing GET /admin/dispatch/bookings/:bookingId/allocation endpoint
-  // (already used by Dispatch.jsx) returns the real driverId for a booking, so
-  // it's fetched once per active trip here rather than inventing a new API.
+  // The admin booking list (/admin/bookings, used by bookingService) never
+  // includes an allocation/driverId field — BOOKING_LIST_SELECT on the
+  // backend only returns booking columns, not the assigned driver. So each
+  // ONGOING booking's actual driver is resolved via the existing
+  // GET /admin/dispatch/bookings/:bookingId/allocation endpoint (already
+  // used by Dispatch.jsx) rather than inventing a new API.
   const [driverIdByBooking, setDriverIdByBooking] = useState({});
 
   useEffect(() => {
@@ -367,15 +391,30 @@ export default function LiveTracking() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTripsRaw.map((t) => t.id).join(',')]);
 
-  const activeTrips = useMemo(
-    () => activeTripsRaw.map((t) => ({ ...t, driverId: t.driverId ?? driverIdByBooking[t.id] ?? null })),
-    [activeTripsRaw, driverIdByBooking]
+  // driverId → their ONGOING trip, for whichever online drivers happen to
+  // have one right now.
+  const tripByDriverId = useMemo(() => {
+    const map = {};
+    activeTripsRaw.forEach((t) => {
+      const driverId = t.driverId ?? driverIdByBooking[t.id] ?? null;
+      if (driverId) map[driverId] = t;
+    });
+    return map;
+  }, [activeTripsRaw, driverIdByBooking]);
+
+  // The unified list the map/cards render from: every online driver, each
+  // optionally carrying its current trip.
+  const drivers = useMemo(
+    () => onlineDrivers.map((d) => ({
+      driverId:    d.id ?? d.userId,
+      driverName:  d.user?.name || d.name || 'Driver',
+      vehicleRegNo: d.assignedVehicle?.registrationNumber || d.vehicle?.registrationNumber || null,
+      trip:        tripByDriverId[d.id] || tripByDriverId[d.userId] || null,
+    })),
+    [onlineDrivers, tripByDriverId]
   );
 
-  const driverIds = useMemo(
-    () => activeTrips.map((t) => t.driverId).filter(Boolean),
-    [activeTrips]
-  );
+  const driverIds = useMemo(() => drivers.map((d) => d.driverId).filter(Boolean), [drivers]);
   const { connection, positions } = useTrackingSocket(driverIds);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -385,41 +424,64 @@ export default function LiveTracking() {
     return () => clearInterval(t);
   }, []);
 
-  if (activeApi.status === 'loading' || recentApi.status === 'loading') {
+  if (onlineApi.status === 'loading' || activeApi.status === 'loading' || recentApi.status === 'loading') {
     return <LoadingState label="Loading tracking data…" />;
   }
 
-  if (activeApi.status === 'error') {
+  if (onlineApi.status === 'error' || activeApi.status === 'error') {
     return (
       <div>
         <PageHeader title="Live Tracking" />
-        <ErrorState message={activeApi.error?.message} onRetry={activeApi.refetch} />
+        <ErrorState message={onlineApi.error?.message || activeApi.error?.message} onRetry={() => { onlineApi.refetch(); activeApi.refetch(); }} />
       </div>
     );
   }
+
+  const onTripCount = drivers.filter((d) => d.trip).length;
 
   return (
     <div>
       <PageHeader
         title="Live Tracking"
-        description={activeTrips.length > 0
-          ? `${activeTrips.length} trip${activeTrips.length > 1 ? 's' : ''} in progress — click a driver to centre the map.`
-          : 'Realtime GPS positions appear here once trips are in progress.'}
+        description={drivers.length > 0
+          ? `${drivers.length} driver${drivers.length > 1 ? 's' : ''} online${onTripCount > 0 ? ` — ${onTripCount} on a trip` : ''}. Click a driver to centre the map.`
+          : 'Driver positions appear here the moment they go online — with or without a trip.'}
         actions={
           <div className="flex items-center gap-2">
             <ConnectionBadge status={connection} />
             <Button size="sm" variant="secondary" icon={RefreshCw}
-              onClick={() => { activeApi.refetch(); recentApi.refetch(); }}>
+              onClick={() => { onlineApi.refetch(); activeApi.refetch(); recentApi.refetch(); }}>
               Refresh
             </Button>
           </div>
         }
       />
 
-      {activeTrips.length === 0 ? (
-        <NoActiveTrips
+      {/* Mock mode invents plausible-looking driver positions, which is
+          indistinguishable from real tracking at a glance — say so loudly
+          rather than letting it be mistaken for live data. */}
+      {USE_MOCK && (
+        <div className="rounded-xl border p-4 mb-4 flex items-start gap-3"
+          style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }}>
+          <AlertTriangle size={18} style={{ color: '#92400E', marginTop: 1, flexShrink: 0 }} />
+          <div>
+            <p className="font-bold text-sm" style={{ color: '#92400E' }}>
+              Showing simulated data — this is not live driver tracking
+            </p>
+            <p className="text-xs mt-1" style={{ color: '#92400E' }}>
+              <code>VITE_USE_MOCK</code> is enabled (it defaults to <code>true</code> when no
+              <code> .env</code> file is present). Create <code>.env</code> from
+              <code> .env.example</code>, set <code>VITE_USE_MOCK=false</code> and
+              <code> VITE_API_BASE_URL</code> to your backend, then restart the dev server.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {drivers.length === 0 ? (
+        <NoDriversOnline
           recentBookings={recentBookings}
-          refetch={() => { activeApi.refetch(); recentApi.refetch(); }}
+          refetch={() => { onlineApi.refetch(); activeApi.refetch(); recentApi.refetch(); }}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4"
@@ -428,7 +490,7 @@ export default function LiveTracking() {
           <div className="lg:col-span-2 rounded-2xl overflow-hidden border"
             style={{ borderColor: '#E8E8E4', minHeight: 420 }}>
             <LiveMap
-              trips={activeTrips}
+              drivers={drivers}
               positions={positions}
               now={now}
               selectedDriver={selectedDriver}
@@ -438,13 +500,13 @@ export default function LiveTracking() {
 
           {/* Driver cards */}
           <div className="flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '100%' }}>
-            {activeTrips.map((trip) => (
+            {drivers.map((driver) => (
               <DriverCard
-                key={trip.id}
-                trip={trip}
-                pos={positions[trip.driverId]}
+                key={driver.driverId}
+                driver={driver}
+                pos={positions[driver.driverId]}
                 now={now}
-                selected={selectedDriver === trip.driverId}
+                selected={selectedDriver === driver.driverId}
                 onSelect={setSelectedDriver}
               />
             ))}

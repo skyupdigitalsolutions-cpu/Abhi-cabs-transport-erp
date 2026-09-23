@@ -223,10 +223,11 @@ export default function CustomerDetail() {
               description="This customer has not made any bookings yet." />
           )}
           {recentBookings.length > 0 && (
-            <div className="divide-y" style={{ borderColor: '#F7F8FC' }}>
-              {recentBookings.map((b) => (
+            <div>
+              {recentBookings.map((b, idx) => (
                 <div key={b.id}
                   className="flex items-center justify-between px-5 py-3 cursor-pointer hover:bg-gray-50"
+                  style={{ borderBottom: idx < recentBookings.length - 1 ? '1px solid #F3F4F6' : 'none' }}
                   onClick={() => navigate(`/admin/bookings/${b.id}`)}>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate" style={{ color: '#1F2937' }}>

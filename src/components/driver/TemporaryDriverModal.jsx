@@ -136,7 +136,10 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
 
       {isAssignOnly ? (
         <>
-          <Alert type="info" className="mb-4">Assigning a vehicle to <strong>{driver.user?.email}</strong>.</Alert>
+          <Alert type="info" className="mb-4">
+            Assigning a vehicle to <strong>{driver.user?.name || driver.user?.email}</strong>.
+            {' '}They can go online and receive trips once this is set.
+          </Alert>
           <FormField label="Vehicle" required
             hint={vehicleMode === 'fleet' && !vehicleError ? (vehiclesLoading ? 'Loading available vehicles…' : 'Only vehicles marked Available are listed.') : undefined}>
             {VehicleField}

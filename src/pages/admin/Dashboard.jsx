@@ -356,26 +356,27 @@ export default function Dashboard() {
               View all →
             </button>
           </div>
-          <div className="divide-y" style={{ borderColor: '#F7F8FC' }}>
+          <div>
             {recentBookings.length === 0 && (
               <p className="px-5 py-6 text-sm text-center" style={{ color: '#9CA3AF' }}>
                 No bookings yet.
               </p>
             )}
-            {recentBookings.map((b) => (
+            {recentBookings.map((b, idx) => (
               <div
                 key={b.id}
                 className="flex items-center justify-between px-5 py-3 text-sm cursor-pointer hover:bg-gray-50"
+                style={{ borderBottom: idx < recentBookings.length - 1 ? '1px solid #F3F4F6' : 'none' }}
                 onClick={() => navigate(`/admin/bookings/${b.id}`)}
               >
-                <div>
+                <div className="min-w-0 flex-1 mr-4">
                   {/* customer name nested under b.customer.user.name */}
-                  <p className="font-medium" style={{ color: '#1F2937' }}>
+                  <p className="font-medium truncate" style={{ color: '#1F2937' }}>
                     {b.customer?.user?.name || b.corporate?.companyName || '—'}
                   </p>
-                  {/* addresses are objects { address: "..." } */}
-                  <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-                    {addr(b.pickupAddress)} → {addr(b.dropAddress)}
+                  {/* addresses are objects { address: "..." } — first segment only, single line */}
+                  <p className="text-xs mt-0.5 truncate" style={{ color: '#6B7280' }}>
+                    {addr(b.pickupAddress)?.split(',')[0]} → {addr(b.dropAddress)?.split(',')[0]}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -393,16 +394,17 @@ export default function Dashboard() {
             <Zap size={14} style={{ color: '#F59E0B' }} />
             <h3 className="text-sm font-semibold" style={{ color: '#1F2937' }}>Live activity</h3>
           </div>
-          <div className="divide-y max-h-[420px] overflow-y-auto" style={{ borderColor: '#F7F8FC' }}>
+          <div className="max-h-[420px] overflow-y-auto">
             {feed.length === 0 && (
               <p className="px-5 py-6 text-xs text-center" style={{ color: '#9CA3AF' }}>
                 Waiting for activity — new bookings appear here instantly.
               </p>
             )}
-            {feed.map((item) => {
+            {feed.map((item, idx) => {
               const cfg = FEED_LABEL[item.kind] || { text: item.kind, color: '#6B7280', bg: '#F7F8FC' };
               return (
-                <div key={item.id} className="px-5 py-3 text-sm">
+                <div key={item.id} className="px-5 py-3 text-sm"
+                  style={{ borderBottom: idx < feed.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
                   <div className="flex items-center justify-between gap-2">
                     <span
                       className="text-[12.5px] font-bold px-2 py-0.5 rounded-full"

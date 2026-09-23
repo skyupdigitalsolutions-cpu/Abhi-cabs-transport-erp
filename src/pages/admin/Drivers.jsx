@@ -199,7 +199,12 @@ function RosterTab() {
         : (
           <div>
             <p className="flex items-center gap-1 font-mono" style={{ color: '#1F2937', fontSize: 13 }}><IdCard size={12} />{r.licenceNumber}</p>
-            {r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}
+            {/* A vehicle is optional at registration, so a regular driver can
+                legitimately have none — surface that here so ops can assign
+                one rather than wondering why the driver can't go online. */}
+            {r.assignedVehicle?.registrationNumber
+              ? <p style={{ color: '#6B7280', fontSize: 12.5 }}>{r.assignedVehicle.registrationNumber}</p>
+              : <p style={{ color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>No vehicle assigned</p>}
           </div>
         ),
     },
@@ -218,10 +223,12 @@ function RosterTab() {
       key: 'actions', header: '', className: 'text-right',
       render: (r) => (
         <div className="flex gap-2 justify-end">
-          {/* Temp drivers skip the full onboarding form entirely — nothing there applies (no phone/licence). */}
-          {r.driverType === 'TEMPORARY' && !r.assignedVehicle?.registrationNumber && (
+          {/* A vehicle is optional at registration for EVERY driver type, so
+              admin can assign one directly to whoever doesn't have one yet. */}
+          {!r.assignedVehicle?.registrationNumber && (
             <Button size="sm" variant="primary" onClick={() => setAssigning(r)}>Assign Vehicle</Button>
           )}
+          {/* Temp drivers skip the full onboarding form entirely — nothing there applies (no phone/licence). */}
           {r.driverType !== 'TEMPORARY' && (
             <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
           )}
