@@ -263,7 +263,11 @@ function DriverCard({ driver, pos, now, selected, onSelect }) {
           ))}
         </div>
       ) : (
-        <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>Waiting for GPS signal…</p>
+        <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>
+          {driver.lastPingAt
+            ? `No live fix — last ping ${formatDateTime(driver.lastPingAt)}`
+            : 'Online, but no GPS received yet. The driver app only sends location while it is open in the foreground.'}
+        </p>
       )}
     </div>
   );
@@ -421,6 +425,10 @@ export default function LiveTracking() {
       driverId:    d.id ?? d.userId,
       driverName:  d.user?.name || d.name || 'Driver',
       vehicleRegNo: d.assignedVehicle?.registrationNumber || d.vehicle?.registrationNumber || null,
+      // The driver app's GPS pinger is foreground-only, so a driver can be
+      // isOnline in Postgres while sending nothing. lastPingAt is what tells
+      // those two states apart on the card.
+      lastPingAt:  d.lastPingAt || null,
       trip:        tripByDriverId[d.id] || tripByDriverId[d.userId] || null,
     })),
     [onlineDrivers, tripByDriverId]
