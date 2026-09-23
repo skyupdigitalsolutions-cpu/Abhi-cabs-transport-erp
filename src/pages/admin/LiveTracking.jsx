@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { Navigation, MapPin, Truck, Radio, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Navigation, MapPin, RefreshCw, AlertTriangle } from 'lucide-react';
 import PageHeader      from '../../components/ui/PageHeader';
 import Card            from '../../components/ui/Card';
 import Badge           from '../../components/ui/Badge';
@@ -10,7 +10,7 @@ import ErrorState      from '../../components/ui/ErrorState';
 import ConnectionBadge from '../../components/tracking/ConnectionBadge';
 import { useTrackingSocket } from '../../hooks/useTrackingSocket';
 import { useApi }      from '../../hooks/useApi';
-import { bookingService, driverService } from '../../services';
+import { bookingService } from '../../services';
 import { apiClient, USE_MOCK }   from '../../services/apiClient';
 import { formatDateTime } from '../../utils/formatters';
 
@@ -270,7 +270,7 @@ function DriverCard({ driver, pos, now, selected, onSelect }) {
 }
 
 // ── Empty state ──────────────────────────────────────────────────────────────
-function NoDriversOnline({ recentBookings, refetch }) {
+function NoDriversOnline({ recentBookings, refetch, totalDrivers }) {
   return (
     <div>
       <div className="rounded-2xl border p-5 mb-5 flex items-center gap-4"
@@ -282,8 +282,9 @@ function NoDriversOnline({ recentBookings, refetch }) {
         <div className="flex-1">
           <p className="font-bold text-sm" style={{ color: '#111111' }}>No drivers online right now</p>
           <p className="text-xs mt-0.5" style={{ color: '#9A9A9A' }}>
-            Driver positions appear here the moment a driver goes online in the app —
-            whether or not they have a trip yet.
+            {totalDrivers > 0
+              ? `${totalDrivers} verified driver${totalDrivers > 1 ? 's' : ''} found, but none are online. Positions appear the moment a driver goes online in the app — whether or not they have a trip.`
+              : 'Driver positions appear here the moment a driver goes online in the app — whether or not they have a trip.'}
           </p>
         </div>
         <Button size="sm" variant="secondary" icon={RefreshCw} onClick={refetch}>Refresh</Button>
@@ -337,13 +338,21 @@ function NoDriversOnline({ recentBookings, refetch }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function LiveTracking() {
   // Primary source of truth: every driver who is currently ONLINE — not just
-  // ones with an active trip. This was the actual gap: the socket already
-  // broadcasts every online driver's location unfiltered (see
-  // socketService.js), but the page only ever looked at ONGOING bookings, so
-  // a driver waiting for their next assignment was invisible here even
-  // though their GPS was already arriving.
-  const onlineApi  = useApi(
-    () => driverService.list({ filters: { isOnline: true }, limit: 200 }),
+  // ones with an active trip. The socket already broadcasts every online
+  // driver's location unfiltered (see socketService.js); this page just has
+  // to know who they are.
+  //
+  // NOTE on the query: this deliberately mirrors the call Dispatch.jsx
+  // already makes successfully — kycStatus/limit/page only. An earlier
+  // version passed `isOnline: true` with `limit: 200` and the backend
+  // rejected it with 400 "Invalid request data": `isOnline` is a field ON
+  // each driver record, not an accepted query parameter, and 200 is over
+  // the server's page-size cap. Online status is therefore filtered
+  // client-side off the `isOnline` field the roster already renders.
+  const onlineApi = useApi(
+    () => apiClient.get('/admin/drivers', {
+      params: { kycStatus: 'VERIFIED', limit: 100, page: 1 },
+    }),
     []
   );
   const activeApi  = useApi(
@@ -355,7 +364,10 @@ export default function LiveTracking() {
     []
   );
 
-  const onlineDrivers  = onlineApi.data?.data ?? onlineApi.data?.items ?? [];
+  // Client-side online filter — see the note on onlineApi above.
+  // Unwrap order matches Dispatch.jsx, which uses this same endpoint.
+  const allDrivers     = onlineApi.data?.items ?? onlineApi.data?.data ?? [];
+  const onlineDrivers  = allDrivers.filter((d) => d.isOnline);
   const activeTripsRaw = activeApi.data?.data  ?? activeApi.data?.items  ?? [];
   const recentBookings = recentApi.data?.data  ?? recentApi.data?.items  ?? [];
 
@@ -481,6 +493,7 @@ export default function LiveTracking() {
       {drivers.length === 0 ? (
         <NoDriversOnline
           recentBookings={recentBookings}
+          totalDrivers={allDrivers.length}
           refetch={() => { onlineApi.refetch(); activeApi.refetch(); recentApi.refetch(); }}
         />
       ) : (

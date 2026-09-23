@@ -1,9 +1,50 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import * as Icons from 'lucide-react';
-import { cn } from '../../utils/cn';
 import { useAuth } from '../../hooks/useAuth';
 
 const SIDEBAR_W = 240;
+
+/**
+ * One nav row.
+ *
+ * Hover is tracked in React state rather than by mutating
+ * `e.currentTarget.style`. The previous version guarded its mouse handlers
+ * with `style.backgroundColor.includes('FFC107')` — but the browser
+ * normalises inline colours, so that property reads back as
+ * "rgb(255, 193, 7)" and the check was ALWAYS false. Hovering the active
+ * item therefore overwrote its yellow highlight with the grey hover colour,
+ * and mouseleave then set it to transparent — which is why the selected
+ * page stopped looking selected the moment you moused over it to click.
+ */
+function NavItem({ item, onCloseMobile }) {
+  const [hovered, setHovered] = useState(false);
+  const Icon = Icons[item.icon] || Icons.Circle;
+
+  return (
+    <NavLink
+      to={item.to}
+      onClick={onCloseMobile}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={({ isActive }) => ({
+        display: 'flex', alignItems: 'center', gap: 10,
+        borderRadius: 8, padding: '9px 12px',
+        fontSize: 13.5, fontWeight: 600, letterSpacing: '0.01em',
+        textDecoration: 'none', transition: 'background 0.12s, color 0.12s',
+        cursor: 'pointer',
+        // Active always wins over hover.
+        backgroundColor: isActive
+          ? '#FFC107'
+          : hovered ? 'rgba(255,255,255,0.07)' : 'transparent',
+        color: isActive ? '#111111' : hovered ? '#ffffff' : '#888888',
+      })}
+    >
+      <Icon size={15} strokeWidth={2} />
+      {item.label}
+    </NavLink>
+  );
+}
 
 export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
   const { hasPermission } = useAuth();
@@ -40,39 +81,9 @@ export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
 
       {/* Nav items */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {items.map((item) => {
-          const Icon = Icons[item.icon] || Icons.Circle;
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onCloseMobile}
-              style={({ isActive }) => ({
-                display: 'flex', alignItems: 'center', gap: 10,
-                borderRadius: 8, padding: '9px 12px',
-                fontSize: 13.5, fontWeight: 600, letterSpacing: '0.01em',
-                textDecoration: 'none', transition: 'background 0.12s',
-                backgroundColor: isActive ? '#FFC107' : 'transparent',
-                color: isActive ? '#111111' : '#888888',
-              })}
-              onMouseEnter={(e) => {
-                if (!e.currentTarget.style.backgroundColor.includes('FFC107')) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)';
-                  e.currentTarget.style.color = '#ffffff';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!e.currentTarget.style.backgroundColor.includes('FFC107')) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = '#888888';
-                }
-              }}
-            >
-              <Icon size={15} strokeWidth={2} />
-              {item.label}
-            </NavLink>
-          );
-        })}
+        {items.map((item) => (
+          <NavItem key={item.to} item={item} onCloseMobile={onCloseMobile} />
+        ))}
       </nav>
 
       {/* Footer */}

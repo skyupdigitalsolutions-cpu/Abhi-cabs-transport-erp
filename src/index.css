@@ -98,3 +98,60 @@ tbody tr { transition: background-color 0.1s; }
 /* Sidebar hover — subtle white tint */
 .hover\:bg-white\/5:hover { background-color: rgba(255,255,255,0.05); }
 .hover\:bg-white\/8:hover { background-color: rgba(255,255,255,0.08); }
+
+/* ── Pointer cursors on interactive elements ─────────────────────────────────
+   Applied globally rather than per-component: the app has ~130 clickable
+   elements across 40+ files, and relying on each one to remember
+   `cursor: pointer` is how they drifted out of sync in the first place.
+   Browsers default <button> to `cursor: default`, which makes buttons feel
+   inert, so this sets the expected affordance everywhere at once. */
+button,
+[role="button"],
+a[href],
+label[for],
+summary,
+select,
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="file"]::file-selector-button,
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Disabled controls must NOT look clickable — this has to come after the
+   rule above to win on specificity ties. */
+button:disabled,
+button[disabled],
+select:disabled,
+input:disabled,
+[aria-disabled="true"],
+[data-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* Sortable table headers and clickable rows (DataTable renders these as
+   <th><button> and <tr>, the latter with an onClick but no inherent
+   affordance). */
+thead th[aria-sort],
+thead th button {
+  cursor: pointer;
+}
+
+/* Text inputs keep the text caret — a blanket pointer would be wrong here. */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+input[type="datetime-local"],
+textarea {
+  cursor: text;
+}
+
+/* Drag handles / resizers, where present. */
+[draggable="true"] { cursor: grab; }
+[draggable="true"]:active { cursor: grabbing; }
