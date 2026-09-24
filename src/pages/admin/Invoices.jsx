@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Download } from 'lucide-react';
 import PageHeader  from '../../components/ui/PageHeader';
 import FilterBar   from '../../components/ui/FilterBar';
 import DataTable   from '../../components/ui/DataTable';
@@ -10,6 +10,7 @@ import { useResourceList } from '../../hooks/useResourceList';
 import { useApi } from '../../hooks/useApi';
 import { adminInvoicesService } from '../../services/adminInvoicesService';
 import { formatCurrency, formatDate, formatDateTime, titleCase } from '../../utils/formatters';
+import { downloadInvoice } from '../../utils/invoicePdf';
 
 const STATUS_TONE = { DRAFT: 'slate', ISSUED: 'blue', PAID: 'green', CANCELLED: 'red' };
 const STATUS_OPTS = ['DRAFT', 'ISSUED', 'PAID', 'CANCELLED'];
@@ -49,7 +50,14 @@ function InvoiceModal({ invoice, onClose }) {
   if (!invoice) return null;
   return (
     <Modal open={!!invoice} onClose={onClose} title={invoice.invoiceNumber || 'Invoice'} size="md"
-      footer={<Button variant="secondary" size="sm" onClick={onClose}>Close</Button>}>
+      footer={
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" icon={Download} onClick={() => downloadInvoice(invoice)}>
+            Download
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
+        </div>
+      }>
       <div className="space-y-3 text-sm">
         {[
           ['Type',     invoice.type === 'TAX' ? 'Tax Invoice' : 'Bill of Supply'],
@@ -104,6 +112,18 @@ export default function Invoices() {
     } catch { /* keep the row-level view; not worth an error toast for a detail fetch */ }
   };
 
+  // Fetch the full invoice (with lines) and open the PDF preview.
+  const handleDownload = async (row) => {
+    try {
+      const full = await adminInvoicesService.getOne(row.id);
+      downloadInvoice({ ...full, booking: row.booking });
+    } catch {
+      // If the detail fetch fails, still try with whatever data we have —
+      // the list row already carries enough for a basic invoice.
+      downloadInvoice(row);
+    }
+  };
+
   const columns = [
     { key: 'invoiceNumber', header: 'Invoice #',
       render: (r) => <span className="font-mono font-bold text-xs" style={{ color: '#111111' }}>{r.invoiceNumber || '—'}</span> },
@@ -121,9 +141,15 @@ export default function Invoices() {
       render: (r) => <span className="text-xs" style={{ color: '#9A9A9A' }}>{formatDate(r.issuedAt)}</span> },
     { key: 'actions', header: '', className: 'text-right',
       render: (r) => (
-        <Button size="sm" variant="secondary" icon={FileText} onClick={() => openInvoice(r)}>
-          View
-        </Button>
+        <div className="flex gap-1 justify-end">
+          <Button size="sm" variant="secondary" icon={FileText} onClick={() => openInvoice(r)}>
+            View
+          </Button>
+          <Button size="sm" variant="secondary" icon={Download} onClick={() => handleDownload(r)}
+            title="Download invoice">
+            Download
+          </Button>
+        </div>
       ),
     },
   ];
