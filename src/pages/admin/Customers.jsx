@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Phone, Mail } from 'lucide-react';
+import { Pencil, Phone, Mail, UserCheck, UserX, Users } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import FilterBar     from '../../components/ui/FilterBar';
 import DataTable     from '../../components/ui/DataTable';
@@ -9,36 +9,51 @@ import Badge         from '../../components/ui/Badge';
 import Button        from '../../components/ui/Button';
 import Input         from '../../components/ui/Input';
 import CustomerFormDrawer from '../../components/customer/CustomerFormDrawer';
-import { useResourceList }       from '../../hooks/useResourceList';
 import { adminCustomersService, bookingService } from '../../services';
-import { useToast }  from '../../hooks/useToast';
-import { formatDate, titleCase, accountTypeLabel } from '../../utils/formatters';
+import { useToast }    from '../../hooks/useToast';
+import { useDebounce } from '../../hooks/useDebounce';
+import { formatDate, accountTypeLabel } from '../../utils/formatters';
 import { PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
 
-// Backend listCustomersQuerySchema accepts:
-//   search, accountType, sortBy (createdAt|loyaltyPoints|totalBookings|name), order, page, limit
-// ALL SERVER-SIDE.
-//
-// FIX: date-range search was requested, but this schema has NO from/to
-// fields at all — confirmed directly against the validator. Adding it
-// server-side would be one line; per an explicit "frontend only" decision,
-// this is instead built as a separate, larger fetch (respecting whatever
-// search/accountType filter is active) that's then filtered by createdAt
-// client-side and paginated locally — same pattern used for the
-// Cancellation Reasons report. It's capped (see CLIENT_FILTER_LIMIT below)
-// and stated plainly in the UI, not silently pretending to search everyone.
-const CLIENT_FILTER_LIMIT = 500;
+/**
+ * Customers / Clients — Logged-in users and Guest users on separate tabs.
+ *
+ * FRONTEND-ONLY: the backend has no "guest" field or filter, so the split is
+ * done here. Customers are loaded in pages of 100 (the backend's max limit),
+ * with search / account type / sort still applied server-side, then split
+ * into Logged-in vs Guest and paginated locally. That keeps the tab counts
+ * and pagination correct instead of filtering only the 10 rows on screen.
+ *
+ * A GUEST is a customer created without signing up, recognised by the
+ * placeholder email the backend gives such accounts:
+ *   - WhatsApp bot  → <digits>@whatsapp.invalid
+ *   - phone-only    → phone_<number>@placeholder.local
+ *   - legacy guest  → guest.<...>
+ * Everyone with a real email is a logged-in (registered) user.
+ */
+const PAGE_FETCH_LIMIT = 100;   // backend cap for list endpoints
+const MAX_PAGES        = 20;    // safety cap → up to 2,000 customers loaded
 
 const SORT_OPTIONS = [
-  { value: 'createdAt',    label: 'Joined date'    },
-  { value: 'loyaltyPoints',label: 'Loyalty points' },
-  { value: 'name',         label: 'Name'           },
+  { value: 'createdAt',     label: 'Joined date'    },
+  { value: 'loyaltyPoints', label: 'Loyalty points' },
+  { value: 'name',          label: 'Name'           },
 ];
 
-const customerListService = {
-  list: (params) => adminCustomersService.list(params),
-};
+const USER_TABS = [
+  { key: 'registered', label: 'Logged-in Users', icon: UserCheck },
+  { key: 'guest',      label: 'Guest Users',     icon: UserX     },
+];
+
+function isGuestCustomer(r) {
+  if (typeof r?.isGuest === 'boolean') return r.isGuest;
+  const email = (r?.user?.email || '').toLowerCase();
+  return !email
+    || email.endsWith('@placeholder.local')
+    || email.endsWith('@whatsapp.invalid')
+    || email.startsWith('guest.');
+}
 
 export default function Customers() {
   const navigate  = useNavigate();
@@ -46,98 +61,108 @@ export default function Customers() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission(PERMISSIONS.CLIENTS_MANAGE);
 
-  const list = useResourceList(customerListService, {
-    filterDefaults: { accountType: '' },
-    sortBy: 'createdAt',
-    sortDir: 'desc',
-    limit: 10,
-  });
+  // ── Server-side query params ──
+  const [search, setSearch]           = useState('');
+  const debouncedSearch               = useDebounce(search, 350);
+  const [accountType, setAccountType] = useState('');
+  const [sortBy, setSortBy]           = useState('createdAt');
+  const [sortDir, setSortDir]         = useState('desc');
 
-  const [editing, setEditing] = useState(null);
+  // ── Loaded data ──
+  const [allRows, setAllRows]   = useState([]);
+  const [status, setStatus]     = useState('loading');
+  const [error, setError]       = useState(null);
+  const [truncated, setTruncated] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
-  // ── Client-side date range filter (see note above imports) ──
+  // ── Local UI state ──
+  const [tab, setTab]           = useState('registered');
+  const [page, setPage]         = useState(1);
+  const [limit, setLimit]       = useState(10);
   const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [applied, setApplied] = useState(false); // whether a search has actually been run
-  const [dateFilterStatus, setDateFilterStatus] = useState('idle'); // idle | loading | ready | error
-  const [dateFilterRows, setDateFilterRows] = useState([]);
-  const [dateFilterPage, setDateFilterPage] = useState(1);
-  const dateFiltering = applied && (dateFrom || dateTo);
+  const [dateTo, setDateTo]     = useState('');
+  const [appliedRange, setAppliedRange] = useState({ from: '', to: '' });
+  const [editing, setEditing]   = useState(null);
 
-  async function runDateSearch() {
-    if (!dateFrom && !dateTo) return;
-    setApplied(true);
-    setDateFilterStatus('loading');
-    setDateFilterPage(1);
-    try {
-      // Respects whatever search/accountType filter is already active, so
-      // this composes with the existing filters rather than replacing them.
-      const res = await adminCustomersService.list({
-        search: list.search || undefined,
-        accountType: list.filters.accountType || undefined,
-        sortBy: 'createdAt',
-        order: 'desc',
-        limit: CLIENT_FILTER_LIMIT,
-        page: 1,
-      });
-      const rows = res?.data ?? res?.items ?? [];
-      const from = dateFrom ? new Date(dateFrom) : null;
-      const to   = dateTo ? new Date(dateTo + 'T23:59:59') : null;
-      const filtered = rows.filter((r) => {
-        const joined = r.createdAt ? new Date(r.createdAt) : null;
-        if (!joined) return false;
-        if (from && joined < from) return false;
-        if (to && joined > to) return false;
-        return true;
-      });
-      setDateFilterRows(filtered);
-      setDateFilterStatus('ready');
-    } catch (e) {
-      setDateFilterStatus('error');
-    }
-  }
+  const reload = useCallback(() => setReloadTick((t) => t + 1), []);
 
-  function clearDateSearch() {
-    setDateFrom('');
-    setDateTo('');
-    setApplied(false);
-    setDateFilterRows([]);
-    setDateFilterStatus('idle');
-  }
+  // Load every page (up to the cap) for the current server-side params.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setStatus('loading');
+      setError(null);
+      try {
+        const collected = [];
+        let totalPages = 1;
+        let p = 1;
+        do {
+          const res = await adminCustomersService.list({
+            page: p,
+            limit: PAGE_FETCH_LIMIT,
+            ...(debouncedSearch ? { search: debouncedSearch } : {}),
+            ...(accountType ? { accountType } : {}),
+            sortBy,
+            order: sortDir,
+          });
+          const rows = res?.data ?? res?.items ?? [];
+          collected.push(...rows);
+          totalPages = res?.meta?.totalPages ?? res?.pagination?.totalPages ?? 1;
+          p += 1;
+        } while (p <= totalPages && p <= MAX_PAGES && !cancelled);
+        if (cancelled) return;
+        setAllRows(collected);
+        setTruncated(totalPages > MAX_PAGES);
+        setStatus('success');
+      } catch (e) {
+        if (cancelled) return;
+        setError(e);
+        setStatus('error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [debouncedSearch, accountType, sortBy, sortDir, reloadTick]);
 
-  const DATE_FILTER_PAGE_SIZE = 10;
-  const dateFilterTotalPages = Math.max(1, Math.ceil(dateFilterRows.length / DATE_FILTER_PAGE_SIZE));
-  const dateFilterPageRows = useMemo(
-    () => dateFilterRows.slice((dateFilterPage - 1) * DATE_FILTER_PAGE_SIZE, dateFilterPage * DATE_FILTER_PAGE_SIZE),
-    [dateFilterRows, dateFilterPage]
+  // Any change to what's shown goes back to page 1.
+  useEffect(() => { setPage(1); }, [tab, debouncedSearch, accountType, sortBy, sortDir, appliedRange, limit]);
+
+  // ── Split + date filter ──
+  const { registeredRows, guestRows } = useMemo(() => {
+    const reg = [], guest = [];
+    for (const r of allRows) (isGuestCustomer(r) ? guest : reg).push(r);
+    return { registeredRows: reg, guestRows: guest };
+  }, [allRows]);
+
+  const dateFiltering = !!(appliedRange.from || appliedRange.to);
+
+  const tabRows = useMemo(() => {
+    const base = tab === 'guest' ? guestRows : registeredRows;
+    if (!dateFiltering) return base;
+    const from = appliedRange.from ? new Date(appliedRange.from) : null;
+    const to   = appliedRange.to ? new Date(appliedRange.to + 'T23:59:59') : null;
+    return base.filter((r) => {
+      const joined = r.createdAt ? new Date(r.createdAt) : null;
+      if (!joined) return false;
+      if (from && joined < from) return false;
+      if (to && joined > to) return false;
+      return true;
+    });
+  }, [tab, guestRows, registeredRows, dateFiltering, appliedRange]);
+
+  const totalPages = Math.max(1, Math.ceil(tabRows.length / limit));
+  const pageRows = useMemo(
+    () => tabRows.slice((page - 1) * limit, page * limit),
+    [tabRows, page, limit]
   );
 
   // ── Total Bookings column ──
-  // FIX: GET /admin/customers (the list endpoint) doesn't return a booking
-  // count at all — confirmed against its select fields. The only way to get
-  // a real count per customer is GET /admin/bookings?customerId=X, one call
-  // per customer. Only ever done for whichever rows are actually visible on
-  // screen right now (10–100 depending on page size), never the whole
-  // customer base at once — and cached so switching pages back and forth
-  // doesn't keep re-fetching the same customer twice.
-  const [bookingCounts, setBookingCounts] = useState({}); // userId -> count | 'loading' | 'error'
-  const [userTypeFilter, setUserTypeFilter] = useState(''); // '' | 'registered' | 'guest'
-
-  // A "guest" is a customer auto-created at checkout without signing up —
-  // identified by the placeholder email pattern used by the guest flow.
-  const isGuestCustomer = (r) => {
-    const email = (r.user?.email || '').toLowerCase();
-    return email.includes('@placeholder.local') || email.includes('guest.') || !r.user?.email;
-  };
-
-  const baseRows = dateFiltering ? dateFilterPageRows : list.rows;
-  const visibleRows = userTypeFilter
-    ? baseRows.filter((r) => userTypeFilter === 'guest' ? isGuestCustomer(r) : !isGuestCustomer(r))
-    : baseRows;
-  const visibleUserIds = visibleRows.map((r) => r.userId).join(',');
+  // The list endpoint doesn't return a booking count, so it's fetched per
+  // VISIBLE row only (GET /admin/bookings?customerId=X&limit=1) and cached.
+  const [bookingCounts, setBookingCounts] = useState({});
+  const visibleUserIds = pageRows.map((r) => r.userId).join(',');
 
   useEffect(() => {
-    const toFetch = visibleRows.filter((r) => r.userId && bookingCounts[r.userId] === undefined);
+    const toFetch = pageRows.filter((r) => r.userId && bookingCounts[r.userId] === undefined);
     if (toFetch.length === 0) return;
     setBookingCounts((prev) => {
       const next = { ...prev };
@@ -164,10 +189,6 @@ export default function Customers() {
         <div>
           <p style={{ fontWeight: 600, color: '#1F2937' }} className="flex items-center gap-1.5">
             {r.user?.name || '—'}
-            {/* Real presence — an actual open Socket.IO connection right
-                now (see backend presence.service.js), not a guess based on
-                "logged in recently". Goes away the instant the app closes
-                or the connection drops, same as a driver's online dot. */}
             {r.isLive && (
               <span
                 className="inline-flex items-center gap-1 text-[10.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
@@ -180,7 +201,9 @@ export default function Customers() {
             )}
           </p>
           <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1">
-            <Mail size={11} />{r.user?.email || '—'}
+            <Mail size={11} />
+            {/* A guest's placeholder email isn't a real address — don't show it as one */}
+            {isGuestCustomer(r) ? 'No email (guest)' : (r.user?.email || '—')}
           </p>
         </div>
       ),
@@ -198,7 +221,7 @@ export default function Customers() {
       render: (r) => (
         isGuestCustomer(r)
           ? <Badge tone="amber">Guest</Badge>
-          : <Badge tone="green">Registered</Badge>
+          : <Badge tone="green">Logged-in</Badge>
       ),
     },
     {
@@ -214,10 +237,6 @@ export default function Customers() {
       render: (r) => <span style={{ color: '#1F2937' }}>{r.loyaltyPoints ?? 0}</span>,
     },
     {
-      // FIX: no such column existed anywhere on this page. Since the list
-      // endpoint doesn't return a count, this is fetched per visible row
-      // (see the effect above) — shows a small spinner-ish "…" while that
-      // row's count is loading, "—" if it failed for that one customer.
       key: 'totalBookings', header: 'Total Bookings',
       render: (r) => {
         const count = bookingCounts[r.userId];
@@ -244,39 +263,76 @@ export default function Customers() {
     }] : []),
   ];
 
+  const handleSort = (key, dir) => {
+    if (dir) {
+      setSortBy(key);
+      setSortDir(dir);
+    } else {
+      setSortDir((prev) => (sortBy === key && prev === 'desc' ? 'asc' : 'desc'));
+      setSortBy(key);
+    }
+  };
+
   const handleUpdate = async (values) => {
     await adminCustomersService.update(editing.userId, values);
     toast.success('Customer updated');
     setEditing(null);
-    list.reload();
+    reload();
   };
+
+  const counts = { registered: registeredRows.length, guest: guestRows.length };
+  const loaded = status === 'success';
 
   return (
     <div>
       <PageHeader
         title="Customers"
-        description="All registered customers. Filters applied server-side."
+        description="Logged-in users and guest users are listed separately."
       />
 
+      {/* Logged-in vs Guest tabs */}
+      <div className="flex gap-1 mb-4 border-b" style={{ borderColor: '#E8E8E4' }}>
+        {USER_TABS.map(({ key, label, icon: Icon }) => {
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors"
+              style={{ borderColor: active ? '#FFC107' : 'transparent', color: active ? '#111111' : '#9A9A9A' }}
+            >
+              <Icon size={13} />
+              {label}
+              {loaded && (
+                <span
+                  className="ml-1 px-1.5 py-0.5 rounded-full text-[10.5px] font-bold"
+                  style={{ backgroundColor: active ? '#FFC107' : '#F3F4F6', color: '#111111' }}
+                >
+                  {counts[key]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'guest' && (
+        <p className="mb-4 text-xs flex items-center gap-1.5" style={{ color: '#6B7280' }}>
+          <Users size={12} />
+          Guests are customers created without signing up (e.g. WhatsApp or phone-only bookings) — they have no real email on file.
+        </p>
+      )}
+
       <FilterBar
-        search={list.search}
-        onSearchChange={list.onSearchChange}
+        search={search}
+        onSearchChange={setSearch}
         searchPlaceholder="Search name, email or phone…"
         filters={[
           {
-            name: 'userType',
-            value: userTypeFilter,
-            onChange: (v) => setUserTypeFilter(v),
-            placeholder: 'All users',
-            options: [
-              { value: 'registered', label: 'Registered (Logged In)' },
-              { value: 'guest',      label: 'Guest Users'           },
-            ],
-          },
-          {
             name: 'accountType',
-            value: list.filters.accountType,
-            onChange: (v) => list.setFilter('accountType', v),
+            value: accountType,
+            onChange: (v) => setAccountType(v),
             placeholder: 'All account types',
             options: [
               { value: 'RETAIL',    label: 'Personal'  },
@@ -285,15 +341,15 @@ export default function Customers() {
           },
           {
             name: 'sortBy',
-            value: list.sortBy,
-            onChange: (v) => list.onSort(v, list.sortDir),
+            value: sortBy,
+            onChange: (v) => handleSort(v, sortDir),
             placeholder: 'Sort by',
             options: SORT_OPTIONS,
           },
           {
             name: 'order',
-            value: list.sortDir,
-            onChange: (v) => list.onSort(list.sortBy, v),
+            value: sortDir,
+            onChange: (v) => handleSort(sortBy, v),
             placeholder: 'Order',
             options: [
               { value: 'desc', label: 'Newest first' },
@@ -303,7 +359,7 @@ export default function Customers() {
         ]}
       />
 
-      {/* Custom date range — client-side only, see the note above imports */}
+      {/* Joined date range — applied to the loaded list */}
       <div className="flex flex-wrap items-end gap-3 mb-4 bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex flex-col gap-1">
           <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined From</label>
@@ -313,52 +369,53 @@ export default function Customers() {
           <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined To</label>
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
-        <Button size="sm" onClick={runDateSearch} disabled={!dateFrom && !dateTo}>Search</Button>
-        {dateFiltering && <Button size="sm" variant="ghost" onClick={clearDateSearch}>Clear</Button>}
+        <Button
+          size="sm"
+          onClick={() => setAppliedRange({ from: dateFrom, to: dateTo })}
+          disabled={!dateFrom && !dateTo}
+        >
+          Search
+        </Button>
         {dateFiltering && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => { setDateFrom(''); setDateTo(''); setAppliedRange({ from: '', to: '' }); }}
+          >
+            Clear
+          </Button>
+        )}
+        {truncated && (
           <span className="text-xs text-gray-400">
-            Searching the {CLIENT_FILTER_LIMIT} most recent matching customers, filtered by join date — not your full customer base.
+            Showing the first {PAGE_FETCH_LIMIT * MAX_PAGES} customers for this search — narrow the search to see others.
           </span>
         )}
       </div>
 
-      {dateFiltering ? (
-        <DataTable
-          columns={columns}
-          rows={dateFilterPageRows}
-          status={dateFilterStatus}
-          error={dateFilterStatus === 'error' ? { message: 'Could not run date search' } : null}
-          onRetry={runDateSearch}
-          page={dateFilterPage}
-          limit={DATE_FILTER_PAGE_SIZE}
-          total={dateFilterRows.length}
-          totalPages={dateFilterTotalPages}
-          onPageChange={setDateFilterPage}
-          onRowClick={(r) => navigate(`/admin/customers/${r.userId}`)}
-          emptyTitle="No customers joined in this date range"
-          emptyDescription="Try a wider range, or clear the date filter."
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          rows={list.rows}
-          status={list.status}
-          error={list.error}
-          onRetry={list.refetch}
-          sortBy={list.sortBy}
-          sortDir={list.sortDir}
-          onSort={list.onSort}
-          page={list.page}
-          limit={list.meta?.limit}
-          total={list.meta?.total}
-          totalPages={list.meta?.totalPages}
-          onPageChange={list.setPage}
-          onLimitChange={list.setLimit}
-          onRowClick={(r) => navigate(`/admin/customers/${r.userId}`)}
-          emptyTitle="No customers found"
-          emptyDescription="Try adjusting your search or filters."
-        />
-      )}
+      <DataTable
+        columns={columns}
+        rows={pageRows}
+        rowKey="userId"
+        status={status}
+        error={error}
+        onRetry={reload}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSort={handleSort}
+        page={page}
+        limit={limit}
+        total={tabRows.length}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onLimitChange={(n) => setLimit(Number(n) || 10)}
+        onRowClick={(r) => navigate(`/admin/customers/${r.userId}`)}
+        emptyTitle={
+          dateFiltering
+            ? 'No customers joined in this date range'
+            : tab === 'guest' ? 'No guest users found' : 'No logged-in users found'
+        }
+        emptyDescription="Try adjusting your search or filters."
+      />
 
       {editing && (
         <CustomerFormDrawer

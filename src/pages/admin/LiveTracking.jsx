@@ -62,6 +62,26 @@ function truckSvg(color) {
   `)}`;
 }
 
+// ── 3D car marker ─────────────────────────────────────────────────────────
+// three.js + the car model are loaded lazily (only on this page). Until it's
+// ready — or if the browser has no WebGL — the flat truck icon above is used.
+function useCar3d() {
+  const [api, setApi] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    import('../../utils/car3dMarker')
+      .then(async (m) => {
+        const ok = await m.initCar3d();
+        if (alive && ok) setApi(m);
+      })
+      .catch((e) => console.warn('[LiveTracking] 3D car failed to load:', e));
+    return () => { alive = false; };
+  }, []);
+  return api;
+}
+
+const CAR_ICON_PX = 64; // on-screen size of the 3D car marker
+
 // ── Live Map ─────────────────────────────────────────────────────────────────
 // Renders one marker per ONLINE driver (drivers[], see main component below) —
 // not per active trip. A driver with no trip yet still gets a marker, just
@@ -71,6 +91,10 @@ function LiveMap({ drivers, positions, now, selectedDriver, onSelectDriver }) {
   const gmapRef    = useRef(null);   // google.maps.Map instance
   const markersRef = useRef({});     // driverId → google.maps.Marker
   const { ready, error } = useGoogleMaps();
+  const car3d = useCar3d();
+  // driverId → { lat, lng, heading } — used to work out which way a car is
+  // facing when the ping doesn't carry a heading.
+  const headingRef = useRef({});
   const [mapType, setMapType] = useState('roadmap'); // roadmap | satellite | hybrid
 
   // Init map once SDK is ready
@@ -110,11 +134,33 @@ function LiveMap({ drivers, positions, now, selectedDriver, onSelectDriver }) {
       const isSelected = selectedDriver === driver.driverId;
       const color = stale ? '#9CA3AF' : isSelected ? '#FFC107' : driver.trip ? '#3B65DB' : '#22A65A';
 
-      const icon = {
-        url:        truckSvg(color),
-        scaledSize: new G.Size(36, 36),
-        anchor:     new G.Point(18, 18),
-      };
+      // Heading: use the GPS heading when the ping has one; otherwise work it
+      // out from how the car moved since the last position (ignoring GPS
+      // jitter under ~5 m), and keep the last known heading when parked.
+      const prev = headingRef.current[driver.driverId];
+      let heading = prev?.heading ?? 0;
+      if (pos.heading !== null && pos.heading !== undefined && !Number.isNaN(Number(pos.heading))) {
+        heading = Number(pos.heading);
+      } else if (car3d && prev && (prev.lat !== pos.lat || prev.lng !== pos.lng)) {
+        const moved = G.geometry?.spherical
+          ? G.geometry.spherical.computeDistanceBetween(prev, pos)
+          : Math.hypot(pos.lat - prev.lat, pos.lng - prev.lng) * 111000;
+        if (moved > 5) heading = car3d.bearingBetween(prev, pos);
+      }
+      headingRef.current[driver.driverId] = { lat: pos.lat, lng: pos.lng, heading };
+
+      const carUrl = car3d ? car3d.getCarIconUrl(color, heading) : null;
+      const icon = carUrl
+        ? {
+            url:        carUrl,
+            scaledSize: new G.Size(CAR_ICON_PX, CAR_ICON_PX),
+            anchor:     new G.Point(CAR_ICON_PX / 2, CAR_ICON_PX / 2),
+          }
+        : {
+            url:        truckSvg(color),
+            scaledSize: new G.Size(36, 36),
+            anchor:     new G.Point(18, 18),
+          };
 
       if (markersRef.current[driver.driverId]) {
         const marker = markersRef.current[driver.driverId];
@@ -163,7 +209,7 @@ function LiveMap({ drivers, positions, now, selectedDriver, onSelectDriver }) {
         delete markersRef.current[id];
       }
     });
-  }, [drivers, positions, now, selectedDriver, ready]);
+  }, [drivers, positions, now, selectedDriver, ready, car3d]);
 
   // Pan/zoom to selected driver
   useEffect(() => {

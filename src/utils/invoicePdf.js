@@ -13,6 +13,13 @@
  */
 
 import { formatCurrency, formatDate } from './formatters';
+// Inlined as a data: URI (not a /brand/… URL) because the invoice is written
+// into a blank popup window — or saved as a standalone .html file when popups
+// are blocked — and a relative path would not resolve in either case.
+import abhiCabsLogoSvg from '../assets/brand/abhicabs-logo.svg?raw';
+
+const LOGO_SRC = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(abhiCabsLogoSvg);
+const LOGO_HTML = `<img class="logo-img" src="${LOGO_SRC}" alt="ABHI CABS" />`;
 
 /* ------------------------------------------------------------------ *
  * Helpers
@@ -84,10 +91,15 @@ const SHARED_CSS = `
   .company-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     margin-bottom: 14px;
     padding-bottom: 12px;
     border-bottom: 1px solid #ddd;
+  }
+  .company-logo .logo-img {
+    display: block;
+    height: 64px;
+    width: auto;
   }
   .company-logo h2 {
     font-size: 24px;
@@ -377,8 +389,7 @@ function buildTaxInvoiceHTML(invoice) {
   <!-- Company Header -->
   <div class="company-header">
     <div class="company-logo">
-      <h2>ABHI CABS</h2>
-      <div class="tagline">Transport &amp; Cab Services</div>
+      ${LOGO_HTML}
     </div>
     <div class="company-address">
       Bengaluru, Karnataka, India<br/>
@@ -545,8 +556,7 @@ function buildNonTaxInvoiceHTML(invoice) {
   <!-- Company Header (no GSTIN for non-tax) -->
   <div class="company-header">
     <div class="company-logo">
-      <h2>ABHI CABS</h2>
-      <div class="tagline">Transport &amp; Cab Services</div>
+      ${LOGO_HTML}
     </div>
     <div class="company-address">
       Bengaluru, Karnataka, India
