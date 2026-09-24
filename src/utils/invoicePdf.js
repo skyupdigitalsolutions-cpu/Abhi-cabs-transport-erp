@@ -1,9 +1,11 @@
 /**
- * Client-side invoice PDF generator.
+ * Client-side invoice PDF generator — Savaari-style layout branded as ABHI CABS.
  *
- * Renders a GST-compliant invoice as a styled HTML document in a new window
- * and triggers the browser's native print dialog — the user can save as PDF
- * or print directly. No backend PDF library needed.
+ * Two invoice types:
+ *   TAX      → "TAX INVOICE" with GSTIN, CGST/SGST/IGST breakdown, SAC code,
+ *              reverse charge note, HSN — full GST-compliant tax invoice.
+ *   NON_TAX  → "INVOICE" (Bill of Supply) — no GST fields, no tax rows,
+ *              no GSTIN, clean simple layout for non-GST trips.
  *
  * Usage:
  *   import { downloadInvoice } from '../utils/invoicePdf';
@@ -16,13 +18,10 @@ import { formatCurrency, formatDate } from './formatters';
  * Helpers
  * ------------------------------------------------------------------ */
 
-/** Format a Decimal-string or number to 2dp with commas (₹1,23,456.78). */
 function money(v) {
   const n = Number(v);
-  if (!v || Number.isNaN(n)) return '₹0.00';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
+  if (!v || Number.isNaN(n)) return 'Rs. 0.00';
+  return 'Rs. ' + new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
@@ -33,9 +32,7 @@ function fmtDate(v) {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric',
   }).format(d);
 }
 
@@ -44,244 +41,240 @@ function isPositive(v) {
 }
 
 /* ------------------------------------------------------------------ *
- * HTML template
+ * Shared CSS — used by both invoice types
  * ------------------------------------------------------------------ */
 
-function buildInvoiceHTML(invoice) {
-  const isTax = invoice.type === 'TAX';
-  const title = isTax ? 'Tax Invoice' : 'Bill of Supply';
-  const lines = invoice.lines || [];
-
-  // Booking number from lines or from the invoice.booking relation
-  const bookingNumber =
-    invoice.booking?.bookingNumber ||
-    lines.find((l) => l.description?.includes('booking'))?.description?.match(/ABH-[\w-]+/)?.[0] ||
-    '';
-
-  // Tax breakdown rows (only for TAX invoices with non-zero tax)
-  const hasCgst = isPositive(invoice.cgst);
-  const hasSgst = isPositive(invoice.sgst);
-  const hasIgst = isPositive(invoice.igst);
-  const hasTax = hasCgst || hasSgst || hasIgst;
-
-  const lineRows = lines
-    .map(
-      (l, i) => `
-      <tr>
-        <td style="text-align:center">${i + 1}</td>
-        <td>${l.description || '—'}</td>
-        <td style="text-align:center">${l.quantity ?? 1}</td>
-        <td style="text-align:right">${money(l.unitPrice)}</td>
-        <td style="text-align:right">${money(l.amount)}</td>
-      </tr>`
-    )
-    .join('');
-
-  // Pad empty rows so the table has some visual weight
-  const emptyRows =
-    lines.length < 3
-      ? Array(3 - lines.length)
-          .fill(
-            `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>`
-          )
-          .join('')
-      : '';
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>${invoice.invoiceNumber || 'Invoice'} — ABHI CABS</title>
-<style>
-  @page {
-    size: A4;
-    margin: 12mm 14mm;
-  }
+const SHARED_CSS = `
+  @page { size: A4; margin: 10mm 12mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 11px;
-    color: #1a1a1a;
-    line-height: 1.5;
+    color: #333;
+    line-height: 1.45;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    background: #fff;
+  }
+  .page { max-width: 210mm; margin: 0 auto; padding: 20px 0; }
+
+  /* Title bar */
+  .title-bar {
+    text-align: center;
+    padding: 10px 0;
+    border-top: 3px solid #333;
+    border-bottom: 3px solid #333;
+    margin-bottom: 16px;
+  }
+  .title-bar h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #111;
+  }
+  .title-bar .subtitle {
+    font-size: 10px;
+    color: #888;
+    margin-top: 2px;
+    font-weight: 500;
   }
 
-  .invoice-page {
-    max-width: 210mm;
-    margin: 0 auto;
-    padding: 24px 0;
-  }
-
-  /* Header */
-  .header {
+  /* Company header */
+  .company-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding-bottom: 16px;
-    border-bottom: 2px solid #111;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ddd;
   }
-  .brand h1 {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: 1px;
+  .company-logo h2 {
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 2px;
     color: #111;
-    margin-bottom: 2px;
   }
-  .brand p {
+  .company-logo .tagline {
     font-size: 10px;
-    color: #666;
-  }
-  .invoice-title {
-    text-align: right;
-  }
-  .invoice-title h2 {
-    font-size: 16px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: #111;
-    margin-bottom: 4px;
-  }
-  .invoice-title .inv-number {
-    font-size: 13px;
-    font-weight: 600;
-    color: #333;
-    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  }
-
-  /* Meta grid */
-  .meta-grid {
-    display: flex;
-    justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 20px;
-  }
-  .meta-block {
-    flex: 1;
-  }
-  .meta-block h3 {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
     color: #888;
-    margin-bottom: 6px;
-    border-bottom: 1px solid #e5e5e5;
-    padding-bottom: 4px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 600;
   }
-  .meta-block p {
-    font-size: 11px;
-    margin-bottom: 2px;
+  .company-address {
+    text-align: right;
+    font-size: 10.5px;
+    color: #555;
+    line-height: 1.6;
   }
-  .meta-block .name {
-    font-weight: 700;
-    font-size: 12px;
-    color: #111;
-  }
+  .company-address strong { color: #333; }
 
-  /* Line items table */
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 16px;
-  }
-  thead th {
-    background: #111;
+  /* Section headers */
+  .section-header {
+    background: #555;
     color: #fff;
-    font-size: 9px;
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 8px 10px;
-    text-align: left;
-  }
-  thead th:first-child { border-radius: 4px 0 0 0; }
-  thead th:last-child  { border-radius: 0 4px 0 0; }
-  tbody td {
-    padding: 7px 10px;
-    border-bottom: 1px solid #eee;
-    font-size: 11px;
-  }
-  tbody tr:last-child td {
-    border-bottom: 2px solid #ddd;
+    letter-spacing: 1px;
+    padding: 5px 10px;
   }
 
-  /* Totals */
-  .totals-section {
+  /* Customer section */
+  .customer-section {
+    border: 1px solid #ccc;
+    margin-bottom: 14px;
+  }
+  .customer-grid {
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 20px;
   }
-  .totals-table {
-    width: 280px;
+  .customer-left {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.7;
+    border-right: 1px solid #ccc;
   }
-  .totals-table .row {
+  .customer-right {
+    width: 220px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .customer-left strong, .customer-right strong { color: #111; }
+
+  /* Trip + Amount section */
+  .trip-section {
+    border: 1px solid #ccc;
+    margin-bottom: 14px;
+  }
+  .trip-header {
+    display: flex;
+  }
+  .trip-header-left {
+    flex: 1;
+    background: #555;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 5px 10px;
+  }
+  .trip-header-right {
+    width: 220px;
+    background: #555;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 5px 10px;
+    text-align: right;
+  }
+  .trip-body {
+    display: flex;
+  }
+  .trip-left {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.9;
+    border-right: 1px solid #ccc;
+  }
+  .trip-right {
+    width: 220px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.9;
+  }
+  .trip-left .label {
+    display: inline-block;
+    width: 100px;
+    font-weight: 600;
+    color: #555;
+  }
+  .trip-right .amount-row {
     display: flex;
     justify-content: space-between;
-    padding: 4px 0;
-    font-size: 11px;
+    padding: 1px 0;
   }
-  .totals-table .row.sub {
-    color: #666;
-    font-size: 10px;
-    padding-left: 12px;
-  }
-  .totals-table .row.total {
-    border-top: 2px solid #111;
-    margin-top: 4px;
-    padding-top: 8px;
-    font-size: 14px;
+  .trip-right .amount-row .lbl { color: #555; }
+  .trip-right .amount-row .val { font-weight: 600; color: #111; text-align: right; }
+  .trip-right .total-row {
+    display: flex;
+    justify-content: space-between;
+    border-top: 2px solid #333;
+    margin-top: 6px;
+    padding-top: 6px;
     font-weight: 800;
+    font-size: 12.5px;
     color: #111;
   }
 
-  /* HSN / SAC */
-  .hsn-row {
-    display: flex;
-    gap: 24px;
-    font-size: 10px;
-    color: #666;
-    margin-bottom: 20px;
+  /* Extra charges */
+  .extra-charges {
+    padding: 6px 10px 0;
+    font-size: 11px;
+    color: #555;
+    line-height: 1.6;
   }
-  .hsn-row span { font-weight: 600; color: #444; }
+  .extra-charges strong { color: #111; }
 
-  /* Footer */
-  .footer {
-    border-top: 1px solid #e5e5e5;
-    padding-top: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-  }
-  .footer .note {
-    font-size: 10px;
-    color: #888;
-    max-width: 50%;
-  }
-  .footer .auth {
+  /* Signature */
+  .signature {
     text-align: right;
+    padding: 20px 10px 10px;
+    font-size: 11px;
+    color: #555;
   }
-  .footer .auth .sig-line {
-    width: 160px;
-    border-bottom: 1px solid #999;
-    margin-bottom: 4px;
-    margin-left: auto;
-    height: 40px;
-  }
-  .footer .auth p {
-    font-size: 10px;
-    color: #666;
+  .signature .company-name {
+    font-weight: 700;
+    color: #111;
+    font-size: 12px;
   }
 
-  /* Print tweaks */
+  /* Terms */
+  .terms {
+    border-top: 2px solid #333;
+    padding: 14px 0;
+    margin-top: 14px;
+  }
+  .terms h3 {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #111;
+  }
+  .terms p {
+    font-size: 10px;
+    color: #555;
+    line-height: 1.65;
+    margin-bottom: 4px;
+  }
+
+  /* Footer notices */
+  .electronic-notice {
+    margin-top: 14px;
+    font-size: 10px;
+    color: #555;
+    line-height: 1.6;
+  }
+  .service-footer {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+    font-size: 9.5px;
+    color: #888;
+  }
+
   @media print {
     body { padding: 0; }
-    .invoice-page { padding: 0; }
+    .page { padding: 0; }
     .no-print { display: none !important; }
   }
 
-  /* Download bar (shown in the popup window) */
   .download-bar {
     position: fixed;
     top: 0; left: 0; right: 0;
@@ -296,164 +289,386 @@ function buildInvoiceHTML(invoice) {
     font-weight: 500;
   }
   .download-bar button {
-    background: #fff;
+    background: #FFC107;
     color: #111;
     border: none;
     padding: 8px 20px;
     border-radius: 6px;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
   }
-  .download-bar button:hover { background: #e5e5e5; }
-</style>
+  .download-bar button:hover { background: #e6ac00; }
+`;
+
+/* ------------------------------------------------------------------ *
+ * Extract common data from invoice
+ * ------------------------------------------------------------------ */
+
+function extractData(invoice) {
+  const lines = invoice.lines || [];
+  const booking = invoice.booking || {};
+  const fareBasis = booking.fareBasis || {};
+
+  const bookingNumber =
+    booking.bookingNumber ||
+    lines.find((l) => l.description?.includes('booking'))?.description?.match(/ABH-[\w-]+/)?.[0] || '';
+
+  const tripType = booking.tripType ? booking.tripType.replace(/_/g, ' ') : '—';
+  const vehicleClass = booking.vehicleClass || '—';
+  const distanceKm = booking.distanceKm || fareBasis?.routing?.totalKm || '—';
+  const pickupAddress = booking.pickupAddress || '—';
+  const dropAddress = booking.dropAddress || '—';
+  const pickupAt = booking.pickupAt;
+  const completedAt = booking.completedAt || booking.updatedAt;
+
+  const customerName = invoice.billToName || booking.customer?.user?.name || '—';
+  const customerEmail = booking.customer?.user?.email || '—';
+  const customerPhone = booking.customer?.user?.phone || '—';
+  const customerState = invoice.placeOfSupply || 'Karnataka';
+
+  const extraKm = fareBasis?.extra?.extraKm || 0;
+  const extraKmRate = fareBasis?.extra?.perKmRate || fareBasis?.components?.perKm || 0;
+  const extraKmCharge = extraKm * Number(extraKmRate);
+  const baseFare = Number(invoice.taxableValue || invoice.subtotal || 0);
+
+  return {
+    lines, booking, fareBasis, bookingNumber, tripType, vehicleClass,
+    distanceKm, pickupAddress, dropAddress, pickupAt, completedAt,
+    customerName, customerEmail, customerPhone, customerState,
+    extraKm, extraKmRate, extraKmCharge, baseFare,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * TAX INVOICE — GST-compliant with CGST/SGST/IGST, GSTIN, SAC
+ * ------------------------------------------------------------------ */
+
+function buildTaxInvoiceHTML(invoice) {
+  const d = extractData(invoice);
+
+  const hasCgst = isPositive(invoice.cgst);
+  const hasSgst = isPositive(invoice.sgst);
+  const hasIgst = isPositive(invoice.igst);
+  const gstRate = invoice.gstRatePct || 5;
+  const halfRate = (gstRate / 2).toFixed(1);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${invoice.invoiceNumber || 'Invoice'} — ABHI CABS</title>
+<style>${SHARED_CSS}</style>
 </head>
 <body>
 
 <div class="download-bar no-print">
-  <span>Invoice ${invoice.invoiceNumber || ''}</span>
+  <span>Tax Invoice — ${invoice.invoiceNumber || ''}</span>
   <button onclick="window.print()">Save as PDF / Print</button>
 </div>
 
-<div class="invoice-page" style="margin-top: 50px;">
+<div class="page" style="margin-top: 50px;">
 
-  <!-- Header -->
-  <div class="header">
-    <div class="brand">
-      <h1>ABHI CABS</h1>
-      <p>Transport &amp; Cab Services</p>
+  <!-- Title -->
+  <div class="title-bar">
+    <h1>Tax Invoice</h1>
+  </div>
+
+  <!-- Company Header -->
+  <div class="company-header">
+    <div class="company-logo">
+      <h2>ABHI CABS</h2>
+      <div class="tagline">Transport &amp; Cab Services</div>
     </div>
-    <div class="invoice-title">
-      <h2>${title}</h2>
-      <div class="inv-number">${invoice.invoiceNumber || '—'}</div>
+    <div class="company-address">
+      Bengaluru, Karnataka, India<br/>
+      GSTIN #: <strong>${invoice.supplierGstin || '—'}</strong>
     </div>
   </div>
 
-  <!-- Meta -->
-  <div class="meta-grid">
-    <div class="meta-block">
-      <h3>Billed To</h3>
-      <p class="name">${invoice.billToName || '—'}</p>
-      ${invoice.billToAddress ? `<p>${invoice.billToAddress}</p>` : ''}
-      ${invoice.billToGstin ? `<p>GSTIN: <strong>${invoice.billToGstin}</strong></p>` : ''}
-    </div>
-    <div class="meta-block">
-      <h3>Invoice Details</h3>
-      <p>Date: <strong>${fmtDate(invoice.issuedAt)}</strong></p>
-      ${invoice.dueAt ? `<p>Due: <strong>${fmtDate(invoice.dueAt)}</strong></p>` : ''}
-      ${bookingNumber ? `<p>Booking: <strong>${bookingNumber}</strong></p>` : ''}
-      <p>Status: <strong>${invoice.status || 'ISSUED'}</strong></p>
-    </div>
-    <div class="meta-block">
-      <h3>Place of Supply</h3>
-      <p>${invoice.placeOfSupply || '—'}</p>
-      ${isTax ? `<p style="margin-top:4px">Reverse charge: <strong>No</strong></p>` : ''}
-    </div>
-  </div>
-
-  <!-- Line items -->
-  <table>
-    <thead>
-      <tr>
-        <th style="width:40px;text-align:center">#</th>
-        <th>Description</th>
-        <th style="width:60px;text-align:center">Qty</th>
-        <th style="width:100px;text-align:right">Unit Price</th>
-        <th style="width:100px;text-align:right">Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${lineRows}
-      ${emptyRows}
-    </tbody>
-  </table>
-
-  <!-- HSN/SAC -->
-  ${invoice.hsnSac ? `
-  <div class="hsn-row">
-    <div>SAC Code: <span>${invoice.hsnSac}</span></div>
-    ${isTax ? `<div>GST Rate: <span>${invoice.gstRatePct ?? 5}%</span></div>` : ''}
-  </div>
-  ` : ''}
-
-  <!-- Totals -->
-  <div class="totals-section">
-    <div class="totals-table">
-      <div class="row">
-        <span>Subtotal</span>
-        <span>${money(invoice.subtotal || invoice.taxableValue)}</span>
+  <!-- Customer Details -->
+  <div class="customer-section">
+    <div class="section-header">Customer Details</div>
+    <div class="customer-grid">
+      <div class="customer-left">
+        Name : <strong>${d.customerName}</strong><br/>
+        Email : <strong>${d.customerEmail}</strong><br/>
+        Phone : <strong>${d.customerPhone}</strong><br/>
+        State : <strong>${d.customerState}</strong>
+        ${invoice.billToGstin ? `<br/>GSTIN : <strong>${invoice.billToGstin}</strong>` : ''}
       </div>
-      ${isPositive(invoice.discount) ? `
-      <div class="row">
-        <span>Discount</span>
-        <span>−${money(invoice.discount)}</span>
-      </div>
-      ` : ''}
-      <div class="row">
-        <span>Taxable Value</span>
-        <span>${money(invoice.taxableValue)}</span>
-      </div>
-      ${hasTax && hasCgst ? `
-      <div class="row sub">
-        <span>CGST</span>
-        <span>${money(invoice.cgst)}</span>
-      </div>
-      ` : ''}
-      ${hasTax && hasSgst ? `
-      <div class="row sub">
-        <span>SGST</span>
-        <span>${money(invoice.sgst)}</span>
-      </div>
-      ` : ''}
-      ${hasTax && hasIgst ? `
-      <div class="row sub">
-        <span>IGST</span>
-        <span>${money(invoice.igst)}</span>
-      </div>
-      ` : ''}
-      <div class="row total">
-        <span>Total</span>
-        <span>${money(invoice.totalAmount)}</span>
+      <div class="customer-right">
+        Invoice# : <strong>${invoice.invoiceNumber || '—'}</strong><br/>
+        Billed on : <strong>${fmtDate(invoice.issuedAt)}</strong><br/>
+        Booking ID : <strong>${d.bookingNumber || '—'}</strong><br/>
+        Place of Supply : <strong>${d.customerState}</strong>
       </div>
     </div>
   </div>
 
-  <!-- Footer -->
-  <div class="footer">
-    <div class="note">
-      ${invoice.notes ? `<p>${invoice.notes}</p>` : ''}
-      <p>This is a computer-generated invoice.</p>
+  <!-- Trip Details + Amount -->
+  <div class="trip-section">
+    <div class="trip-header">
+      <div class="trip-header-left">Trip Details</div>
+      <div class="trip-header-right">Amount</div>
     </div>
-    <div class="auth">
-      <div class="sig-line"></div>
-      <p>Authorised Signatory</p>
-      <p><strong>ABHI CABS</strong></p>
+    <div class="trip-body">
+      <div class="trip-left">
+        <span class="label">Trip Type</span>: ${d.tripType}${d.distanceKm !== '—' ? ` (${d.distanceKm}km)` : ''}<br/>
+        <span class="label">Vehicle</span>: ${d.vehicleClass}<br/>
+        <span class="label">Pick Up</span>: ${d.pickupAddress}<br/>
+        <span class="label">Drop</span>: ${d.dropAddress}<br/>
+        <span class="label">Start Date</span>: ${fmtDate(d.pickupAt)}<br/>
+        ${d.completedAt ? `<span class="label">End Date</span>: ${fmtDate(d.completedAt)}<br/>` : ''}
+
+        ${d.extraKm > 0 ? `
+        <br/>
+        <div class="extra-charges">
+          <strong>Charges For Additional Usage</strong><br/>
+          Extra Km (${d.extraKm} × Rs.${Number(d.extraKmRate).toFixed(2)}) : <strong>Rs. ${d.extraKmCharge.toFixed(2)}</strong>
+        </div>
+        ` : ''}
+      </div>
+      <div class="trip-right">
+        <div class="amount-row">
+          <span class="lbl">Base Fare</span>
+          <span class="val">${money(d.baseFare)}</span>
+        </div>
+        ${d.extraKm > 0 ? `
+        <div class="amount-row">
+          <span class="lbl">Extras</span>
+          <span class="val">${money(d.extraKmCharge)}</span>
+        </div>
+        ` : ''}
+        ${isPositive(invoice.discount) ? `
+        <div class="amount-row">
+          <span class="lbl">Discount</span>
+          <span class="val">- ${money(invoice.discount)}</span>
+        </div>
+        ` : ''}
+        <div class="amount-row" style="border-top: 1px solid #ddd; margin-top: 4px; padding-top: 4px;">
+          <span class="lbl">Taxable Value</span>
+          <span class="val">${money(invoice.taxableValue || d.baseFare)}</span>
+        </div>
+        ${hasCgst ? `
+        <div class="amount-row">
+          <span class="lbl">CGST (${halfRate}%)</span>
+          <span class="val">${money(invoice.cgst)}</span>
+        </div>
+        ` : ''}
+        ${hasSgst ? `
+        <div class="amount-row">
+          <span class="lbl">SGST (${halfRate}%)</span>
+          <span class="val">${money(invoice.sgst)}</span>
+        </div>
+        ` : ''}
+        ${hasIgst ? `
+        <div class="amount-row">
+          <span class="lbl">IGST (${gstRate}%)</span>
+          <span class="val">${money(invoice.igst)}</span>
+        </div>
+        ` : ''}
+        <div class="total-row">
+          <span>Total Amount Paid</span>
+          <span>${money(invoice.totalAmount)}</span>
+        </div>
+      </div>
     </div>
+  </div>
+
+  <!-- Reverse Charge -->
+  <div style="padding: 6px 10px; font-size: 10px; color: #888;">
+    Reverse Charge Applicable: <strong>No</strong>
+  </div>
+
+  <!-- Signature -->
+  <div class="signature">
+    For <span class="company-name">Abhi Cabs</span>
+  </div>
+
+  <!-- Terms -->
+  <div class="terms">
+    <h3>Terms &amp; Conditions</h3>
+    <p># All road toll fees, Airport entry charges, parking charges, state taxes etc. are charged extra and need to be
+    paid to the concerned authorities as per actuals. Please collect the receipts for these directly from
+    the authorities or the driver wherever applicable. These will not be included in the Abhi Cabs bill and Abhi Cabs is not
+    responsible for these receipts if not taken during trip. Please note any handling charge levied will not be part of
+    the receipt that you will get.</p>
+    <p>At the end of the trip, please check and take all your belongings with you.</p>
+    <p>Any discrepancies regarding bill amount will be considered within 24 hrs of Invoice.</p>
+  </div>
+
+  <div class="electronic-notice">
+    <p>This is an electronically generated invoice and does not require signature. All disputes are subject to
+    jurisdiction of courts in Bangalore. For any queries, please write to us at <strong>support@abhicabs.in</strong></p>
+  </div>
+
+  <div class="service-footer">
+    <p>Service: Transport of passengers</p>
+    <p>Service Accounting Code (SAC): 996412${invoice.hsnSac ? `; HSN: ${invoice.hsnSac}` : ''}</p>
   </div>
 
 </div>
-
 </body>
 </html>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * NON-TAX INVOICE (Bill of Supply) — No GST, no GSTIN, simple
+ * ------------------------------------------------------------------ */
+
+function buildNonTaxInvoiceHTML(invoice) {
+  const d = extractData(invoice);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${invoice.invoiceNumber || 'Invoice'} — ABHI CABS</title>
+<style>${SHARED_CSS}</style>
+</head>
+<body>
+
+<div class="download-bar no-print">
+  <span>Invoice — ${invoice.invoiceNumber || ''}</span>
+  <button onclick="window.print()">Save as PDF / Print</button>
+</div>
+
+<div class="page" style="margin-top: 50px;">
+
+  <!-- Title -->
+  <div class="title-bar">
+    <h1>Invoice</h1>
+    <div class="subtitle">Bill of Supply</div>
+  </div>
+
+  <!-- Company Header (no GSTIN for non-tax) -->
+  <div class="company-header">
+    <div class="company-logo">
+      <h2>ABHI CABS</h2>
+      <div class="tagline">Transport &amp; Cab Services</div>
+    </div>
+    <div class="company-address">
+      Bengaluru, Karnataka, India
+    </div>
+  </div>
+
+  <!-- Customer Details (no GSTIN fields) -->
+  <div class="customer-section">
+    <div class="section-header">Customer Details</div>
+    <div class="customer-grid">
+      <div class="customer-left">
+        Name : <strong>${d.customerName}</strong><br/>
+        Email : <strong>${d.customerEmail}</strong><br/>
+        Phone : <strong>${d.customerPhone}</strong><br/>
+        State : <strong>${d.customerState}</strong>
+      </div>
+      <div class="customer-right">
+        Invoice# : <strong>${invoice.invoiceNumber || '—'}</strong><br/>
+        Billed on : <strong>${fmtDate(invoice.issuedAt)}</strong><br/>
+        Booking ID : <strong>${d.bookingNumber || '—'}</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trip Details + Amount (no tax rows) -->
+  <div class="trip-section">
+    <div class="trip-header">
+      <div class="trip-header-left">Trip Details</div>
+      <div class="trip-header-right">Amount</div>
+    </div>
+    <div class="trip-body">
+      <div class="trip-left">
+        <span class="label">Trip Type</span>: ${d.tripType}${d.distanceKm !== '—' ? ` (${d.distanceKm}km)` : ''}<br/>
+        <span class="label">Vehicle</span>: ${d.vehicleClass}<br/>
+        <span class="label">Pick Up</span>: ${d.pickupAddress}<br/>
+        <span class="label">Drop</span>: ${d.dropAddress}<br/>
+        <span class="label">Start Date</span>: ${fmtDate(d.pickupAt)}<br/>
+        ${d.completedAt ? `<span class="label">End Date</span>: ${fmtDate(d.completedAt)}<br/>` : ''}
+
+        ${d.extraKm > 0 ? `
+        <br/>
+        <div class="extra-charges">
+          <strong>Charges For Additional Usage</strong><br/>
+          Extra Km (${d.extraKm} × Rs.${Number(d.extraKmRate).toFixed(2)}) : <strong>Rs. ${d.extraKmCharge.toFixed(2)}</strong>
+        </div>
+        ` : ''}
+      </div>
+      <div class="trip-right">
+        <div class="amount-row">
+          <span class="lbl">Trip Fare</span>
+          <span class="val">${money(d.baseFare)}</span>
+        </div>
+        ${d.extraKm > 0 ? `
+        <div class="amount-row">
+          <span class="lbl">Extra Km Charges</span>
+          <span class="val">${money(d.extraKmCharge)}</span>
+        </div>
+        ` : ''}
+        ${isPositive(invoice.discount) ? `
+        <div class="amount-row">
+          <span class="lbl">Discount</span>
+          <span class="val">- ${money(invoice.discount)}</span>
+        </div>
+        ` : ''}
+        <div class="total-row">
+          <span>Total Amount</span>
+          <span>${money(invoice.totalAmount)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Signature -->
+  <div class="signature">
+    For <span class="company-name">Abhi Cabs</span>
+  </div>
+
+  <!-- Terms -->
+  <div class="terms">
+    <h3>Terms &amp; Conditions</h3>
+    <p># All road toll fees, Airport entry charges, parking charges, state taxes etc. are charged extra and need to be
+    paid to the concerned authorities as per actuals. Please collect the receipts for these directly from
+    the authorities or the driver wherever applicable.</p>
+    <p>At the end of the trip, please check and take all your belongings with you.</p>
+    <p>Any discrepancies regarding bill amount will be considered within 24 hrs of Invoice.</p>
+  </div>
+
+  <div class="electronic-notice">
+    <p>This is an electronically generated invoice and does not require signature. All disputes are subject to
+    jurisdiction of courts in Bangalore. For any queries, please write to us at <strong>support@abhicabs.in</strong></p>
+  </div>
+
+  <div class="service-footer">
+    <p>Service: Transport of passengers</p>
+  </div>
+
+</div>
+</body>
+</html>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Router — picks the right template based on invoice.type
+ * ------------------------------------------------------------------ */
+
+function buildInvoiceHTML(invoice) {
+  if (invoice.type === 'TAX') {
+    return buildTaxInvoiceHTML(invoice);
+  }
+  return buildNonTaxInvoiceHTML(invoice);
 }
 
 /* ------------------------------------------------------------------ *
  * Public API
  * ------------------------------------------------------------------ */
 
-/**
- * Opens the invoice in a new browser window with a print bar.
- * The user can Cmd/Ctrl+P or click "Save as PDF / Print".
- *
- * @param {Object} invoice — the full invoice object (with lines).
- */
 export function downloadInvoice(invoice) {
   if (!invoice) return;
 
   const html = buildInvoiceHTML(invoice);
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) {
-    // Popup blocked — fall back to a Blob download of the HTML
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

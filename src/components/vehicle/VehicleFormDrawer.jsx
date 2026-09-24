@@ -3,6 +3,7 @@ import Drawer from '../ui/Drawer';
 import FormField from '../ui/FormField';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
+import ComboInput from '../ui/ComboInput';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';
 import DocumentUploader from '../ui/DocumentUploader';
@@ -410,10 +411,7 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
             <Input value={values.registrationNumber} onChange={(e) => setValue('registrationNumber', e.target.value.toUpperCase())} onBlur={() => setFieldTouched('registrationNumber')} maxLength={16} placeholder="KA05AB1234" />
           </FormField>
           <FormField label="Vehicle class" required error={touched.vehicleClass && errors.vehicleClass} hint="Free text — hatchback, sedan, suv, tempo are the classes this backend currently prices.">
-            <Input list="vehicle-class-suggestions" value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value.toLowerCase())} onBlur={() => setFieldTouched('vehicleClass')} placeholder="sedan" />
-            <datalist id="vehicle-class-suggestions">
-              {VEHICLE_CLASS_SUGGESTIONS.map((c) => <option key={c} value={c} />)}
-            </datalist>
+            <ComboInput suggestions={VEHICLE_CLASS_SUGGESTIONS} value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value.toLowerCase())} onBlur={() => setFieldTouched('vehicleClass')} placeholder="sedan" />
           </FormField>
           <FormField label="Make & model">
             <Input value={values.makeModel} onChange={(e) => setValue('makeModel', e.target.value)} placeholder="e.g. Maruti Suzuki Dzire" maxLength={80} />

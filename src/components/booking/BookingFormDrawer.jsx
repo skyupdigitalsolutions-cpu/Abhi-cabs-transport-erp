@@ -28,7 +28,6 @@ const DEFAULT_CITY_ID = 1; // only Bengaluru is seeded on this backend today
 const PAYMENT_MODES = [
   { value: 'FULL', label: 'Full payment now' },
   { value: 'PARTIAL', label: 'Partial advance' },
-  { value: 'ZERO', label: 'Pay on trip (cash)' },
 ];
 
 export default function BookingFormDrawer({ open, onClose, onSubmit }) {
@@ -45,7 +44,7 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
   const { values, errors, touched, submitting, submitError, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
     initialValues: {
       customerId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
-      pickup: '', drop: '', date: '', time: '', paymentMode: 'ZERO',
+      pickup: '', drop: '', date: '', time: '', paymentMode: 'PARTIAL',
     },
     schema: {
       customerId: [required('Customer')],
@@ -73,7 +72,7 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
 
   useEffect(() => {
     if (!open) {
-      setValues({ customerId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY', pickup: '', drop: '', date: '', time: '', paymentMode: 'ZERO' });
+      setValues({ customerId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY', pickup: '', drop: '', date: '', time: '', paymentMode: 'PARTIAL' });
       setCustomerSearch('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,6 +95,10 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
       </>}
     >
       {submitError && <Alert type="error" className="mb-4">{submitError}</Alert>}
+      <Alert type="info" className="mb-4">
+        This booking will be created as <strong>PENDING</strong>. You'll need to call the customer
+        and confirm it from the bookings list before it goes live.
+      </Alert>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <FormField label="Customer" required error={touched.customerId && errors.customerId} hint="Search by name, email or phone.">
           <Input placeholder="Type to search customers…" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} className="mb-2" />

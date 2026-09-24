@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Calendar, X } from 'lucide-react';
+import Input from './Input';
 
 /**
  * DateRangeFilter — a dropdown with quick presets (Today / This Week / This
@@ -118,11 +119,11 @@ export default function DateRangeFilter({ onChange, label = 'Date range' }) {
           {preset === 'custom' && (
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F0F0EC', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 10.5, fontWeight: 700, color: '#5A5A5A' }}>FROM</label>
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                style={{ border: '1px solid #E8E8E4', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+              <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                style={{ padding: '5px 8px', fontSize: 12.5 }} />
               <label style={{ fontSize: 10.5, fontWeight: 700, color: '#5A5A5A', marginTop: 2 }}>TO</label>
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                style={{ border: '1px solid #E8E8E4', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+              <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                style={{ padding: '5px 8px', fontSize: 12.5 }} />
               <button
                 onClick={applyCustom}
                 disabled={!customFrom || !customTo}

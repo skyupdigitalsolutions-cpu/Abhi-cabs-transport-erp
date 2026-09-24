@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Search, Car, MapPin, ChevronDown, ChevronUp,
+  Car, MapPin, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
@@ -13,6 +13,7 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Alert from '../../components/ui/Alert';
+import SearchInput from '../../components/ui/SearchInput';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
 import LoadingState from '../../components/ui/LoadingState';
@@ -551,30 +552,21 @@ function VehicleRatesTab() {
 
       {/* Search + filters */}
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#6B7280' }} />
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search vehicle class or city…"
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border focus-ring"
-            style={{ borderColor: '#E5E7EB', color: '#1F2937', outline: 'none', backgroundColor: '#fff' }}
-          />
-        </div>
-        <select value={classFilter} onChange={e => setClassFilter(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border focus-ring"
-          style={{ borderColor: '#E5E7EB', color: classFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
-          <option value="">All vehicle classes</option>
-          {/* Derived from the rate cards actually present, not a static
-              list — so it can never offer a class that has no cards, or
-              omit one the backend has. */}
-          {classes.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={tripFilter} onChange={e => setTripFilter(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border focus-ring"
-          style={{ borderColor: '#E5E7EB', color: tripFilter ? '#1F2937':'#6B7280', backgroundColor: '#fff' }}>
-          <option value="">All trip types</option>
-          {TRIP_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
+        <SearchInput
+          value={search} onChange={setSearch}
+          placeholder="Search vehicle class or city…"
+          className="flex-1"
+        />
+        <Select value={classFilter} onChange={e => setClassFilter(e.target.value)}
+          placeholder="All vehicle classes"
+          options={classes.map(c => ({ value: c, label: c }))}
+          style={{ minWidth: 170 }}
+        />
+        <Select value={tripFilter} onChange={e => setTripFilter(e.target.value)}
+          placeholder="All trip types"
+          options={TRIP_TYPES.map(t => ({ value: t.value, label: t.label }))}
+          style={{ minWidth: 170 }}
+        />
         <Button icon={Plus} onClick={() => { setEditing(null); setFormOpen(true); }}>
           Add Rate Card
         </Button>

@@ -3,6 +3,7 @@ import { Download, TrendingUp, Truck, Users, CalendarCheck, Filter, X } from 'lu
 import PageHeader  from '../../components/ui/PageHeader';
 import Card        from '../../components/ui/Card';
 import Select      from '../../components/ui/Select';
+import Input       from '../../components/ui/Input';
 import Button      from '../../components/ui/Button';
 import Alert       from '../../components/ui/Alert';
 import Badge       from '../../components/ui/Badge';
@@ -1015,13 +1016,11 @@ export default function Reports() {
             {/* Custom date range */}
             {rangeKey === 'custom' && (
               <>
-                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                  className="text-sm border rounded-lg px-2 py-1.5"
-                  style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
-                <span className="text-xs" style={{ color: '#6B7280' }}>to</span>
-                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                  className="text-sm border rounded-lg px-2 py-1.5"
-                  style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                  style={{ fontSize: 13, padding: '5px 8px' }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>to</span>
+                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                  style={{ fontSize: 13, padding: '5px 8px' }} />
               </>
             )}
 

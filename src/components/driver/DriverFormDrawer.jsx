@@ -5,6 +5,7 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';
+import Checkbox from '../ui/Checkbox';
 import DocumentUploader from '../ui/DocumentUploader';
 import { useForm } from '../../hooks/useForm';
 import { required, isPhone, isEmail } from '../../utils/validators';
@@ -186,24 +187,27 @@ export default function DriverFormDrawer({ open, onClose, initial, onSubmit }) {
                 options={vehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.vehicleClass}` }))} />
             </FormField>
             {isEdit && (
-              <label className="flex items-center gap-2 text-sm" style={{ color: '#374151' }}>
-                <input type="checkbox" checked={values.isOnline} onChange={(e) => setValue('isOnline', e.target.checked)} />
-                Online (available for dispatch)
-              </label>
+              <Checkbox
+                label="Online (available for dispatch)"
+                checked={values.isOnline}
+                onChange={(e) => setValue('isOnline', e.target.checked)}
+              />
             )}
 
             <div className="pt-2">
               <p className="text-xs font-semibold mb-2" style={{ color: '#1F2937' }}>Compliance checklist</p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {[
                   ['policeVerified', 'Police verification completed'],
                   ['medicalChecked', 'Medical check completed'],
                   ['inducted', 'Induction / onboarding completed'],
                 ].map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2 text-sm" style={{ color: '#374151' }}>
-                    <input type="checkbox" checked={values[key]} onChange={(e) => setValue(key, e.target.checked)} />
-                    {label}
-                  </label>
+                  <Checkbox
+                    key={key}
+                    label={label}
+                    checked={values[key]}
+                    onChange={(e) => setValue(key, e.target.checked)}
+                  />
                 ))}
               </div>
             </div>

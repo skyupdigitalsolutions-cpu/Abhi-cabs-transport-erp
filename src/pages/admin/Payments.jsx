@@ -9,6 +9,7 @@ import Button        from '../../components/ui/Button';
 import Input          from '../../components/ui/Input';
 import Select        from '../../components/ui/Select';
 import FormField    from '../../components/ui/FormField';
+import Textarea      from '../../components/ui/Textarea';
 import Alert          from '../../components/ui/Alert';
 import Modal          from '../../components/ui/Modal';
 import { useResourceList }    from '../../hooks/useResourceList';
@@ -117,16 +118,14 @@ function PaymentsTab() {
         ]}
         extra={
           <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold" style={{ color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
-            <input type="date" value={list.filters.from || ''}
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
+            <Input type="date" value={list.filters.from || ''}
               onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
-            <label className="text-xs font-semibold" style={{ color: '#6B7280' }}>To</label>
-            <input type="date" value={list.filters.to || ''}
+              style={{ fontSize: 12, padding: '5px 8px' }} />
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>To</label>
+            <Input type="date" value={list.filters.to || ''}
               onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
-              className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+              style={{ fontSize: 12, padding: '5px 8px' }} />
           </div>
         }
       />
@@ -319,11 +318,9 @@ function CashHandoversTab() {
               physically received.
             </p>
             <FormField label="Note (optional)">
-              <textarea
+              <Textarea
                 value={note} onChange={(e) => setNote(e.target.value)}
                 rows={3} maxLength={300}
-                className="w-full text-sm rounded-lg border px-3 py-2"
-                style={{ borderColor: '#E5E7EB', color: '#1F2937' }}
                 placeholder="e.g. Handed to accounts on Tuesday collection round"
               />
             </FormField>
@@ -515,11 +512,10 @@ function RefundsTab() {
 
         <FormField label="Reason" required error={errors.reason} className="mb-2"
           hint="What a finance audit will read later — be specific.">
-          <textarea
+          <Textarea
             value={form.reason} onChange={(e) => { set('reason', e.target.value); setErrors((er) => ({ ...er, reason: undefined })); }}
             rows={2} maxLength={300} disabled={!booking}
-            className="w-full text-sm rounded-lg border px-3 py-2"
-            style={{ borderColor: errors.reason ? '#DC2626' : '#E5E7EB', color: '#1F2937' }}
+            error={errors.reason}
             placeholder="e.g. Customer cancelled after driver no-show; full advance refunded"
           />
         </FormField>

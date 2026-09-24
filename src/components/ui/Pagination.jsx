@@ -1,29 +1,85 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Check } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
-export default function Pagination({ page, totalPages, onChange, total, limit, onLimitChange }) {
-  const sizePicker = onLimitChange && (
-    <select
-      value={limit}
-      onChange={(e) => onLimitChange(e.target.value)}
-      style={{
-        fontSize: 12.5, fontWeight: 700, color: '#5A5A5A', border: '1px solid #E8E8E4',
-        borderRadius: 6, padding: '3px 6px', backgroundColor: '#fff', cursor: 'pointer',
-      }}
-    >
-      {PAGE_SIZES.map((n) => <option key={n} value={n}>{n} / page</option>)}
-    </select>
+/** Tiny inline custom dropdown for page-size — no native <select>. */
+function SizePicker({ limit, onLimitChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          fontSize: 12, fontWeight: 700, color: '#5A5A5A',
+          border: '1.5px solid #E8E8E4', borderRadius: 8,
+          padding: '4px 8px', backgroundColor: '#fff', cursor: 'pointer',
+          transition: 'border-color 0.15s',
+        }}
+      >
+        {limit} / page
+        <ChevronDown size={11} style={{
+          transform: open ? 'rotate(180deg)' : 'rotate(0)',
+          transition: 'transform 0.15s',
+        }} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 4px)', left: 0,
+          zIndex: 50, backgroundColor: '#fff',
+          border: '1.5px solid #E8E8E4', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(17,17,17,0.1)',
+          padding: 4, minWidth: 100,
+          animation: 'selectSlideDown 0.15s ease-out',
+        }}>
+          {PAGE_SIZES.map((n) => {
+            const isActive = n === Number(limit);
+            return (
+              <div
+                key={n}
+                onClick={() => { onLimitChange(n); setOpen(false); }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '6px 8px', borderRadius: 6, fontSize: 12, fontWeight: isActive ? 700 : 500,
+                  color: '#374151', cursor: 'pointer',
+                  backgroundColor: isActive ? '#FFFBEA' : 'transparent',
+                  transition: 'background-color 0.1s',
+                }}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = '#F7F8FC'; }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+              >
+                <span>{n} / page</span>
+                {isActive && <Check size={12} style={{ color: '#FFC107' }} strokeWidth={3} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <style>{`
+        @keyframes selectSlideDown {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
   );
+}
+
+export default function Pagination({ page, totalPages, onChange, total, limit, onLimitChange }) {
+  const sizePicker = onLimitChange && <SizePicker limit={limit} onLimitChange={onLimitChange} />;
 
   const btnBase = 'h-8 w-8 grid place-items-center rounded-lg border text-xs font-bold focus-ring transition-colors';
 
-  // FIX: with only one page of results, this used to render just a plain
-  // "N results" line and nothing else — no page indicator, no arrows, even
-  // disabled ones. That reads as broken/incomplete rather than "there's
-  // simply nothing more to page to." Now always shows the same pager shape
-  // (Page 1 of 1, both arrows disabled) so the UI looks consistent whether
-  // there's 1 page or 20.
   if (totalPages <= 1) {
     return total ? (
       <div className="flex items-center justify-between gap-3 flex-wrap px-1">

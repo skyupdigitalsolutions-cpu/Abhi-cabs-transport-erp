@@ -7,6 +7,7 @@ import DataTable     from '../../components/ui/DataTable';
 import IconButton    from '../../components/ui/IconButton';
 import Badge         from '../../components/ui/Badge';
 import Button        from '../../components/ui/Button';
+import Input         from '../../components/ui/Input';
 import CustomerFormDrawer from '../../components/customer/CustomerFormDrawer';
 import { useResourceList }       from '../../hooks/useResourceList';
 import { adminCustomersService, bookingService } from '../../services';
@@ -305,14 +306,12 @@ export default function Customers() {
       {/* Custom date range — client-side only, see the note above imports */}
       <div className="flex flex-wrap items-end gap-3 mb-4 bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold text-gray-500">Joined From</label>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined From</label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold text-gray-500">Joined To</label>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined To</label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
         <Button size="sm" onClick={runDateSearch} disabled={!dateFrom && !dateTo}>Search</Button>
         {dateFiltering && <Button size="sm" variant="ghost" onClick={clearDateSearch}>Clear</Button>}

@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, PhoneCall } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import FilterBar     from '../../components/ui/FilterBar';
 import DataTable     from '../../components/ui/DataTable';
 import Button        from '../../components/ui/Button';
+import Input         from '../../components/ui/Input';
 import StatusBadge   from '../../components/ui/StatusBadge';
 import BookingFormDrawer from '../../components/booking/BookingFormDrawer';
+import ConfirmBookingModal from '../../components/booking/ConfirmBookingModal';
 import { useResourceList } from '../../hooks/useResourceList';
 import { bookingService }  from '../../services';
+import { bookingOpsService } from '../../services/bookingOpsService';
 import { useToast }        from '../../hooks/useToast';
 import { PERMISSIONS }     from '../../constants';
 import { useAuth }         from '../../hooks/useAuth';
@@ -43,6 +46,22 @@ export default function Bookings() {
   });
 
   const [formOpen, setFormOpen] = useState(false);
+  const [confirmingBooking, setConfirmingBooking] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const handleConfirmBooking = async (bookingId, confirmationNote) => {
+    setConfirmLoading(true);
+    try {
+      await bookingOpsService.confirm(bookingId, { confirmationNote });
+      toast.success('Booking confirmed — customer notified');
+      setConfirmingBooking(null);
+      list.reload();
+    } catch (err) {
+      toast.error(err.message || 'Failed to confirm booking');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
 
   // FRONTEND-ONLY fetch of cancellation reasons: the LIST endpoint
   // (BOOKING_LIST_SELECT on the backend) never included cancellationReason
@@ -86,9 +105,6 @@ export default function Bookings() {
       ),
     },
     {
-      // Moved right after Customer (was last) so it's visible without
-      // scrolling — the Route column's full addresses were pushing every
-      // other column, Status included, off-screen to the right.
       key: 'status', header: 'Status',
       render: (r) => {
         const loaded = reasons[r.id];
@@ -96,6 +112,22 @@ export default function Bookings() {
         return (
           <div>
             <StatusBadge status={r.status} />
+            {r.status === 'PENDING' && canManage && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmingBooking(r); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  marginTop: 6, padding: '4px 10px', borderRadius: 8,
+                  border: '1.5px solid #BBF7D0', backgroundColor: '#F0FDF4',
+                  color: '#15803D', fontSize: 11.5, fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#DCFCE7'; e.currentTarget.style.borderColor = '#22C55E'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#F0FDF4'; e.currentTarget.style.borderColor = '#BBF7D0'; }}
+              >
+                <PhoneCall size={11} /> Call & Confirm
+              </button>
+            )}
             {r.status === 'CANCELLED' && (
               <p
                 className="mt-1 truncate"
@@ -153,7 +185,7 @@ export default function Bookings() {
     <div>
       <PageHeader
         title="Bookings"
-        description="All booking requests. Filters are applied server-side for speed."
+        description="All bookings start as PENDING. Call the customer, verify details, then confirm."
         actions={canManage && (
           <Button icon={Plus} onClick={() => setFormOpen(true)}>New booking</Button>
         )}
@@ -188,16 +220,14 @@ export default function Bookings() {
         ]}
         extra={
           <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold" style={{ color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
-            <input type="date" value={list.filters.from || ''}
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
+            <Input type="date" value={list.filters.from || ''}
               onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
-            <label className="text-xs font-semibold" style={{ color: '#6B7280' }}>To</label>
-            <input type="date" value={list.filters.to || ''}
+              style={{ fontSize: 12, padding: '5px 8px' }} />
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>To</label>
+            <Input type="date" value={list.filters.to || ''}
               onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
-              className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }} />
+              style={{ fontSize: 12, padding: '5px 8px' }} />
           </div>
         }
       />
@@ -223,6 +253,14 @@ export default function Bookings() {
       />
 
       <BookingFormDrawer open={formOpen} onClose={() => setFormOpen(false)} onSubmit={handleCreate} />
+
+      <ConfirmBookingModal
+        open={!!confirmingBooking}
+        onClose={() => setConfirmingBooking(null)}
+        booking={confirmingBooking}
+        onConfirm={handleConfirmBooking}
+        loading={confirmLoading}
+      />
     </div>
   );
 }

@@ -20,6 +20,8 @@ import Card         from '../../components/ui/Card';
 import Button       from '../../components/ui/Button';
 import EmptyState   from '../../components/ui/EmptyState';
 import Badge        from '../../components/ui/Badge';
+import Checkbox     from '../../components/ui/Checkbox';
+import Input        from '../../components/ui/Input';
 import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 import { timeAgo }  from '../../utils/formatters';
 
@@ -202,11 +204,11 @@ function NotificationSettings({ settings, onSave, onClose }) {
 
       <div className="px-5 py-5" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {/* Master toggle */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-          <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((d) => ({ ...d, enabled: e.target.checked }))}
-            style={{ width: 18, height: 18, accentColor: '#FFC107' }} />
-          <span style={{ fontWeight: 700, fontSize: 14 }}>Enable document renewal reminders</span>
-        </label>
+        <Checkbox
+          label="Enable document renewal reminders"
+          checked={draft.enabled}
+          onChange={(e) => setDraft((d) => ({ ...d, enabled: e.target.checked }))}
+        />
 
         {/* Per-document config */}
         <div style={{ opacity: draft.enabled ? 1 : 0.5, pointerEvents: draft.enabled ? 'auto' : 'none' }}>
@@ -216,14 +218,16 @@ function NotificationSettings({ settings, onSave, onClose }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {Object.entries(draft.documents).map(([key, doc]) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#FAFAFA', borderRadius: 10, border: '1px solid #F0F1F5' }}>
-                <input type="checkbox" checked={doc.on} onChange={(e) => setDoc(key, 'on', e.target.checked)}
-                  style={{ width: 17, height: 17, accentColor: '#FFC107' }} />
+                <Checkbox
+                  checked={doc.on}
+                  onChange={(e) => setDoc(key, 'on', e.target.checked)}
+                />
                 <span style={{ flex: 1, fontWeight: 600, fontSize: 13.5, color: '#1F2937' }}>{doc.label}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input type="number" min={1} max={90} value={doc.days}
+                  <Input type="number" min={1} max={90} value={doc.days}
                     onChange={(e) => setDoc(key, 'days', Math.max(1, Number(e.target.value) || 1))}
                     disabled={!doc.on}
-                    style={{ width: 60, height: 36, borderRadius: 8, border: '1px solid #E5E7EB', padding: '0 10px', fontSize: 13, fontWeight: 700, textAlign: 'center', outline: 'none' }} />
+                    style={{ width: 60, textAlign: 'center' }} />
                   <span style={{ fontSize: 12.5, color: '#888' }}>days before</span>
                 </div>
               </div>
@@ -238,11 +242,12 @@ function NotificationSettings({ settings, onSave, onClose }) {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             {[['inApp', 'In-App'], ['email', 'Email'], ['whatsapp', 'WhatsApp']].map(([k, lbl]) => (
-              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={draft.channels[k]} onChange={(e) => setDraft((d) => ({ ...d, channels: { ...d.channels, [k]: e.target.checked } }))}
-                  style={{ width: 16, height: 16, accentColor: '#FFC107' }} />
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{lbl}</span>
-              </label>
+              <Checkbox
+                key={k}
+                label={lbl}
+                checked={draft.channels[k]}
+                onChange={(e) => setDraft((d) => ({ ...d, channels: { ...d.channels, [k]: e.target.checked } }))}
+              />
             ))}
           </div>
         </div>

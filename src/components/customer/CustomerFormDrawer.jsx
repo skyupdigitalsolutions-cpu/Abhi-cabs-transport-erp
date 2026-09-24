@@ -21,6 +21,7 @@ import Button    from '../ui/Button';
 import FormField from '../ui/FormField';
 import Input     from '../ui/Input';
 import Select    from '../ui/Select';
+import Textarea  from '../ui/Textarea';
 import Alert     from '../ui/Alert';
 import { useForm } from '../../hooks/useForm';
 
@@ -133,13 +134,11 @@ export default function CustomerFormDrawer({ open, customer, onClose, onSubmit }
         </FormField>
 
         <FormField label="Internal notes">
-          <textarea
+          <Textarea
             value={values.notes}
             onChange={(e) => setValue('notes', e.target.value)}
             placeholder="Visible to staff only, not the customer…"
             rows={3}
-            className="w-full text-sm border rounded-xl px-3 py-2 resize-none"
-            style={{ borderColor: '#E5E7EB', color: '#1F2937', outline: 'none' }}
           />
         </FormField>
       </div>
