@@ -246,6 +246,11 @@ function CashHandoversTab() {
         someone at the office confirms the physical cash has actually been handed in. Confirming does
         not move any money or change what the customer owes — that was already settled — it only
         records who received the cash and when.
+        <br />
+        <span style={{ fontSize: 12.5, opacity: 0.85 }}>
+          Note: confirmations are saved in <strong>this browser only</strong> — other admins or another
+          computer won't see them as confirmed.
+        </span>
       </Alert>
 
       {/* Per-driver cash-in-hand summary */}
