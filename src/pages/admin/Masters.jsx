@@ -61,10 +61,19 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   // so a retired class (e.g. `sedan`) still shows when editing an existing
   // card priced against it, rather than the dropdown silently blanking.
   const [classOptions, setClassOptions] = useState([]);
+  const [tripTypeOptions, setTripTypeOptions] = useState(TRIP_TYPES);
   useEffect(() => {
     let cancelled = false;
-    vehicleCatalogService.classOptions({ includeInactive: true })
-      .then((opts) => { if (!cancelled) setClassOptions(opts); });
+    vehicleCatalogService.rateCardOptions().then(({ classes, tripTypes }) => {
+      if (cancelled) return;
+      setClassOptions(classes);
+      // Keep the friendly labels from TRIP_TYPES where they exist, but let the
+      // backend decide WHICH trip types are offered.
+      setTripTypeOptions(tripTypes.map((t) => ({
+        value: t,
+        label: TRIP_TYPES.find((x) => x.value === t)?.label || t,
+      })));
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -139,15 +148,12 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             <FormField label="Vehicle class" required>
               {isEdit ? <Input disabled value={form.vehicleClass} /> : (
                 <Select value={form.vehicleClass} onChange={(e) => set('vehicleClass', e.target.value)}
-                  options={classOptions.map((c) => ({
-                    value: c.value,
-                    label: c.isActive ? c.label : `${c.label} (retired)`,
-                  }))} />
+                  options={classOptions} />
               )}
             </FormField>
             <FormField label="Trip type" required>
               {isEdit ? <Input disabled value={TRIP_TYPES.find((t) => t.value === form.tripType)?.label || form.tripType} /> : (
-                <Select value={form.tripType} onChange={(e) => set('tripType', e.target.value)} options={TRIP_TYPES} />
+                <Select value={form.tripType} onChange={(e) => set('tripType', e.target.value)} options={tripTypeOptions} />
               )}
             </FormField>
           </div>

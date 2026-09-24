@@ -95,17 +95,34 @@ export const authService = {
     );
   },
 
+  // Path is /auth/forgot-password, NOT /auth/password/forgot — the latter
+  // does not exist on the backend, so "forgot password" 404'd every time.
   async requestPasswordReset(email) {
     return withMockFallback(
-      () => apiClient.post('/auth/password/forgot', { email }),
+      () => apiClient.post('/auth/forgot-password', { email }),
       () => mockResolve({ sent: true })
     );
   },
 
+  // Two fixes here: the path (/auth/reset-password) and the body field. The
+  // backend's resetPasswordSchema requires `newPassword`; sending `password`
+  // failed validation even once the path was right.
   async resetPassword({ token, password }) {
     return withMockFallback(
-      () => apiClient.post('/auth/password/reset', { token, password }),
+      () => apiClient.post('/auth/reset-password', { token, newPassword: password }),
       () => mockResolve({ success: true })
+    );
+  },
+
+  /**
+   * Optional pre-check: confirms a reset token is still valid before showing
+   * the new-password form, so an expired link fails immediately instead of
+   * after the user has typed a password twice. Does not consume the token.
+   */
+  async verifyResetToken(token) {
+    return withMockFallback(
+      () => apiClient.post('/auth/reset-password/verify', { token }),
+      () => mockResolve({ valid: true })
     );
   },
 

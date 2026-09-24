@@ -1,9 +1,20 @@
 /**
  * Driver-app operational service. Endpoints:
- *   /api/v1/driver/offers/*    — dispatch offer accept/decline
  *   /api/v1/driver/location/*  — online/offline toggle + frequent GPS pings
  * GPS pings are high-frequency and go straight to Redis on the backend, not
  * the main DB — so this fires-and-forgets by design (no retry storms).
+ *
+ * DEAD: acceptOffer() / declineOffer() below call
+ * /driver/offers/:allocationId/accept and /decline, which NO LONGER EXIST.
+ * The backend removed that router deliberately — see dispatch.routes.js:
+ * "Dispatch assigns; the driver is told, not asked." The empty router is
+ * still mounted there so the app boots, which means these calls get a 404
+ * rather than a connection error.
+ *
+ * Nothing in this app calls them (the only reference is the re-export in
+ * services/index.js), so they are left here documented rather than removed,
+ * in case a future driver-facing screen is tempted to use them. It should
+ * not: allocation is push-final.
  */
 import { apiClient, withMockFallback } from './apiClient';
 import { mockResolve } from './mockUtils';

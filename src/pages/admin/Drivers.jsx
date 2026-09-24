@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Star, PlusCircle, UserPlus, Phone, Mail, IdCard, CheckCircle, XCircle, Eye, FileText, Image, X, AlertTriangle } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import Card          from '../../components/ui/Card';
@@ -40,6 +40,20 @@ const REQUIRED_DRIVER_DOCS = ['LICENCE', 'AADHAAR', 'PHOTO'];
 // ── Document Review Modal ───────────────────────────────────────────────────
 function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoading }) {
   const [selectedDoc, setSelectedDoc] = useState(null);
+
+  // Escape closes the document viewer if one is open, otherwise the review
+  // modal itself. Without this the viewer could only be dismissed by clicking
+  // the backdrop — Escape is the first thing most people try on a lightbox.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (selectedDoc) setSelectedDoc(null);
+      else onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedDoc, onClose]);
+
   const { data, status } = useApi(
     () => apiClient.get(`/admin/drivers/${driver.userId}`),
     [driver.userId]
@@ -115,10 +129,30 @@ function DocumentReviewModal({ driver, onClose, onApprove, onReject, actionLoadi
       </div>
       {selectedDoc && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setSelectedDoc(null)}>
-          <div style={{ maxWidth: 800, width: '100%', textAlign: 'center' }}>
+          {/* Explicit close button. Backdrop-click alone was the only way out,
+              which is undiscoverable — and it is actively risky here, because
+              clicking the image itself does nothing while clicking 2px
+              outside it dismisses the viewer. */}
+          <button
+            type="button"
+            aria-label="Close document"
+            onClick={(e) => { e.stopPropagation(); setSelectedDoc(null); }}
+            style={{
+              position: 'fixed', top: 20, right: 24, zIndex: 61,
+              width: 40, height: 40, borderRadius: 999,
+              border: '1px solid rgba(255,255,255,0.25)',
+              backgroundColor: 'rgba(0,0,0,0.55)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={20} />
+          </button>
+          {/* Stop clicks on the image//title from bubbling to the backdrop, so
+              the viewer only closes deliberately. */}
+          <div style={{ maxWidth: 800, width: '100%', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
             <p style={{ color: '#fff', fontWeight: 600, marginBottom: 12 }}>{DOC_LABELS[selectedDoc.docType] || selectedDoc.docType}</p>
             <img src={selectedDoc.doc.url} alt={selectedDoc.docType} style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 8, objectFit: 'contain' }} />
-            <p style={{ color: '#9CA3AF', marginTop: 12, fontSize: 13.5 }}>Click anywhere to close</p>
+            <p style={{ color: '#9CA3AF', marginTop: 12, fontSize: 13.5 }}>Press Esc, or click outside the image, to close</p>
           </div>
         </div>
       )}
@@ -274,7 +308,11 @@ function KycTab() {
   const [rejectDialog,  setRejectDialog]  = useState(null);
 
   const { data, status, error, refetch } = useApi(
-    () => apiClient.get('/admin/drivers', { params: { kycStatus: 'PENDING', limit: 50, page: 1 } }),
+    // submitted:true — kycStatus is PENDING from account creation onward, so
+    // without this the queue lists every abandoned half-finished signup
+    // alongside real applications. Only drivers who completed every step and
+    // pressed Submit have documents.__meta.submittedAt set.
+    () => apiClient.get('/admin/drivers', { params: { kycStatus: 'PENDING', submitted: true, limit: 50, page: 1 } }),
     []
   );
   const applications = data?.data ?? data?.items ?? [];
@@ -302,7 +340,20 @@ function KycTab() {
   const columns = [
     { key: 'name', header: 'Applicant', render: (r) => (<div><p style={{ fontWeight: 600, color: '#1F2937' }}>{r.user?.name}</p><p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Phone size={11} />{r.user?.phone}</p>{r.user?.email && <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1"><Mail size={11} />{r.user.email}</p>}</div>) },
     { key: 'licenceNumber', header: 'Licence', render: (r) => (<div><p className="font-mono" style={{ color: '#1F2937', fontSize: 13 }}>{r.licenceNumber}</p>{r.licenceExpiry && <p style={{ color: '#6B7280', fontSize: 12.5 }}>Expires {formatDate(r.licenceExpiry)}</p>}</div>) },
-    { key: 'appliedAt', header: 'Applied', render: (r) => formatDateTime(r.createdAt) },
+    // submittedAt is when the driver COMPLETED onboarding and pressed Submit —
+    // the moment the application actually became reviewable. createdAt is just
+    // when the account was made, which can be days earlier, so it is shown as
+    // a secondary line rather than as "Applied".
+    { key: 'appliedAt', header: 'Submitted', render: (r) => (
+      <div>
+        <p style={{ color: '#1F2937', fontSize: 13, whiteSpace: 'nowrap' }}>
+          {r.submittedAt ? formatDateTime(r.submittedAt) : '—'}
+        </p>
+        <p style={{ color: '#9CA3AF', fontSize: 12 }}>
+          Registered {formatDate(r.createdAt)}
+        </p>
+      </div>
+    ) },
     { key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex gap-2 justify-end"><Button size="sm" variant="secondary" icon={Eye} onClick={() => setReviewDriver(r)}>Review</Button><Button size="sm" variant="dangerOutline" icon={XCircle} disabled={!!actionLoading} onClick={() => setRejectDialog(r)}>Reject</Button></div>) },
   ];
 
@@ -373,7 +424,7 @@ function PerformanceTab() {
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function Drivers() {
   const [tab, setTab] = useState('roster');
-  const { data: pendingData } = useApi(() => apiClient.get('/admin/drivers', { params: { kycStatus: 'PENDING', limit: 1, page: 1 } }), []);
+  const { data: pendingData } = useApi(() => apiClient.get('/admin/drivers', { params: { kycStatus: 'PENDING', submitted: true, limit: 1, page: 1 } }), []);
   const pendingCount = pendingData?.meta?.total ?? pendingData?.pagination?.total ?? 0;
 
   const tabs = [

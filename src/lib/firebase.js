@@ -34,7 +34,7 @@ function getFirebaseApp() {
 /**
  * Asks the browser for notification permission, registers the service
  * worker, gets an FCM token, and sends it to the real backend
- * (POST /admin/notifications/push-tokens). Call this right after a
+ * (POST /device-tokens). Call this right after a
  * successful admin/staff login.
  * Returns the token on success, or null if push isn't available/configured/
  * permitted — every case handled quietly, never thrown.
@@ -54,7 +54,10 @@ export async function requestNotificationPermission() {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
     if (!token) return null;
 
-    await apiClient.post('/admin/notifications/push-tokens', { token, platform: 'WEB' }).catch(() => {
+    // POST /device-tokens — NOT /admin/notifications/push-tokens, which does
+    // not exist. `platform` must also be lowercase: the backend validates it
+    // with z.enum(['android','ios','web']), so 'WEB' was rejected.
+    await apiClient.post('/device-tokens', { token, platform: 'web' }).catch(() => {
       // Registration failing shouldn't surface anywhere loud — the push
       // simply won't arrive; everything else keeps working normally.
     });

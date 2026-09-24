@@ -288,7 +288,12 @@ export const BOOKING_TRANSITION_ACTION = {
 
 export const ADMIN_NAV = [
   { label: 'Dashboard',    to: '/admin/dashboard',  icon: 'LayoutDashboard' },
-  { label: 'Clients',      to: '/admin/clients',    icon: 'Users',          permission: PERMISSIONS.CLIENTS_VIEW },
+  // Points at /admin/customers, NOT /admin/clients. Clients.jsx is only a
+  // redirect stub to /admin/customers, so linking to it meant the browser
+  // ended up on a URL that matched no nav item — and the sidebar highlight
+  // disappeared the instant the redirect fired. /admin/clients still exists
+  // as a route so old bookmarks keep working.
+  { label: 'Clients',      to: '/admin/customers', icon: 'Users',          permission: PERMISSIONS.CLIENTS_VIEW },
   { label: 'Drivers',      to: '/admin/drivers',    icon: 'IdCard',         permission: PERMISSIONS.DRIVERS_VIEW },
   { label: 'Vehicles',     to: '/admin/vehicles',   icon: 'Truck',          permission: PERMISSIONS.VEHICLES_VIEW },
   { label: 'Bookings',     to: '/admin/bookings',   icon: 'CalendarCheck',  permission: PERMISSIONS.BOOKINGS_VIEW },
@@ -306,6 +311,11 @@ export const ADMIN_NAV = [
   { label: 'Users & Roles',      to: '/admin/users',      icon: 'ShieldCheck',    permission: PERMISSIONS.USERS_MANAGE },
 ];
 
+// UNUSED. Nothing imports DRIVER_NAV, and no /driver/* routes exist in
+// AppRoutes.jsx — both links would 404 if it were wired to a Sidebar. The
+// driver-facing app is the separate React Native project, not this ERP.
+// Left here rather than deleted in case a driver web portal is planned, but
+// the routes must be added before it is used.
 export const DRIVER_NAV = [
   { label: 'My Trips', to: '/driver/trips',   icon: 'Route' },
   { label: 'Profile',  to: '/driver/profile', icon: 'User'  },

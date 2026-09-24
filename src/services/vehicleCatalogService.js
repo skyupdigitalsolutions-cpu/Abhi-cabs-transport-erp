@@ -71,4 +71,37 @@ export const vehicleCatalogService = {
     }
     return FALLBACK_CLASSES.map((k) => ({ value: k, label: k, seats: null, isActive: true }));
   },
+
+  /**
+   * Classes valid for a RATE CARD, from
+   * GET /admin/fare-configs/vehicle-classes — which is authoritative for
+   * pricing in a way the browse catalogue is not: it unions the classes that
+   * already have fare configs with those on active vehicles, so a class that
+   * exists only as a priced config (or only as a real vehicle) still appears.
+   * Also returns the trip types the backend accepts, so those stop being a
+   * hardcoded list that can drift.
+   *
+   * Catalogue names are merged in for readable labels — this endpoint returns
+   * bare keys like "innova-crysta".
+   */
+  async rateCardOptions() {
+    const [classesRes, catalogue] = await Promise.all([
+      apiClient.get('/admin/fare-configs/vehicle-classes').catch(() => null),
+      this.list({ includeInactive: true }).catch(() => []),
+    ]);
+
+    const nameByKey = {};
+    catalogue.forEach((v) => { if (v.key) nameByKey[v.key] = v.name || v.key; });
+
+    const data = unwrap(classesRes);
+    const keys = data.vehicleClasses || [];
+    const tripTypes = data.tripTypes || ['ONE_WAY', 'ROUND_TRIP', 'AIRPORT', 'HOURLY'];
+
+    const classes = (keys.length ? keys : FALLBACK_CLASSES).map((k) => ({
+      value: k,
+      label: nameByKey[k] || k,
+    }));
+
+    return { classes, tripTypes };
+  },
 };
