@@ -33,10 +33,12 @@ function clearSession() {
 // never have two — 'https://host.com/' + '/admin/x' silently becomes
 // 'https://host.com//admin/x', which most backends 404 on since it isn't the
 // same route as '/admin/x'. This has bitten real .env files before.
-const RAW_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const RAW_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://abhicabsbackend-production.up.railway.app/api/v1';
 export const API_BASE_URL = RAW_BASE_URL.replace(/\/+$/, '');
-export const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? 'true') === 'true';
-export const MOCK_FALLBACK = (import.meta.env.VITE_MOCK_FALLBACK ?? 'true') === 'true';
+// Default to LIVE backend (mock off) so rate cards, users, bookings etc. read
+// and write real data even without a .env file present.
+export const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? 'false') === 'true';
+export const MOCK_FALLBACK = (import.meta.env.VITE_MOCK_FALLBACK ?? 'false') === 'true';
 
 const DEFAULT_TIMEOUT = 15000;
 

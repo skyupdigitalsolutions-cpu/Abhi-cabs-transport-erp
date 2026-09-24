@@ -80,12 +80,12 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    if (form.cityId === '' || form.baseFare === '' || form.perKm === '' || form.minimumFare === '') return;
+    if (form.cityId === '' || form.perKm === '' || form.minimumFare === '') return;
     setLoading(true);
     try {
       // Identity fields only sent on create — the backend rejects them on update anyway.
       const base = {
-        baseFare: Number(form.baseFare),
+        baseFare: Number(form.baseFare) || 0, // field removed from UI — always 0
         perKm: Number(form.perKm),
         minimumFare: Number(form.minimumFare),
       };
@@ -164,10 +164,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#2F55C7' }}>
             💰 Fare (required)
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="Base fare (₹)" required>
-              <Input type="number" min="0" value={form.baseFare} onChange={(e) => set('baseFare', e.target.value)} placeholder="e.g. 100" />
-            </FormField>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Per KM (₹)" required>
               <Input type="number" min="0" value={form.perKm} onChange={(e) => set('perKm', e.target.value)} placeholder="e.g. 14" />
             </FormField>
@@ -354,11 +351,7 @@ function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
-        <div className="p-3" style={{ borderRight: '1px solid #F7F8FC' }}>
-          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#3B65DB' }}>Base fare</p>
-          <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.baseFare)}</p>
-        </div>
+      <div className="grid grid-cols-2 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
         <div className="p-3" style={{ borderRight: '1px solid #F7F8FC' }}>
           <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#F59E0B' }}>Per KM</p>
           <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.perKm)}</p>
