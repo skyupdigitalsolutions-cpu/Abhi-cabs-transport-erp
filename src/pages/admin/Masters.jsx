@@ -88,7 +88,6 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
     // visible failure. minimumFare is no longer required here (see below);
     // city and per-KM still are, but now say so.
     const nextErrors = {};
-    if (form.cityId === '') nextErrors.cityId = 'Pick a city.';
     if (form.perKm === '') nextErrors.perKm = 'Per-KM rate is required.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -153,7 +152,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             </Alert>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="City" required error={errors.cityId}>
+            <FormField label="City" error={errors.cityId}>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityId} />
               ) : (
@@ -576,17 +575,10 @@ function VehicleRatesTab() {
           <option value="">All trip types</option>
           {TRIP_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
-        <Button icon={Plus} disabled={cities.length === 0} onClick={() => { setEditing(null); setFormOpen(true); }}>
+        <Button icon={Plus} onClick={() => { setEditing(null); setFormOpen(true); }}>
           Add Rate Card
         </Button>
       </div>
-
-      {cities.length === 0 && (
-        <Alert type="warning" className="mb-4">
-          No cities are configured on the backend yet, so a rate card can't be created (every rate card
-          needs a city). Add a city first.
-        </Alert>
-      )}
 
       {/* Rate cards grid */}
       {filtered.length === 0 ? (

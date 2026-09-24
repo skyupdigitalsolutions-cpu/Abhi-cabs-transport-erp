@@ -66,13 +66,30 @@ export const fareConfigService = {
    * and can never be turned back on.
    */
   async list(params = {}) {
-    const data = unwrap(
-      await apiClient.get('/admin/fare-configs', {
-        params: { includeInactive: true, limit: 200, ...params },
-      }),
-    );
-    const rows = data.items || data.configs || [];
-    return { rows, total: data.pagination?.total ?? rows.length, pagination: data.pagination };
+    const res = await apiClient.get('/admin/fare-configs', {
+      params: { includeInactive: true, limit: 200, ...params },
+    });
+
+    // FIX: apiClient already transforms paginated endpoints that return
+    // { items: [...], pagination: {...} } into { data: [...], meta: {...} }.
+    // Running that through our own unwrap() then strips `data` down to the
+    // bare array, so `data.items` and `data.configs` are both undefined and
+    // the list is always empty — rate cards are created successfully but
+    // never displayed. Handle both the apiClient-transformed shape and the
+    // raw payload so this works regardless of which shape arrives.
+    let rows, pagination;
+
+    if (res && Array.isArray(res.data)) {
+      // apiClient already extracted items — { data: [...], meta: {...} }
+      rows = res.data;
+      pagination = res.meta;
+    } else {
+      const data = unwrap(res);
+      rows = Array.isArray(data) ? data : (data.items || data.configs || []);
+      pagination = data.pagination;
+    }
+
+    return { rows, total: pagination?.total ?? rows.length, pagination };
   },
 
   /** GET /admin/fare-configs/:id — payload: { config } */
