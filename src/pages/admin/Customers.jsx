@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Phone, Mail, UserCheck, UserX, Users } from 'lucide-react';
+import { Pencil, Phone, Mail } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import FilterBar     from '../../components/ui/FilterBar';
 import DataTable     from '../../components/ui/DataTable';
@@ -17,12 +17,12 @@ import { PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
 
 /**
- * Customers / Clients — Logged-in users and Guest users on separate tabs.
+ * Customers / Clients — "All users / Registered / Guest Users" filter.
  *
  * FRONTEND-ONLY: the backend has no "guest" field or filter, so the split is
  * done here. Customers are loaded in pages of 100 (the backend's max limit),
  * with search / account type / sort still applied server-side, then split
- * into Logged-in vs Guest and paginated locally. That keeps the tab counts
+ * into Registered vs Guest and paginated locally. That keeps the counts
  * and pagination correct instead of filtering only the 10 rows on screen.
  *
  * A GUEST is a customer created without signing up, recognised by the
@@ -39,11 +39,6 @@ const SORT_OPTIONS = [
   { value: 'createdAt',     label: 'Joined date'    },
   { value: 'loyaltyPoints', label: 'Loyalty points' },
   { value: 'name',          label: 'Name'           },
-];
-
-const USER_TABS = [
-  { key: 'registered', label: 'Logged-in Users', icon: UserCheck },
-  { key: 'guest',      label: 'Guest Users',     icon: UserX     },
 ];
 
 function isGuestCustomer(r) {
@@ -76,7 +71,7 @@ export default function Customers() {
   const [reloadTick, setReloadTick] = useState(0);
 
   // ── Local UI state ──
-  const [tab, setTab]           = useState('registered');
+  const [userType, setUserType] = useState(''); // '' | 'registered' | 'guest'
   const [page, setPage]         = useState(1);
   const [limit, setLimit]       = useState(10);
   const [dateFrom, setDateFrom] = useState('');
@@ -124,7 +119,7 @@ export default function Customers() {
   }, [debouncedSearch, accountType, sortBy, sortDir, reloadTick]);
 
   // Any change to what's shown goes back to page 1.
-  useEffect(() => { setPage(1); }, [tab, debouncedSearch, accountType, sortBy, sortDir, appliedRange, limit]);
+  useEffect(() => { setPage(1); }, [userType, debouncedSearch, accountType, sortBy, sortDir, appliedRange, limit]);
 
   // ── Split + date filter ──
   const { registeredRows, guestRows } = useMemo(() => {
@@ -136,7 +131,9 @@ export default function Customers() {
   const dateFiltering = !!(appliedRange.from || appliedRange.to);
 
   const tabRows = useMemo(() => {
-    const base = tab === 'guest' ? guestRows : registeredRows;
+    const base = userType === 'guest' ? guestRows
+      : userType === 'registered' ? registeredRows
+      : allRows;
     if (!dateFiltering) return base;
     const from = appliedRange.from ? new Date(appliedRange.from) : null;
     const to   = appliedRange.to ? new Date(appliedRange.to + 'T23:59:59') : null;
@@ -147,7 +144,7 @@ export default function Customers() {
       if (to && joined > to) return false;
       return true;
     });
-  }, [tab, guestRows, registeredRows, dateFiltering, appliedRange]);
+  }, [userType, allRows, guestRows, registeredRows, dateFiltering, appliedRange]);
 
   const totalPages = Math.max(1, Math.ceil(tabRows.length / limit));
   const pageRows = useMemo(
@@ -221,7 +218,7 @@ export default function Customers() {
       render: (r) => (
         isGuestCustomer(r)
           ? <Badge tone="amber">Guest</Badge>
-          : <Badge tone="green">Logged-in</Badge>
+          : <Badge tone="green">Registered</Badge>
       ),
     },
     {
@@ -263,13 +260,16 @@ export default function Customers() {
     }] : []),
   ];
 
+  // Column-header sort. The dropdowns set sortBy / order directly (below),
+  // falling back to the defaults when "Clear" empties them — the backend
+  // rejects an empty sortBy/order with a 400.
   const handleSort = (key, dir) => {
     if (dir) {
-      setSortBy(key);
+      setSortBy(key || 'createdAt');
       setSortDir(dir);
     } else {
       setSortDir((prev) => (sortBy === key && prev === 'desc' ? 'asc' : 'desc'));
-      setSortBy(key);
+      setSortBy(key || 'createdAt');
     }
   };
 
@@ -280,55 +280,29 @@ export default function Customers() {
     reload();
   };
 
-  const counts = { registered: registeredRows.length, guest: guestRows.length };
-  const loaded = status === 'success';
 
   return (
     <div>
       <PageHeader
         title="Customers"
-        description="Logged-in users and guest users are listed separately."
+        description="Registered (logged-in) users and guest users. Use the user filter to separate them."
       />
-
-      {/* Logged-in vs Guest tabs */}
-      <div className="flex gap-1 mb-4 border-b" style={{ borderColor: '#E8E8E4' }}>
-        {USER_TABS.map(({ key, label, icon: Icon }) => {
-          const active = tab === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors"
-              style={{ borderColor: active ? '#FFC107' : 'transparent', color: active ? '#111111' : '#9A9A9A' }}
-            >
-              <Icon size={13} />
-              {label}
-              {loaded && (
-                <span
-                  className="ml-1 px-1.5 py-0.5 rounded-full text-[10.5px] font-bold"
-                  style={{ backgroundColor: active ? '#FFC107' : '#F3F4F6', color: '#111111' }}
-                >
-                  {counts[key]}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {tab === 'guest' && (
-        <p className="mb-4 text-xs flex items-center gap-1.5" style={{ color: '#6B7280' }}>
-          <Users size={12} />
-          Guests are customers created without signing up (e.g. WhatsApp or phone-only bookings) — they have no real email on file.
-        </p>
-      )}
 
       <FilterBar
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name, email or phone…"
         filters={[
+          {
+            name: 'userType',
+            value: userType,
+            onChange: (v) => setUserType(v),
+            placeholder: 'All users',
+            options: [
+              { value: 'registered', label: `Registered (Logged In)${status === 'success' ? ` · ${registeredRows.length}` : ''}` },
+              { value: 'guest',      label: `Guest Users${status === 'success' ? ` · ${guestRows.length}` : ''}` },
+            ],
+          },
           {
             name: 'accountType',
             value: accountType,
@@ -342,14 +316,14 @@ export default function Customers() {
           {
             name: 'sortBy',
             value: sortBy,
-            onChange: (v) => handleSort(v, sortDir),
+            onChange: (v) => setSortBy(v || 'createdAt'),
             placeholder: 'Sort by',
             options: SORT_OPTIONS,
           },
           {
             name: 'order',
             value: sortDir,
-            onChange: (v) => handleSort(sortBy, v),
+            onChange: (v) => setSortDir(v || 'desc'),
             placeholder: 'Order',
             options: [
               { value: 'desc', label: 'Newest first' },
@@ -412,7 +386,9 @@ export default function Customers() {
         emptyTitle={
           dateFiltering
             ? 'No customers joined in this date range'
-            : tab === 'guest' ? 'No guest users found' : 'No logged-in users found'
+            : userType === 'guest' ? 'No guest users found'
+            : userType === 'registered' ? 'No registered users found'
+            : 'No customers found'
         }
         emptyDescription="Try adjusting your search or filters."
       />
