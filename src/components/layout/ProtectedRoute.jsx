@@ -1,21 +1,18 @@
 /**
  * src/components/layout/ProtectedRoute.jsx
  *
- * FIX: role comparison was case-sensitive.
- * Backend returns role as "ADMIN" (uppercase).
- * AuthContext normalises it to "admin" (lowercase).
- * ProtectedRoute compared user.role ("admin") !== requiredRole ("ADMIN") → always redirected.
+ * Guards admin routes. Any authenticated staff role (ADMIN, OPS, FINANCE,
+ * FLEET, SUPPORT) can enter the admin panel. Individual pages are then
+ * gated by `permission` — each role only sees the pages their permissions
+ * allow.
  *
- * Fix: compare both sides lowercased so "admin" === "admin" ✅
+ * Customers and drivers are redirected to login — they have their own apps.
  */
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
-const ROLE_LOGIN = {
-  admin:  '/admin/login',
-  user:   '/admin/login',
-  driver: '/admin/login',
-};
+// Roles that may access the admin panel
+const STAFF_ROLES = new Set(['admin', 'ops', 'finance', 'fleet', 'support', 'manager']);
 
 export default function ProtectedRoute({ permission, requiredRole, redirectTo, children }) {
   const { isAuthenticated, hasPermission, user } = useAuth();
@@ -25,13 +22,22 @@ export default function ProtectedRoute({ permission, requiredRole, redirectTo, c
     return <Navigate to={redirectTo || '/admin/login'} state={{ from: location }} replace />;
   }
 
-  // FIXED: compare lowercased so "admin" === "admin" regardless of what
-  // the backend or the route definition uses as casing.
-  if (requiredRole && user?.role?.toLowerCase() !== requiredRole.toLowerCase()) {
-    const fallback = ROLE_LOGIN[user?.role?.toLowerCase()] || '/admin/login';
-    return <Navigate to={fallback} replace />;
+  const role = (user?.role || '').toLowerCase();
+
+  // If a specific role is required, check it (case-insensitive)
+  if (requiredRole) {
+    if (role !== requiredRole.toLowerCase()) {
+      return <Navigate to="/admin/login" replace />;
+    }
+  } else {
+    // Default: any staff role can access the admin panel
+    // Block customers/drivers — they don't belong here
+    if (!STAFF_ROLES.has(role)) {
+      return <Navigate to="/admin/login" replace />;
+    }
   }
 
+  // Fine-grained: does this role hold the required permission?
   if (permission && !hasPermission(permission)) {
     return <Navigate to="/unauthorized" replace />;
   }

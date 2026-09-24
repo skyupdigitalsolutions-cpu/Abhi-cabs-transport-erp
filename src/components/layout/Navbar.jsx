@@ -67,7 +67,7 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
   };
 
   const name  = user?.name  || 'Admin';
-  const role  = isDriver ? 'Driver' : 'Admin';
+  const role  = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Admin';
   const email = user?.email || '';
 
   return (

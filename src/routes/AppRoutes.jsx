@@ -49,8 +49,8 @@ export default function AppRoutes() {
         <Route path="/admin/forgot" element={<ForgotPassword />} />
         <Route path="/admin/reset"  element={<ResetPassword />} />
 
-        {/* ── Admin ── */}
-        <Route path="/admin" element={<ProtectedRoute requiredRole="ADMIN"><AdminLayout /></ProtectedRoute>}>
+        {/* ── Admin — any authenticated staff role (ADMIN/OPS/FINANCE/FLEET/SUPPORT) ── */}
+        <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="dashboard"    element={<Dashboard />} />
           <Route path="clients"      element={<P permission={PERMISSIONS.CLIENTS_VIEW}><Clients /></P>} />
