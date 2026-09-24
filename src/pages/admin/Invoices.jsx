@@ -1,18 +1,49 @@
 import { useState } from 'react';
-import { FileText, Download } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import PageHeader  from '../../components/ui/PageHeader';
 import FilterBar   from '../../components/ui/FilterBar';
 import DataTable   from '../../components/ui/DataTable';
 import Badge       from '../../components/ui/Badge';
 import Button      from '../../components/ui/Button';
 import Modal       from '../../components/ui/Modal';
-import Alert       from '../../components/ui/Alert';
-import { useApi }  from '../../hooks/useApi';
+import { useResourceList } from '../../hooks/useResourceList';
+import { useApi } from '../../hooks/useApi';
 import { adminInvoicesService } from '../../services/adminInvoicesService';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatDateTime, titleCase } from '../../utils/formatters';
 
 const STATUS_TONE = { DRAFT: 'slate', ISSUED: 'blue', PAID: 'green', CANCELLED: 'red' };
-const STATUS_OPTS = ['DRAFT','ISSUED','PAID','CANCELLED'];
+const STATUS_OPTS = ['DRAFT', 'ISSUED', 'PAID', 'CANCELLED'];
+const TYPE_OPTS   = [{ value: 'TAX', label: 'Tax Invoice' }, { value: 'NON_TAX', label: 'Bill of Supply' }];
+
+// Ledger entries for the invoice's booking — GET /admin/invoices/booking/:bookingId/ledger.
+// Only loaded once a booking is known (the invoice has at least one line tied to a booking);
+// a consolidated corporate invoice with no single booking simply shows no ledger section.
+function InvoiceLedger({ bookingId }) {
+  const { data, status } = useApi(() => adminInvoicesService.ledgerForBooking(bookingId), [bookingId]);
+
+  if (status === 'loading') return <p className="text-xs" style={{ color: '#9A9A9A' }}>Loading ledger…</p>;
+  if (status === 'error' || !data?.ledger?.length) return null;
+
+  return (
+    <div className="border-t pt-3 mt-3" style={{ borderColor: '#F5F5F3' }}>
+      <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#6B7280' }}>Ledger</p>
+      {data.ledger.map((e) => (
+        <div key={e.id} className="flex justify-between py-1 text-xs">
+          <span style={{ color: '#5A5A5A' }}>{titleCase(e.entryType)} · {formatDateTime(e.createdAt)}</span>
+          <span className="font-semibold" style={{ color: e.direction === 'CREDIT' ? '#15803d' : '#DC2626' }}>
+            {e.direction === 'CREDIT' ? '+' : '-'}{formatCurrency(e.amount)}
+          </span>
+        </div>
+      ))}
+      {data.balance && (
+        <div className="flex justify-between pt-2 mt-1 border-t text-xs font-bold" style={{ borderColor: '#F5F5F3' }}>
+          <span>Fare charged</span>
+          <span>{formatCurrency(data.balance.fareCharged)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function InvoiceModal({ invoice, onClose }) {
   if (!invoice) return null;
@@ -47,35 +78,31 @@ function InvoiceModal({ invoice, onClose }) {
             </div>
           </div>
         )}
+        {invoice.booking?.id && <InvoiceLedger bookingId={invoice.booking.id} />}
       </div>
     </Modal>
   );
 }
 
 export default function Invoices() {
-  const [search,      setSearch]      = useState('');
-  const [statusFilter,setStatusFilter]= useState('');
-  const [selected,    setSelected]    = useState(null);
+  const [selected, setSelected] = useState(null);
 
-  const { data, status, error, refetch } = useApi(
-    () => adminInvoicesService.list({ limit: 50 }),
-    []
-  );
-
-  const rawItems = data?.data || data?.items || data?.invoices || [];
-
-  const filtered = rawItems.filter((inv) => {
-    if (statusFilter && inv.status !== statusFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        inv.invoiceNumber?.toLowerCase().includes(q) ||
-        inv.billToName?.toLowerCase().includes(q) ||
-        inv.booking?.bookingNumber?.toLowerCase().includes(q)
-      );
-    }
-    return true;
+  const list = useResourceList(adminInvoicesService, {
+    filterDefaults: { status: '', type: '' },
+    sortBy: 'issuedAt',
+    sortDir: 'desc',
+    limit: 20,
   });
+
+  // The list endpoint's own row doesn't carry `lines` (kept lean for a table
+  // view) — fetch the full invoice, with lines, only when one is opened.
+  const openInvoice = async (row) => {
+    setSelected(row); // show what we already have immediately
+    try {
+      const full = await adminInvoicesService.getOne(row.id);
+      setSelected({ ...full, booking: row.booking });
+    } catch { /* keep the row-level view; not worth an error toast for a detail fetch */ }
+  };
 
   const columns = [
     { key: 'invoiceNumber', header: 'Invoice #',
@@ -86,15 +113,15 @@ export default function Invoices() {
       render: (r) => <span className="font-semibold" style={{ color: '#111111' }}>{r.billToName || '—'}</span> },
     { key: 'type', header: 'Type',
       render: (r) => <Badge tone="slate">{r.type === 'TAX' ? 'Tax Invoice' : 'Bill of Supply'}</Badge> },
-    { key: 'totalAmount', header: 'Amount',
+    { key: 'totalAmount', header: 'Amount', sortable: true,
       render: (r) => <span className="font-bold" style={{ color: '#111111' }}>{formatCurrency(Number(r.totalAmount) || 0)}</span> },
     { key: 'status', header: 'Status',
       render: (r) => <Badge tone={STATUS_TONE[r.status] || 'slate'}>{r.status}</Badge> },
-    { key: 'issuedAt', header: 'Issued',
+    { key: 'issuedAt', header: 'Issued', sortable: true,
       render: (r) => <span className="text-xs" style={{ color: '#9A9A9A' }}>{formatDate(r.issuedAt)}</span> },
     { key: 'actions', header: '', className: 'text-right',
       render: (r) => (
-        <Button size="sm" variant="secondary" icon={FileText} onClick={() => setSelected(r)}>
+        <Button size="sm" variant="secondary" icon={FileText} onClick={() => openInvoice(r)}>
           View
         </Button>
       ),
@@ -103,25 +130,33 @@ export default function Invoices() {
 
   return (
     <div>
-      <PageHeader title="Invoices" description="All booking invoices. Filtered client-side — no list endpoint on backend." />
-      <Alert type="info" className="mb-4">
-        Invoices are assembled from completed bookings. Only ISSUED and PAID invoices are shown.
-      </Alert>
+      <PageHeader title="Invoices" description="All booking and corporate invoices." />
       <FilterBar
-        search={search} onSearchChange={setSearch}
-        searchPlaceholder="Search invoice #, booking # or customer…"
-        filters={[{
-          name: 'status', value: statusFilter,
-          onChange: setStatusFilter,
-          placeholder: 'All statuses',
-          options: STATUS_OPTS.map((s) => ({ value: s, label: s })),
-        }]}
+        search={list.search} onSearchChange={list.onSearchChange}
+        searchPlaceholder="Search invoice # or billed-to name…"
+        filters={[
+          {
+            name: 'status', value: list.filters.status,
+            onChange: (v) => list.setFilter('status', v),
+            placeholder: 'All statuses',
+            options: STATUS_OPTS.map((s) => ({ value: s, label: s })),
+          },
+          {
+            name: 'type', value: list.filters.type,
+            onChange: (v) => list.setFilter('type', v),
+            placeholder: 'All types',
+            options: TYPE_OPTS,
+          },
+        ]}
       />
       <DataTable
-        columns={columns} rows={filtered}
-        status={status} error={error} onRetry={refetch}
+        columns={columns} rows={list.rows}
+        status={list.status} error={list.error} onRetry={list.refetch}
+        sortBy={list.sortBy} sortDir={list.sortDir} onSort={list.onSort}
+        page={list.page} limit={list.meta?.limit} total={list.meta?.total}
+        totalPages={list.meta?.totalPages} onPageChange={list.setPage} onLimitChange={list.setLimit}
         emptyTitle="No invoices found"
-        emptyDescription="Invoices are generated for completed bookings with payments."
+        emptyDescription="Invoices are generated automatically for completed bookings and consolidated corporate billing."
       />
       <InvoiceModal invoice={selected} onClose={() => setSelected(null)} />
     </div>

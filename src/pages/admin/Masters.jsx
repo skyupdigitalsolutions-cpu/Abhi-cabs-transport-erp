@@ -55,6 +55,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   });
   const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
   // Vehicle classes come from the backend's vehicle_catalog, never a
   // hardcoded list — see services/vehicleCatalogService.js. includeInactive
@@ -80,14 +81,29 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    if (form.cityId === '' || form.perKm === '' || form.minimumFare === '') return;
+    // FIX: this used to be `if (cityId === '' || perKm === '' || minimumFare === '') return;`
+    // — a silent no-op. Leaving any of those blank and clicking Create did
+    // nothing at all: no toast, no red text, nothing. That's the "the button
+    // doesn't work" bug — it wasn't the button, it was validation with no
+    // visible failure. minimumFare is no longer required here (see below);
+    // city and per-KM still are, but now say so.
+    const nextErrors = {};
+    if (form.cityId === '') nextErrors.cityId = 'Pick a city.';
+    if (form.perKm === '') nextErrors.perKm = 'Per-KM rate is required.';
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setLoading(true);
     try {
-      // Identity fields only sent on create — the backend rejects them on update anyway.
+      // baseFare: field removed from UI — always 0.
+      // minimumFare: OPTIONAL. Left blank, it's simply not sent — the
+      // database defaults it to 0, which fare.service.js already treats as
+      // "no floor enforced" (`config.minimumFare ?? 0`), so this can never
+      // misprice a trip; it just turns the rule off.
       const base = {
-        baseFare: Number(form.baseFare) || 0, // field removed from UI — always 0
+        baseFare: Number(form.baseFare) || 0,
         perKm: Number(form.perKm),
-        minimumFare: Number(form.minimumFare),
+        ...(form.minimumFare !== '' && { minimumFare: Number(form.minimumFare) }),
       };
       const advanced = mode === 'advanced' ? {
         ...(form.perMinute !== ''        && { perMinute: Number(form.perMinute) }),
@@ -137,11 +153,11 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             </Alert>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="City" required>
+            <FormField label="City" required error={errors.cityId}>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityId} />
               ) : (
-                <Select value={form.cityId} onChange={(e) => set('cityId', e.target.value)}
+                <Select value={form.cityId} onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
                   options={cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` }))} />
               )}
             </FormField>
@@ -165,11 +181,11 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             💰 Fare (required)
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Per KM (₹)" required>
-              <Input type="number" min="0" value={form.perKm} onChange={(e) => set('perKm', e.target.value)} placeholder="e.g. 14" />
+            <FormField label="Per KM (₹)" required error={errors.perKm}>
+              <Input type="number" min="0" value={form.perKm} onChange={(e) => { set('perKm', e.target.value); setErrors((er) => ({ ...er, perKm: undefined })); }} placeholder="e.g. 14" />
             </FormField>
-            <FormField label="Minimum fare (₹)" required>
-              <Input type="number" min="0" value={form.minimumFare} onChange={(e) => set('minimumFare', e.target.value)} placeholder="e.g. 250" />
+            <FormField label="Minimum fare (₹)" hint={isEdit ? 'Optional. Left blank on an edit, the existing minimum fare is kept unchanged.' : 'Optional. Left blank, no floor is enforced — the fare is never topped up to a minimum.'}>
+              <Input type="number" min="0" value={form.minimumFare} onChange={(e) => set('minimumFare', e.target.value)} placeholder="e.g. 250 (optional)" />
             </FormField>
           </div>
         </div>
