@@ -116,16 +116,26 @@ function PermissionsPanel({ role }) {
   );
 }
 
+// Only these management/staff roles belong on the Users & Roles page.
+// Customers and drivers have their own dedicated pages and must NOT appear here.
+const STAFF_ROLES = ['ADMIN', 'OPS', 'FINANCE', 'FLEET', 'SUPPORT', 'MANAGER'];
+
 export default function UsersRoles() {
   const toast = useToast();
   const { user: currentUser } = useAuth();
 
-  const list = useResourceList({ list: (p) => apiClient.get('/admin/users', { params: p }) }, {
+  const list = useResourceList({ list: (p) => apiClient.get('/admin/users', { params: { ...p, excludeRoles: 'CUSTOMER,DRIVER' } }) }, {
     sortBy: 'createdAt', limit: 10,
   });
 
   const [formOpen,     setFormOpen]     = useState(false);
   const [selectedRole, setSelectedRole] = useState('ADMIN');
+
+  // Guard: even if the backend returns customers/drivers in /admin/users,
+  // scope the table to staff/management roles only.
+  const staffRows = (list.rows || []).filter(
+    (r) => STAFF_ROLES.includes(String(r.role || '').toUpperCase())
+  );
 
   const handleInvite = async (vals) => {
     try {
@@ -198,7 +208,7 @@ export default function UsersRoles() {
     <div>
       <PageHeader
         title="Users & Roles"
-        description="Manage staff accounts and their access permissions."
+        description="Manage staff & management accounts (Admin, Ops, Finance, Fleet, Support). Customers and drivers are managed on their own pages."
         actions={<Button icon={Plus} onClick={() => setFormOpen(true)}>Add user</Button>}
       />
 
@@ -209,10 +219,10 @@ export default function UsersRoles() {
             onSearchChange={list.onSearchChange}
             searchPlaceholder="Search name or email…"
           />
-          {/* FIXED: rowKey="id" — backend returns `id`, not `userId` */}
+          {/* Rows scoped to staff/management roles only — customers & drivers excluded */}
           <DataTable
             columns={columns}
-            rows={list.rows}
+            rows={staffRows}
             rowKey="id"
             status={list.status}
             error={list.error}

@@ -120,7 +120,19 @@ export default function Customers() {
   // customer base at once — and cached so switching pages back and forth
   // doesn't keep re-fetching the same customer twice.
   const [bookingCounts, setBookingCounts] = useState({}); // userId -> count | 'loading' | 'error'
-  const visibleRows = dateFiltering ? dateFilterPageRows : list.rows;
+  const [userTypeFilter, setUserTypeFilter] = useState(''); // '' | 'registered' | 'guest'
+
+  // A "guest" is a customer auto-created at checkout without signing up —
+  // identified by the placeholder email pattern used by the guest flow.
+  const isGuestCustomer = (r) => {
+    const email = (r.user?.email || '').toLowerCase();
+    return email.includes('@placeholder.local') || email.includes('guest.') || !r.user?.email;
+  };
+
+  const baseRows = dateFiltering ? dateFilterPageRows : list.rows;
+  const visibleRows = userTypeFilter
+    ? baseRows.filter((r) => userTypeFilter === 'guest' ? isGuestCustomer(r) : !isGuestCustomer(r))
+    : baseRows;
   const visibleUserIds = visibleRows.map((r) => r.userId).join(',');
 
   useEffect(() => {
@@ -178,6 +190,14 @@ export default function Customers() {
         <span className="flex items-center gap-1" style={{ fontSize: 13, color: '#6B7280' }}>
           <Phone size={12} />{r.user?.phone || '—'}
         </span>
+      ),
+    },
+    {
+      key: 'userType', header: 'User',
+      render: (r) => (
+        isGuestCustomer(r)
+          ? <Badge tone="amber">Guest</Badge>
+          : <Badge tone="green">Registered</Badge>
       ),
     },
     {
@@ -242,6 +262,16 @@ export default function Customers() {
         onSearchChange={list.onSearchChange}
         searchPlaceholder="Search name, email or phone…"
         filters={[
+          {
+            name: 'userType',
+            value: userTypeFilter,
+            onChange: (v) => setUserTypeFilter(v),
+            placeholder: 'All users',
+            options: [
+              { value: 'registered', label: 'Registered (Logged In)' },
+              { value: 'guest',      label: 'Guest Users'           },
+            ],
+          },
           {
             name: 'accountType',
             value: list.filters.accountType,
