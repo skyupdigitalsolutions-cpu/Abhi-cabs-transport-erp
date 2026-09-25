@@ -309,6 +309,7 @@ export const ADMIN_NAV = [
   { label: 'Invoices',     to: '/admin/invoices',   icon: 'FileText',       permission: PERMISSIONS.INVOICES_VIEW },
   { label: 'Reports',      to: '/admin/reports',    icon: 'BarChart3',      permission: PERMISSIONS.REPORTS_VIEW },
   { label: 'Rate Cards',   to: '/admin/masters',    icon: 'Database',       permission: PERMISSIONS.MASTERS_MANAGE },
+  { label: 'Surge Pricing',to: '/admin/surge',      icon: 'Zap',            permission: PERMISSIONS.MASTERS_MANAGE },
   { label: 'Notifications',to: '/admin/notifications', icon: 'Bell' },
   { label: 'Support & SOS',to: '/admin/support',    icon: 'LifeBuoy',       permission: PERMISSIONS.SUPPORT_MANAGE },
   { label: 'WhatsApp',         to: '/admin/whatsapp',         icon: 'MessageCircle',  permission: PERMISSIONS.SETTINGS_MANAGE },

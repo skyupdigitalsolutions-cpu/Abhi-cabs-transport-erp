@@ -26,6 +26,7 @@ const Payments       = lazy(() => import('../pages/admin/Payments'));
 const Invoices       = lazy(() => import('../pages/admin/Invoices'));
 const Reports        = lazy(() => import('../pages/admin/Reports'));
 const Masters        = lazy(() => import('../pages/admin/Masters'));
+const SurgePricing   = lazy(() => import('../pages/admin/SurgePricing'));
 const Notifications  = lazy(() => import('../pages/admin/Notifications'));
 const Support        = lazy(() => import('../pages/admin/Support'));
 const WhatsApp       = lazy(() => import('../pages/admin/WhatsApp'));
@@ -67,6 +68,7 @@ export default function AppRoutes() {
           <Route path="invoices"     element={<P permission={PERMISSIONS.INVOICES_VIEW}><Invoices /></P>} />
           <Route path="reports"      element={<P permission={PERMISSIONS.REPORTS_VIEW}><Reports /></P>} />
           <Route path="masters"      element={<P permission={PERMISSIONS.MASTERS_MANAGE}><Masters /></P>} />
+          <Route path="surge"        element={<P permission={PERMISSIONS.MASTERS_MANAGE}><SurgePricing /></P>} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="support"      element={<P permission={PERMISSIONS.SUPPORT_MANAGE}><Support /></P>} />
           <Route path="whatsapp"     element={<P permission={PERMISSIONS.SETTINGS_MANAGE}><WhatsApp /></P>} />
