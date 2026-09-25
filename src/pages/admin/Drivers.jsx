@@ -185,9 +185,7 @@ function RosterTab() {
 
   const handleCreateTemporary = async (payload) => {
     await driverService.createTemporary(payload);
-    toast.success(payload.assignedVehicleId
-      ? `Temporary driver created — OTP sign-in sent to ${payload.email}`
-      : `Temporary driver created — OTP sign-in sent to ${payload.email}. Assign a vehicle when ready.`);
+    toast.success(`Temporary driver ${payload.name} created${payload.vehicleNumber ? ` — vehicle ${payload.vehicleNumber}` : '. Assign a vehicle when ready.'}`);
     list.reload();
   };
 
@@ -200,8 +198,13 @@ function RosterTab() {
   const handleDeactivate = async () => {
     setDeleteLoading(true);
     try {
-      await apiClient.patch(`/admin/drivers/${deleting.userId}/deactivate`, {});
-      toast.success('Driver deactivated');
+      if (deleting.driverType === 'TEMPORARY') {
+        await driverService.deleteTemporary(deleting.userId);
+        toast.success('Temporary driver removed');
+      } else {
+        await apiClient.patch(`/admin/drivers/${deleting.userId}/deactivate`, {});
+        toast.success('Driver deactivated');
+      }
       list.reload();
     } catch (e) { toast.error(e.message || 'Could not deactivate'); }
     finally { setDeleteLoading(false); setDeleting(null); }
@@ -266,7 +269,9 @@ function RosterTab() {
           {r.driverType !== 'TEMPORARY' && (
             <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
           )}
-          <Button size="sm" variant="dangerOutline" onClick={() => setDeleting(r)}>Deactivate</Button>
+          <Button size="sm" variant="dangerOutline" onClick={() => setDeleting(r)}>
+            {r.driverType === 'TEMPORARY' ? 'Remove' : 'Deactivate'}
+          </Button>
         </div>
       ),
     },
@@ -295,7 +300,7 @@ function RosterTab() {
       <DriverFormDrawer open={formOpen} onClose={() => setFormOpen(false)} initial={editing} onSubmit={handleSubmit} />
       <TemporaryDriverModal open={tempFormOpen} onClose={() => setTempFormOpen(false)} onSubmit={handleCreateTemporary} />
       <TemporaryDriverModal open={!!assigning} onClose={() => setAssigning(null)} onSubmit={handleAssignVehicle} driver={assigning} />
-      <ConfirmDialog open={!!deleting} title="Deactivate this driver?" description={deleting ? `${deleting.user?.name} will be deactivated and forced offline.` : ''} confirmLabel="Deactivate" danger loading={deleteLoading} onClose={() => setDeleting(null)} onConfirm={handleDeactivate} />
+      <ConfirmDialog open={!!deleting} title={deleting?.driverType === 'TEMPORARY' ? 'Remove temporary driver?' : 'Deactivate this driver?'} description={deleting ? (deleting.driverType === 'TEMPORARY' ? `${deleting.user?.name || deleting.user?.email} will be permanently removed.` : `${deleting.user?.name} will be deactivated and forced offline.`) : ''} confirmLabel={deleting?.driverType === 'TEMPORARY' ? 'Remove' : 'Deactivate'} danger loading={deleteLoading} onClose={() => setDeleting(null)} onConfirm={handleDeactivate} />
     </div>
   );
 }

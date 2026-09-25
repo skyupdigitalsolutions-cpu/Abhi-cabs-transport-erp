@@ -534,11 +534,6 @@ function VehicleRatesTab() {
 
   return (
     <>
-      <Alert type="success" className="mb-4">
-        <strong>Connected to live pricing.</strong> This tab reads and writes the real fare configuration
-        — changes here take effect on the next quote a customer requests.
-      </Alert>
-
       {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[

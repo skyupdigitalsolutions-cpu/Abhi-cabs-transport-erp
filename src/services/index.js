@@ -42,7 +42,7 @@ export const driverService = createCrudService({
 //     /auth/otp/verify-email) instead of phone OTP.
 driverService.createTemporary = (payload) =>
   withMockFallback(
-    () => apiClient.post('/admin/drivers/temporary', payload),
+    () => apiClient.post('/admin/temporary-drivers', payload),
     async () => {
       await mockResolve(null);
       const assignedVehicle = payload.vehicleNumber
@@ -93,6 +93,28 @@ driverService.assignVehicle = (driverId, spec) =>
         assignedVehicle,
       };
       return db.drivers[idx];
+    }
+  );
+
+// List all temporary drivers — GET /admin/temporary-drivers
+driverService.listTemporary = () =>
+  withMockFallback(
+    () => apiClient.get('/admin/temporary-drivers'),
+    async () => {
+      await mockResolve(null);
+      return { data: db.drivers.filter((d) => d.driverType === 'TEMPORARY') };
+    }
+  );
+
+// Remove a temporary driver — DELETE /admin/temporary-drivers/:userId
+driverService.deleteTemporary = (userId) =>
+  withMockFallback(
+    () => apiClient.delete(`/admin/temporary-drivers/${userId}`),
+    async () => {
+      await mockResolve(null);
+      const idx = db.drivers.findIndex((d) => d.userId === userId || d.id === userId);
+      if (idx !== -1) db.drivers.splice(idx, 1);
+      return { success: true };
     }
   );
 
