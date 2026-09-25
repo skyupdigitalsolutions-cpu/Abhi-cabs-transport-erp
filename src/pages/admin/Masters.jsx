@@ -49,7 +49,7 @@ const EMPTY_RATE_CARD = {
 function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const isEdit = !!initial;
   const [form, setForm] = useState(() => {
-    if (!initial) return { ...EMPTY_RATE_CARD, cityId: cities[0]?.id || '' };
+    if (!initial) return { ...EMPTY_RATE_CARD, cityId: '' };
     // Backend returns Decimal fields as strings — coerce to plain numbers/strings for inputs.
     const flat = { ...initial };
     return { ...EMPTY_RATE_CARD, ...flat, cityId: initial.cityId };
@@ -126,7 +126,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
         await onSubmit({ ...base, ...advanced });
       } else {
         await onSubmit({
-          cityId: Number(form.cityId),
+          ...(form.cityId && { cityId: Number(form.cityId) }),
           vehicleClass: form.vehicleClass,
           tripType: form.tripType,
           ...base,
@@ -148,17 +148,21 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
           </p>
           {isEdit && (
             <Alert type="info" className="mb-3">
-              City, vehicle class and trip type can't be changed on an existing rate card — create a new
+              Vehicle class and trip type can't be changed on an existing rate card — create a new
               one instead. This keeps it clear which rate card actually priced a past booking.
             </Alert>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="City" error={errors.cityId}>
+            <FormField label="City" hint="Optional — leave blank for a global rate card.">
               {isEdit ? (
-                <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityId} />
+                <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityName || form.cityId || 'All cities'} />
               ) : (
                 <Select value={form.cityId} onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
-                  options={cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` }))} />
+                  placeholder="All cities (optional)"
+                  options={[
+                    { value: '', label: 'All cities (no city filter)' },
+                    ...cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
+                  ]} />
               )}
             </FormField>
             <FormField label="Vehicle class" required>
@@ -348,7 +352,7 @@ function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
           </p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[12.5px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: catBg, color: catColor }}>
-              <MapPin size={10} className="inline -mt-0.5 mr-0.5" />{cityName || `City #${rate.cityId}`}
+              <MapPin size={10} className="inline -mt-0.5 mr-0.5" />{cityName || (rate.cityId ? `City #${rate.cityId}` : 'All cities')}
             </span>
             {!rate.isActive && <Badge tone="slate">Inactive</Badge>}
             {advancedTags.map((tag) => (

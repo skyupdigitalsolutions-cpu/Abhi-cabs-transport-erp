@@ -176,7 +176,7 @@ const DEFAULT_DOC_SETTINGS = {
     vehicleFitness:   { label: "Fitness Certificate",  days: 15, on: true },
     pollutionCert:    { label: "Pollution (PUC)",      days: 7,  on: true },
   },
-  channels: { inApp: true, email: false, whatsapp: false },
+
 };
 
 function loadDocSettings() {
@@ -231,23 +231,6 @@ function NotificationSettings({ settings, onSave, onClose }) {
                   <span style={{ fontSize: 12.5, color: '#888' }}>days before</span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Channels */}
-        <div style={{ opacity: draft.enabled ? 1 : 0.5, pointerEvents: draft.enabled ? 'auto' : 'none' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 12 }}>
-            Delivery channels
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-            {[['inApp', 'In-App'], ['email', 'Email'], ['whatsapp', 'WhatsApp']].map(([k, lbl]) => (
-              <Checkbox
-                key={k}
-                label={lbl}
-                checked={draft.channels[k]}
-                onChange={(e) => setDraft((d) => ({ ...d, channels: { ...d.channels, [k]: e.target.checked } }))}
-              />
             ))}
           </div>
         </div>

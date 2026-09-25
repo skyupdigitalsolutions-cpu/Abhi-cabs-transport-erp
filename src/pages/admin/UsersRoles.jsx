@@ -124,7 +124,7 @@ export default function UsersRoles() {
   const toast = useToast();
   const { user: currentUser } = useAuth();
 
-  const list = useResourceList({ list: (p) => apiClient.get('/admin/users', { params: { ...p, excludeRoles: 'CUSTOMER,DRIVER' } }) }, {
+  const list = useResourceList({ list: (p) => apiClient.get('/admin/users', { params: p }) }, {
     sortBy: 'createdAt', limit: 10,
   });
 
