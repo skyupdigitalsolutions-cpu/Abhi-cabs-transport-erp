@@ -17,6 +17,7 @@ import PageHeader  from '../../components/ui/PageHeader';
 import FilterBar   from '../../components/ui/FilterBar';
 import DataTable   from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
+import Input       from '../../components/ui/Input';
 import { useResourceList } from '../../hooks/useResourceList';
 import { bookingService }  from '../../services';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
@@ -147,22 +148,24 @@ export default function Trips() {
           },
         ]}
         extra={
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold" style={{ color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
-            <input
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            padding: '6px 10px', borderRadius: 10, backgroundColor: '#F7F8FC',
+            border: '1px solid #E8E8E4',
+          }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>From</span>
+            <Input
               type="date"
               value={list.filters.from ? list.filters.from.slice(0, 10) : ''}
               onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }}
+              style={{ minWidth: 140 }}
             />
-            <label className="text-xs font-semibold" style={{ color: '#6B7280' }}>To</label>
-            <input
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>To</span>
+            <Input
               type="date"
               value={list.filters.to ? list.filters.to.slice(0, 10) : ''}
               onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
-              className="text-xs border rounded-lg px-2 py-1.5"
-              style={{ borderColor: '#E5E7EB', color: '#1F2937' }}
+              style={{ minWidth: 140 }}
             />
           </div>
         }
