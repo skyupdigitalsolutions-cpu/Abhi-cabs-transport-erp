@@ -195,12 +195,13 @@ export default function Dashboard() {
     [trendApi.data, chartPeriod]
   );
 
-  // Abandoned-booking tracking — real funnel data from
-  // GET /admin/bookings/attempts?outcome=ABANDONED (fed by the customer
-  // website's draft tracking). Visitors who progressed through the booking
-  // funnel but never confirmed.
+  // Booking-attempt tracking — real funnel data from
+  // GET /admin/bookings/attempts (fed by the customer website's draft tracking).
+  // We DON'T filter to ABANDONED: drafts are stored as PENDING and only become
+  // ABANDONED after ~30 min via the backend worker, so filtering to ABANDONED
+  // alone showed nothing. Showing all recent attempts surfaces the data live.
   const abandonedApi = useApi(
-    () => bookingOpsService.attempts({ outcome: 'ABANDONED', limit: 5, page: 1 }),
+    () => bookingOpsService.attempts({ limit: 5, page: 1 }),
     []
   );
   const abandonedCount = abandonedApi.data?.pagination?.total ?? 0;
@@ -256,7 +257,7 @@ export default function Dashboard() {
           icon={CalendarCheck} tone="accent" />
         <KpiCard label="Revenue Collected" value={formatCurrency(totalRevenue)}
           icon={IndianRupee} tone="green" />
-        <KpiCard label="Abandoned Bookings" value={abandonedCount}
+        <KpiCard label="Booking Attempts" value={abandonedCount}
           icon={AlertTriangle} tone="amber" />
       </div>
 
@@ -268,7 +269,7 @@ export default function Dashboard() {
       {abandonedRecent.length > 0 && (
         <Card className="mb-6">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold" style={{ color: '#1F2937' }}>Recent Abandoned Bookings</h3>
+            <h3 className="text-sm font-semibold" style={{ color: '#1F2937' }}>Recent Booking Attempts</h3>
             <a href="/admin/reports" className="text-xs font-semibold" style={{ color: '#3B65DB' }}>View all in Reports →</a>
           </div>
           <div className="space-y-2">
@@ -276,11 +277,12 @@ export default function Dashboard() {
               const name  = a.customer?.user?.name || 'Guest';
               const phone = a.customer?.user?.phone || '—';
               const route = [a.pickupAddress, a.dropAddress].filter(Boolean).join(' → ');
+              const oc = { PENDING: 'In progress', ABANDONED: 'Abandoned', FAILED: 'Failed', COMPLETED: 'Completed' }[a.outcome] || a.outcome;
               return (
                 <div key={a.id} className="flex items-start justify-between gap-3 py-2" style={{ borderBottom: '1px solid #F3F4F6' }}>
                   <div>
                     <p className="text-sm font-medium" style={{ color: '#1F2937' }}>{name} · {phone}</p>
-                    <p className="text-xs" style={{ color: '#9CA3AF' }}>{route || (a.payload?.stage ? `Stage: ${a.payload.stage}` : 'Booking funnel')}</p>
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>{oc ? `${oc} · ` : ''}{route || (a.payload?.stage ? `Stage: ${a.payload.stage}` : 'Booking funnel')}</p>
                   </div>
                   <span className="text-xs whitespace-nowrap" style={{ color: '#9CA3AF' }}>
                     {a.createdAt ? new Date(a.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}

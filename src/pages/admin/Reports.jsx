@@ -25,7 +25,7 @@ const REPORT_TABS = [
   { key: 'customers', label: 'Customers' },
   { key: 'locations', label: 'Locations' },
   { key: 'cancellations', label: 'Cancellations' },
-  { key: 'abandoned', label: 'Abandoned Bookings' },
+  { key: 'abandoned', label: 'Booking Attempts' },
   { key: 'gst',       label: 'GST'       },
 ];
 
@@ -871,35 +871,57 @@ function CancellationsTab({ bookings, onRefresh, refreshing }) {
 // never confirmed. Paginated, on-demand.
 function AbandonedBookingsTab() {
   const [page, setPage] = useState(1);
+  // Default to ALL outcomes. Draft attempts are stored as PENDING and only
+  // become ABANDONED after ~30 min via the backend worker's sweep job — so
+  // filtering to ABANDONED alone hid every in-progress attempt and made it look
+  // like nothing was being stored. Omitting `outcome` returns every attempt.
+  const [outcome, setOutcome] = useState('');
   const limit = 20;
   const { data, status, error, refetch } = useApi(
-    () => bookingOpsService.attempts({ outcome: 'ABANDONED', page, limit }),
-    [page]
+    () => bookingOpsService.attempts({ ...(outcome ? { outcome } : {}), page, limit }),
+    [page, outcome]
   );
   const items = data?.items ?? [];
   const total = data?.pagination?.total ?? 0;
   const totalPages = data?.pagination?.totalPages ?? 1;
   const stageLabel = (a) => a?.payload?.stage || (a?.estimatedFare != null ? 'FARES_VIEWED' : 'STARTED');
+  const outcomeTone = { PENDING: 'blue', ABANDONED: 'amber', FAILED: 'red', COMPLETED: 'green' };
+  const outcomeLabel = { PENDING: 'In progress', ABANDONED: 'Abandoned', FAILED: 'Failed', COMPLETED: 'Completed' };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
-          <h3 className="text-base font-semibold">Abandoned Bookings</h3>
+          <h3 className="text-base font-semibold">Booking attempts</h3>
           <p className="text-sm text-gray-500 mt-0.5">
-            Visitors who progressed through the booking funnel but left before confirming.
+            Everyone who started the booking funnel. In-progress attempts are recorded live;
+            they turn Abandoned after ~30 minutes (needs the backend worker running).
             {total > 0 && ` ${total} total.`}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refetch}>Refresh</Button>
+        <div className="flex items-center gap-2">
+          <select
+            value={outcome}
+            onChange={(e) => { setOutcome(e.target.value); setPage(1); }}
+            className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
+            style={{ background: '#fff', color: '#374151' }}
+          >
+            <option value="">All attempts</option>
+            <option value="PENDING">In progress</option>
+            <option value="ABANDONED">Abandoned</option>
+            <option value="FAILED">Failed</option>
+            <option value="COMPLETED">Completed</option>
+          </select>
+          <Button variant="outline" size="sm" onClick={refetch}>Refresh</Button>
+        </div>
       </div>
 
       {status === 'loading' ? (
         <LoadingState />
       ) : status === 'error' ? (
-        <ErrorState message={error?.message || 'Could not load abandoned bookings'} onRetry={refetch} />
+        <ErrorState message={error?.message || 'Could not load booking attempts'} onRetry={refetch} />
       ) : items.length === 0 ? (
-        <p className="text-sm text-gray-500 py-8 text-center">No abandoned bookings recorded yet.</p>
+        <p className="text-sm text-gray-500 py-8 text-center">No booking attempts recorded yet.</p>
       ) : (
         <>
           <div className="space-y-2">
@@ -919,6 +941,7 @@ function AbandonedBookingsTab() {
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                    <Badge tone={outcomeTone[a.outcome] || 'slate'}>{outcomeLabel[a.outcome] || a.outcome || 'Attempt'}</Badge>
                     {a.tripType && <Badge tone="slate">{a.tripType}</Badge>}
                     <Badge tone="amber">{stageLabel(a)}</Badge>
                     {a.estimatedFare != null && <span>Est. {formatCurrency(n(a.estimatedFare))}</span>}
