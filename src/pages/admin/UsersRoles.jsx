@@ -28,6 +28,7 @@ import { useForm }   from '../../hooks/useForm';
 import { apiClient } from '../../services/apiClient';
 import { ROLES, PERMISSIONS, ROLE_PERMISSIONS } from '../../constants';
 import { formatDate, formatDateTime } from '../../utils/formatters';
+import { required, minLength, isEmail } from '../../utils/validators';
 import { useAuth }   from '../../hooks/useAuth';
 
 // Backend GET /admin/users returns rows with shape:
@@ -53,8 +54,26 @@ const ROLE_TONE = {
 };
 
 function UserFormDrawer({ open, onClose, onSubmit }) {
+  // Client-side validation that MATCHES the backend createUserSchema exactly, so
+  // the form can't submit a payload the API will reject with a 400 "Invalid
+  // request data". Backend password rule: min 8, at least one uppercase, one
+  // lowercase and one number (NO special char required — don't over-reject).
+  const passwordRule = (value) => {
+    if (!value) return 'Password is required';
+    if (value.length < 8) return 'Password must be at least 8 characters';
+    if (!/[a-z]/.test(value)) return 'Include at least one lowercase letter';
+    if (!/[A-Z]/.test(value)) return 'Include at least one uppercase letter';
+    if (!/[0-9]/.test(value)) return 'Include at least one number';
+    return '';
+  };
   const { values, errors, touched, submitting, setValue, setFieldTouched, handleSubmit } = useForm({
     initialValues: { name: '', email: '', password: 'TempPass@123', role: 'ADMIN' },
+    schema: {
+      name:     [required('Full name'), minLength(2, 'Full name')],
+      email:    [required('Email'), isEmail],
+      role:     [required('Role')],
+      password: [passwordRule],
+    },
     onSubmit: async (vals) => { await onSubmit(vals); onClose(); },
   });
   return (
@@ -74,13 +93,16 @@ function UserFormDrawer({ open, onClose, onSubmit }) {
           <Input type="email" value={values.email} onChange={(e) => setValue('email', e.target.value)}
             onBlur={() => setFieldTouched('email')} placeholder="rahul@abhicabs.in" />
         </FormField>
-        <FormField label="Role" required>
+        <FormField label="Role" required error={touched.role && errors.role}>
           <Select value={values.role} onChange={(e) => setValue('role', e.target.value)} options={ROLE_OPTS} />
         </FormField>
-        <FormField label="Temporary password" required>
+        <FormField label="Temporary password" required
+          error={touched.password && errors.password}
+          hint="At least 8 characters, with an uppercase letter, a lowercase letter and a number.">
           <Input type="password" value={values.password}
             onChange={(e) => setValue('password', e.target.value)}
-            placeholder="Min 8 chars" />
+            onBlur={() => setFieldTouched('password')}
+            placeholder="Min 8 chars, e.g. TempPass@123" />
         </FormField>
         <Alert type="info">
           Share this temporary password with the user securely — they'll need it to log in.
@@ -142,7 +164,17 @@ export default function UsersRoles() {
       await apiClient.post('/admin/users', vals);
       toast.success(`User ${vals.email} created`);
       list.reload();
-    } catch (e) { toast.error(e.message || 'Could not create user'); }
+    } catch (e) {
+      // Surface the SPECIFIC reason. A 400 from the API carries per-field
+      // messages in e.fieldErrors ([{ field, message }]); show them so the
+      // user knows exactly what to fix instead of a generic "invalid".
+      const fields = Array.isArray(e.fieldErrors) ? e.fieldErrors : [];
+      const detail = fields.length
+        ? fields.map((f) => `${f.field}: ${f.message}`).join(' · ')
+        : (e.message || 'Could not create user');
+      toast.error(detail);
+      throw e; // keep the drawer open so the user can correct and retry
+    }
   };
 
   // FIXED: use user.id (not user.userId) — backend exposes `id` as the primary key

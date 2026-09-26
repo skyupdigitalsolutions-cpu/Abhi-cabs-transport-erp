@@ -10,7 +10,6 @@ import Input          from '../../components/ui/Input';
 import Select        from '../../components/ui/Select';
 import FormField    from '../../components/ui/FormField';
 import Textarea      from '../../components/ui/Textarea';
-import Alert          from '../../components/ui/Alert';
 import Modal          from '../../components/ui/Modal';
 import { useResourceList }    from '../../hooks/useResourceList';
 import { useApi } from '../../hooks/useApi';
@@ -241,18 +240,6 @@ function CashHandoversTab() {
 
   return (
     <>
-      <Alert type="info" className="mb-4">
-        Every cash payment a driver collects on the road shows here as <strong>Pending</strong> until
-        someone at the office confirms the physical cash has actually been handed in. Confirming does
-        not move any money or change what the customer owes — that was already settled — it only
-        records who received the cash and when.
-        <br />
-        <span style={{ fontSize: 12.5, opacity: 0.85 }}>
-          Note: confirmations are saved in <strong>this browser only</strong> — other admins or another
-          computer won't see them as confirmed.
-        </span>
-      </Alert>
-
       {/* Per-driver cash-in-hand summary */}
       {summary.status === 'success' && summary.data && (
         summary.data.drivers.length === 0 ? (
@@ -459,13 +446,6 @@ function RefundsTab() {
     <>
       <div className="rounded-2xl border p-5 mb-6" style={{ borderColor: '#E5E7EB', backgroundColor: '#fff' }}>
         <p className="text-sm font-bold mb-3" style={{ color: '#1F2937' }}>Issue a refund</p>
-
-        <Alert type="info" className="mb-4">
-          Look up a booking to see how much is still refundable. Recording a refund
-          is view-only for now — the backend route for saving refunds
-          (POST /admin/payments/refunds) hasn&apos;t been built yet, so this screen
-          won&apos;t create a finance record until it is.
-        </Alert>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
           <div className="sm:col-span-2">
