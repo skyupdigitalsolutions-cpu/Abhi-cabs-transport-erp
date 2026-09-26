@@ -36,7 +36,7 @@ import DonutChart   from '../../components/dashboard/DonutChart';
 import StatusBadge  from '../../components/ui/StatusBadge';
 import { useApi }   from '../../hooks/useApi';
 import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
-import { bookingService, reportsService, contactService } from '../../services';
+import { bookingService, reportsService, contactService, bookingOpsService } from '../../services';
 import { apiClient } from '../../services/apiClient';
 import { CardSkeleton } from '../../components/ui/Skeleton';
 import ErrorState   from '../../components/ui/ErrorState';
@@ -195,14 +195,12 @@ export default function Dashboard() {
     [trendApi.data, chartPeriod]
   );
 
-  // NEW: abandoned-checkout tracking (see the customer website's checkout
-  // page — fires a real Contact/Support record, topic "Abandoned Booking",
-  // when a customer leaves before confirming). Reusing the existing,
-  // real GET /admin/contacts endpoint with its search param, which already
-  // matches against the topic field server-side — confirmed directly
-  // against contact.service.js's list() query.
+  // Abandoned-booking tracking — real funnel data from
+  // GET /admin/bookings/attempts?outcome=ABANDONED (fed by the customer
+  // website's draft tracking). Visitors who progressed through the booking
+  // funnel but never confirmed.
   const abandonedApi = useApi(
-    () => contactService.list({ search: 'Abandoned Booking', limit: 5, sortBy: 'createdAt', order: 'desc' }),
+    () => bookingOpsService.attempts({ outcome: 'ABANDONED', limit: 5, page: 1 }),
     []
   );
   const abandonedCount = abandonedApi.data?.pagination?.total ?? 0;
@@ -274,17 +272,22 @@ export default function Dashboard() {
             <a href="/admin/reports" className="text-xs font-semibold" style={{ color: '#3B65DB' }}>View all in Reports →</a>
           </div>
           <div className="space-y-2">
-            {abandonedRecent.map((c) => (
-              <div key={c.id} className="flex items-start justify-between gap-3 py-2" style={{ borderBottom: '1px solid #F3F4F6' }}>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: '#1F2937' }}>{c.name} · {c.mobile}</p>
-                  <p className="text-xs" style={{ color: '#9CA3AF' }}>{(c.message || '').split('\n')[1] || c.message}</p>
+            {abandonedRecent.map((a) => {
+              const name  = a.customer?.user?.name || 'Guest';
+              const phone = a.customer?.user?.phone || '—';
+              const route = [a.pickupAddress, a.dropAddress].filter(Boolean).join(' → ');
+              return (
+                <div key={a.id} className="flex items-start justify-between gap-3 py-2" style={{ borderBottom: '1px solid #F3F4F6' }}>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: '#1F2937' }}>{name} · {phone}</p>
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>{route || (a.payload?.stage ? `Stage: ${a.payload.stage}` : 'Booking funnel')}</p>
+                  </div>
+                  <span className="text-xs whitespace-nowrap" style={{ color: '#9CA3AF' }}>
+                    {a.createdAt ? new Date(a.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
                 </div>
-                <span className="text-xs whitespace-nowrap" style={{ color: '#9CA3AF' }}>
-                  {c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

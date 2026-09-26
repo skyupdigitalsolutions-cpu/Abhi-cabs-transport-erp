@@ -192,6 +192,50 @@ function CancelModal({ open, onClose, onConfirm }) {
   );
 }
 
+// ── Confirm modal — call the customer, then confirm with an optional remark ──
+// A booking sits in PENDING until an admin confirms it (backend makes this the
+// ONLY way out of PENDING — payment does not auto-confirm). This is where ops
+// records what happened on the call ("customer confirmed by phone", "asked to
+// call back at 6pm", etc.) before moving it to CONFIRMED.
+//
+// The remark travels as `note` on PATCH /admin/bookings/:id/confirm. It is
+// persisted only if the backend confirm handler forwards it (see the optional
+// backend patch in the notes) — the confirm itself works either way.
+function ConfirmModal({ open, onClose, onConfirm, bookingNumber }) {
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      await onConfirm(note.trim());
+      setNote('');
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Confirm booking" size="sm"
+      footer={<>
+        <Button variant="secondary" size="sm" onClick={onClose}>Back</Button>
+        <Button variant="primary" size="sm" loading={loading} onClick={submit}>Confirm booking</Button>
+      </>}
+    >
+      <div className="space-y-4">
+        <p className="text-sm" style={{ color: '#6B7280' }}>
+          {bookingNumber ? <>Confirm <strong>{bookingNumber}</strong> and move it out of Pending.</> : 'Confirm this booking and move it out of Pending.'}
+        </p>
+        <FormField label="Remark (optional)" hint="Note from the confirmation call — e.g. who you spoke to, or anything the driver/ops should know.">
+          <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Confirmed with customer by phone; pickup gate is at the rear." />
+        </FormField>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function BookingDetail() {
   const { id: bookingId } = useParams();
@@ -205,6 +249,7 @@ export default function BookingDetail() {
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [hasInvoice, setHasInvoice] = useState(false);
 
@@ -250,6 +295,23 @@ export default function BookingDetail() {
       const updated = await bookingOpsService.cancel(booking.id, { reason, cancelledByType: 'ADMIN' });
       setData(updated.booking || updated);
       toast.success('Booking cancelled');
+    } catch (e) {
+      toast.error(e.message);
+      throw e; // keep the modal open on failure
+    }
+  };
+
+  // Confirm (PENDING → CONFIRMED) with an optional call remark. The remark is
+  // sent as `note`; see ConfirmModal above. Kept separate from the generic
+  // transition() so ops always gets the remark prompt on confirm.
+  const handleConfirm = async (note) => {
+    try {
+      const updated = await bookingOpsService.confirm(
+        booking.id,
+        note ? { note } : {},
+      );
+      setData(updated.booking || updated);
+      toast.success('Booking confirmed');
     } catch (e) {
       toast.error(e.message);
       throw e; // keep the modal open on failure
@@ -423,6 +485,7 @@ export default function BookingDetail() {
                         onClick={() => {
                           if (cfg.needsAssign) setAssignOpen(true);
                           else if (ns === BOOKING_STATUS.CANCELLED) setCancelOpen(true);
+                          else if (ns === BOOKING_STATUS.CONFIRMED) setConfirmOpen(true);
                           else transition(ns);
                         }}
                       >
@@ -459,6 +522,7 @@ export default function BookingDetail() {
 
       <AssignModal open={assignOpen} onClose={() => setAssignOpen(false)} onAssign={handleAssign} booking={booking} />
       <CancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={handleCancel} />
+      <ConfirmModal open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={handleConfirm} bookingNumber={booking.bookingNumber} />
     </div>
   );
 }

@@ -1,18 +1,21 @@
 /**
  * Admin — business-wide payments listing, cash handover reconciliation, and
- * refund recording. Endpoint: /api/v1/admin/payments
+ * refund viewing. Endpoint: /api/v1/admin/payments
  *
- * Real, confirmed contract:
- *   GET   /admin/payments                       — paginated (unchanged)
- *   GET   /admin/payments/cash-handovers         — driver cash awaiting handover
- *   GET   /admin/payments/cash-handovers/summary — cash-in-hand per driver
- *   PATCH /admin/payments/cash-handovers/:id/confirm — mark received
- *   GET   /admin/payments/refundable/:bookingId  — what a booking can refund
- *   POST  /admin/payments/refunds                — record a refund
+ * REAL backend contract (verified against routes/adminPayment.routes.js):
+ *   GET /admin/payments        — paginated list. This is the ONLY route here.
  *
- * Refund history is just the existing list() filtered to purpose=REFUND —
- * there's no second listing endpoint; the backend added a `purpose` filter to
- * the one that already existed.
+ * Everything else below is reconstructed on the FRONTEND from endpoints that
+ * do exist, because the backend has no dedicated route for them:
+ *   • Cash handovers  ← /admin/payments?method=CASH&status=CAPTURED
+ *                       + /admin/audit?action=CASH_COLLECTED + /admin/drivers
+ *   • Refundable      ← /payments/booking/:bookingId  (sum captured − refunded)
+ *   • Refund history  ← /admin/payments?purpose=REFUND  (a filter on the list)
+ *
+ * Refund ISSUING (POST) has no backend route and cannot be safely faked —
+ * it moves real money and writes finance ledgers. createRefund() therefore
+ * throws a clear error instead of hitting a 404, and the Refunds tab shows the
+ * form as view-only until POST /admin/payments/refunds exists.
  */
 import { apiClient } from './apiClient';
 import { getStoredUser } from './authStorage';
@@ -188,14 +191,67 @@ export const adminPaymentsService = {
 
   // ---- Refunds --------------------------------------------------------------
 
-  /** GET /admin/payments/refundable/:bookingId — booking summary + refundable balance. */
-  async refundableBalance(bookingId) {
-    return apiClient.get(`/admin/payments/refundable/${bookingId}`);
+  /**
+   * Refundable balance for a booking, RECONSTRUCTED (no /admin/payments/refundable
+   * route exists). Pass the booking object returned by findBookingByNumber so we
+   * can show its number/customer without a second lookup; a bare id also works.
+   *
+   * Captured / refunded come from GET /payments/booking/:bookingId (needs
+   * PAYMENT_VIEW). If that call is not permitted, we fall back to the booking's
+   * own advancePaid / refundAmount fields.
+   *
+   * Returns { booking, totalCaptured, alreadyRefunded, refundable, payments }.
+   */
+  async refundableBalance(bookingOrId) {
+    const b = (bookingOrId && typeof bookingOrId === 'object') ? bookingOrId : null;
+    const bookingId = b ? b.id : bookingOrId;
+
+    let payments = [];
+    try {
+      const res = await apiClient.get(`/payments/booking/${bookingId}`);
+      payments = res?.payments ?? res?.data ?? (Array.isArray(res) ? res : []);
+    } catch {
+      payments = []; // no PAYMENT_VIEW on this booking route — use booking fields
+    }
+
+    const sum = (pred) => payments.filter(pred).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    let totalCaptured   = sum((p) => p.status === 'CAPTURED' && p.purpose !== 'REFUND');
+    let alreadyRefunded = sum((p) => p.purpose === 'REFUND');
+
+    if (payments.length === 0 && b) {
+      totalCaptured   = Number(b.advancePaid ?? 0);
+      alreadyRefunded = Number(b.refundAmount ?? 0);
+    }
+
+    const refundable = Math.max(0, Math.round((totalCaptured - alreadyRefunded) * 100) / 100);
+
+    return {
+      booking: {
+        id: bookingId,
+        bookingNumber: b?.bookingNumber || null,
+        status: b?.status || null,
+        customerName: b?.customer?.user?.name || b?.guestName || 'Customer',
+        customerPhone: b?.customer?.user?.phone || b?.guestPhone || '',
+      },
+      totalCaptured,
+      alreadyRefunded,
+      refundable,
+      payments,
+    };
   },
 
-  /** { bookingId, amount, method, reason, reference?, notes? } */
-  async createRefund(payload) {
-    return apiClient.post('/admin/payments/refunds', payload);
+  /**
+   * Recording a refund needs POST /admin/payments/refunds, which does NOT exist
+   * on the backend yet. We refuse loudly rather than 404 silently, and never
+   * fake a finance record locally. Re-point this at apiClient.post once the
+   * backend route lands.
+   */
+  async createRefund(_payload) {
+    throw new Error(
+      'Refund recording is not available yet — the backend route ' +
+      'POST /admin/payments/refunds has not been built. You can still view the ' +
+      'refundable balance and past refunds here.'
+    );
   },
 
   /**

@@ -370,7 +370,7 @@ function RefundsTab() {
     setBalance(null);
     try {
       const b = await adminPaymentsService.findBookingByNumber(num);
-      const bal = await adminPaymentsService.refundableBalance(b.id);
+      const bal = await adminPaymentsService.refundableBalance(b);
       setBooking(bal.booking);
       setBalance(bal);
     } catch (e) {
@@ -458,7 +458,14 @@ function RefundsTab() {
   return (
     <>
       <div className="rounded-2xl border p-5 mb-6" style={{ borderColor: '#E5E7EB', backgroundColor: '#fff' }}>
-        <p className="text-sm font-bold mb-4" style={{ color: '#1F2937' }}>Issue a refund</p>
+        <p className="text-sm font-bold mb-3" style={{ color: '#1F2937' }}>Issue a refund</p>
+
+        <Alert type="info" className="mb-4">
+          Look up a booking to see how much is still refundable. Recording a refund
+          is view-only for now — the backend route for saving refunds
+          (POST /admin/payments/refunds) hasn&apos;t been built yet, so this screen
+          won&apos;t create a finance record until it is.
+        </Alert>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
           <div className="sm:col-span-2">
@@ -536,7 +543,9 @@ function RefundsTab() {
 
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" icon={RotateCcw} onClick={resetForm}>Reset</Button>
-          <Button size="sm" loading={submitting} disabled={!booking} onClick={submit}>Record Refund</Button>
+          {/* Disabled until POST /admin/payments/refunds exists on the backend.
+              Re-enable by restoring: disabled={!booking} */}
+          <Button size="sm" loading={submitting} disabled title="Refund recording needs a backend route that isn't built yet" onClick={submit}>Record Refund</Button>
         </div>
       </div>
 

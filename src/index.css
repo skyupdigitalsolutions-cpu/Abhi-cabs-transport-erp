@@ -164,3 +164,29 @@ textarea {
 /* Drag handles / resizers, where present. */
 [draggable="true"] { cursor: grab; }
 [draggable="true"]:active { cursor: grabbing; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cross-device safety net — mobile / tablet / laptop
+   Additive only. The admin layout already has a hamburger + mobile sidebar
+   overlay and tables scroll inside their own containers; this just catches the
+   common cross-device issues without touching the tuned layout.
+   ═══════════════════════════════════════════════════════════════════════════ */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Stop stray horizontal scrolling; wide tables keep their own scroll wrapper. */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+img, svg, video, canvas { max-width: 100%; height: auto; }
+p, h1, h2, h3, h4, li, td, th, dd, dt { overflow-wrap: break-word; }
+
+/* iOS zooms when a focused field's font-size is < 16px. */
+@media (max-width: 640px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+table { max-width: 100%; }
+
+@media (hover: none) and (pointer: coarse) {
+  button, a[role="button"] { min-height: 40px; }
+}

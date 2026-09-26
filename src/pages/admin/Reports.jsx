@@ -13,7 +13,7 @@ import LoadingState from '../../components/ui/LoadingState';
 import ErrorState  from '../../components/ui/ErrorState';
 import { useApi }  from '../../hooks/useApi';
 import { useToast } from '../../hooks/useToast';
-import { reportsService, bookingService, adminPaymentsService, contactService } from '../../services';
+import { reportsService, bookingService, adminPaymentsService, contactService, bookingOpsService } from '../../services';
 import { formatCurrency, titleCase, formatDate } from '../../utils/formatters';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -865,22 +865,21 @@ function CancellationsTab({ bookings, onRefresh, refreshing }) {
   );
 }
 
-// NEW: real list of abandoned checkouts, fed by the customer website's
-// checkout page (see its beforeunload/pagehide tracking) via the existing
-// Contact/Support system — GET /admin/contacts?search=Abandoned Booking
-// genuinely matches these server-side (confirmed against contact.service.js:
-// search matches name/email/topic/mobile). Not a live feed on this tab —
-// just a real, paginated, on-demand list.
+// Real list of abandoned bookings, fed by the customer website's funnel draft
+// tracking → GET /admin/bookings/attempts?outcome=ABANDONED. These are visitors
+// who progressed through the booking funnel (viewed fares / chose payment) but
+// never confirmed. Paginated, on-demand.
 function AbandonedBookingsTab() {
   const [page, setPage] = useState(1);
   const limit = 20;
   const { data, status, error, refetch } = useApi(
-    () => contactService.list({ search: 'Abandoned Booking', page, limit, sortBy: 'createdAt', order: 'desc' }),
+    () => bookingOpsService.attempts({ outcome: 'ABANDONED', page, limit }),
     [page]
   );
   const items = data?.items ?? [];
   const total = data?.pagination?.total ?? 0;
   const totalPages = data?.pagination?.totalPages ?? 1;
+  const stageLabel = (a) => a?.payload?.stage || (a?.estimatedFare != null ? 'FARES_VIEWED' : 'STARTED');
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -888,7 +887,7 @@ function AbandonedBookingsTab() {
         <div>
           <h3 className="text-base font-semibold">Abandoned Bookings</h3>
           <p className="text-sm text-gray-500 mt-0.5">
-            Customers who reached checkout with their details filled in, but left before confirming.
+            Visitors who progressed through the booking funnel but left before confirming.
             {total > 0 && ` ${total} total.`}
           </p>
         </div>
@@ -900,25 +899,29 @@ function AbandonedBookingsTab() {
       ) : status === 'error' ? (
         <ErrorState message={error?.message || 'Could not load abandoned bookings'} onRetry={refetch} />
       ) : items.length === 0 ? (
-        <p className="text-sm text-gray-500 py-8 text-center">No abandoned bookings recorded.</p>
+        <p className="text-sm text-gray-500 py-8 text-center">No abandoned bookings recorded yet.</p>
       ) : (
         <>
           <div className="space-y-2">
-            {items.map((c) => {
-              const lines = (c.message || '').split('\n');
+            {items.map((a) => {
+              const name  = a.customer?.user?.name || 'Guest';
+              const phone = a.customer?.user?.phone || '—';
+              const route = [a.pickupAddress, a.dropAddress].filter(Boolean).join(' → ');
               return (
-                <div key={c.id} className="p-3 rounded-lg" style={{ backgroundColor: '#FAFAFA', border: '1px solid #F0F0F0' }}>
+                <div key={a.id} className="p-3 rounded-lg" style={{ backgroundColor: '#FAFAFA', border: '1px solid #F0F0F0' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-800">{c.name} · {c.mobile}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{c.email}</p>
+                      <p className="text-sm font-semibold text-gray-800">{name} · {phone}</p>
+                      {route && <p className="text-xs text-gray-600 mt-0.5">{route}</p>}
                     </div>
                     <span className="text-xs text-gray-400 whitespace-nowrap">
-                      {c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                      {a.createdAt ? new Date(a.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
                     </span>
                   </div>
-                  <div className="mt-2 text-xs text-gray-600 space-y-0.5">
-                    {lines.slice(1).map((line, i) => <p key={i}>{line}</p>)}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                    {a.tripType && <Badge tone="slate">{a.tripType}</Badge>}
+                    <Badge tone="amber">{stageLabel(a)}</Badge>
+                    {a.estimatedFare != null && <span>Est. {formatCurrency(n(a.estimatedFare))}</span>}
                   </div>
                 </div>
               );

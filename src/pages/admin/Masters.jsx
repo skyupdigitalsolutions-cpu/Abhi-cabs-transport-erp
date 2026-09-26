@@ -104,6 +104,9 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
         baseFare: Number(form.baseFare) || 0,
         perKm: Number(form.perKm),
         ...(form.minimumFare !== '' && { minimumFare: Number(form.minimumFare) }),
+        // Driver allowance is optional and available in BOTH Simple and Advanced
+        // modes — left blank it is simply not sent (DB defaults to 0 = none).
+        ...(form.driverAllowance !== '' && { driverAllowance: Number(form.driverAllowance) }),
       };
       const advanced = mode === 'advanced' ? {
         ...(form.perMinute !== ''        && { perMinute: Number(form.perMinute) }),
@@ -112,7 +115,6 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
         ...(form.minKmPerDay !== ''      && { minKmPerDay: Number(form.minKmPerDay) }),
         ...(form.waitingPerHour !== ''   && { waitingPerHour: Number(form.waitingPerHour) }),
         ...(form.freeWaitingMin !== ''   && { freeWaitingMin: Number(form.freeWaitingMin) }),
-        ...(form.driverAllowance !== ''  && { driverAllowance: Number(form.driverAllowance) }),
         ...(form.nightAllowance !== ''   && { nightAllowance: Number(form.nightAllowance) }),
         ...(form.nightChargePct !== ''   && { nightChargePct: Number(form.nightChargePct) }),
         nightStartHour: Number(form.nightStartHour), nightStartMinute: Number(form.nightStartMinute),
@@ -191,6 +193,9 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             <FormField label="Minimum fare (₹)" hint={isEdit ? 'Optional. Left blank on an edit, the existing minimum fare is kept unchanged.' : 'Optional. Left blank, no floor is enforced — the fare is never topped up to a minimum.'}>
               <Input type="number" min="0" value={form.minimumFare} onChange={(e) => set('minimumFare', e.target.value)} placeholder="e.g. 250 (optional)" />
             </FormField>
+            <FormField label="Driver allowance / day (₹)" hint="Optional. Paid to the driver per day; applies to all trip types except Airport. Leave blank for none.">
+              <Input type="number" min="0" value={form.driverAllowance} onChange={(e) => set('driverAllowance', e.target.value)} placeholder="e.g. 300 (optional)" />
+            </FormField>
           </div>
         </div>
 
@@ -206,9 +211,9 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
         </div>
         {mode === 'simple' && (
           <p className="text-xs -mt-3" style={{ color: '#9A9A9A' }}>
-            Simple mode: this rate card will just charge base fare + (distance × per-KM rate), with no
-            outstation, night, driver-allowance, airport or hourly-rental rules. Switch to Advanced to
-            configure any of those.
+            Simple mode: this rate card charges distance × per-KM rate, plus the optional minimum fare
+            and driver allowance above. Switch to Advanced to add outstation, night, airport or
+            hourly-rental rules.
           </p>
         )}
 
@@ -224,9 +229,6 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
                 </FormField>
                 <FormField label="Min KM / day" hint="Round trip only">
                   <Input type="number" min="0" value={form.minKmPerDay} onChange={(e) => set('minKmPerDay', e.target.value)} />
-                </FormField>
-                <FormField label="Driver allowance / day (₹)" hint="All trip types except Airport">
-                  <Input type="number" min="0" value={form.driverAllowance} onChange={(e) => set('driverAllowance', e.target.value)} />
                 </FormField>
                 <FormField label="Waiting ₹/hour" hint="Round trip only">
                   <Input type="number" min="0" value={form.waitingPerHour} onChange={(e) => set('waitingPerHour', e.target.value)} />
