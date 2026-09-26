@@ -201,6 +201,7 @@ export default function Discounts() {
   const handleCreate = async (form) => {
     try {
       await discountService.create(form);
+      setFormOpen(false);
       toast.success('Discount created');
       await load();
     } catch (e) {
@@ -212,6 +213,7 @@ export default function Discounts() {
   const handleUpdate = async (form) => {
     try {
       await discountService.update(editing.id, form);
+      setFormOpen(false);
       setEditing(null);
       toast.success('Discount updated');
       await load();

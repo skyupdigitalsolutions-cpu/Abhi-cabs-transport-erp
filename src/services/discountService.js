@@ -26,12 +26,17 @@
 import { apiClient } from './apiClient';
 
 function unwrapList(res) {
-  const items = res?.items ?? res?.discounts ?? (Array.isArray(res) ? res : []);
-  const pagination = res?.pagination ?? res?.meta ?? null;
+  // apiClient.unwrap transforms { items, pagination } → { data: [...], meta: {...} }
+  // So check res.data (array from apiClient) first, then raw shapes
+  const items = Array.isArray(res?.data) ? res.data
+    : res?.items ?? res?.discounts
+    ?? (Array.isArray(res) ? res : []);
+  const pagination = res?.meta ?? res?.pagination ?? null;
   return { items, pagination };
 }
 
 function unwrapOne(res) {
+  // apiClient unwraps { success, data: { discount } } → { discount }
   return res?.discount ?? res?.data ?? res;
 }
 
