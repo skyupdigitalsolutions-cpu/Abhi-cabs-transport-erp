@@ -26,8 +26,9 @@ const DEFAULT_CITY_ID = 1; // only Bengaluru is seeded on this backend today
 // Shared with Masters.jsx and Vehicles.jsx via constants/index.js — these
 // were three separate hardcoded copies that could silently drift apart.
 const PAYMENT_MODES = [
-  { value: 'FULL', label: 'Full payment now' },
+  { value: 'FULL',    label: 'Full payment now' },
   { value: 'PARTIAL', label: 'Partial advance' },
+  { value: 'ZERO',    label: 'Pay on trip (cash)' },
 ];
 
 export default function BookingFormDrawer({ open, onClose, onSubmit }) {

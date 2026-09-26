@@ -27,12 +27,25 @@ import { playNotificationSound } from '../lib/notificationSound';
 const AdminRealtimeContext = createContext({ connected: false, feed: [], lastEventId: null });
 
 const MAX_FEED_ITEMS = 30;
+const FEED_STORAGE_KEY = 'abhi_realtime_feed';
+
+function loadPersistedFeed() {
+  try {
+    const raw = sessionStorage.getItem(FEED_STORAGE_KEY);
+    if (raw) return JSON.parse(raw).slice(0, MAX_FEED_ITEMS);
+  } catch { /* ignore */ }
+  return [];
+}
+
+function persistFeed(feed) {
+  try { sessionStorage.setItem(FEED_STORAGE_KEY, JSON.stringify(feed)); } catch { /* ignore */ }
+}
 
 export function AdminRealtimeProvider({ children, enabled = true }) {
   const toast = useToast();
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
-  const [feed, setFeed] = useState([]);
+  const [feed, setFeed] = useState(loadPersistedFeed);
 
   // FIX: nothing in this app ever played a sound — every event only ever
   // produced a toast + a feed entry. pushFeedItem is the one place every
@@ -41,7 +54,11 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
   // single ping call here covers all of them without touching each
   // individual socket.on handler below.
   const pushFeedItem = useCallback((item) => {
-    setFeed((prev) => [{ ...item, id: `${Date.now()}-${Math.random()}`, at: item.at || new Date().toISOString() }, ...prev].slice(0, MAX_FEED_ITEMS));
+    setFeed((prev) => {
+      const updated = [{ ...item, id: `${Date.now()}-${Math.random()}`, at: item.at || new Date().toISOString() }, ...prev].slice(0, MAX_FEED_ITEMS);
+      persistFeed(updated);
+      return updated;
+    });
     playNotificationSound();
   }, []);
 
@@ -105,15 +122,37 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
 
         socket = io(socketBase, {
           auth: { token },
-          transports: ['websocket'],
+          // Start with websocket, fall back to polling if websocket fails
+          // (Cloudflare Workers, some proxies don't support sticky WS)
+          transports: ['websocket', 'polling'],
           reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 30000,
+          timeout: 20000,
         });
         socketRef.current = socket;
 
         socket.on('connect', () => setConnected(true));
         socket.on('disconnect', () => setConnected(false));
+
+        // On reconnect attempt, refresh the token in case it expired
+        socket.io.on('reconnect_attempt', () => {
+          const freshToken = getToken();
+          if (freshToken) {
+            socket.auth = { token: freshToken };
+          }
+        });
+
         socket.on('connect_error', (err) => {
           setConnected(false);
+          // If auth failed, try refreshing the token for next attempt
+          if (err.message?.includes('auth') || err.message?.includes('jwt') || err.message?.includes('token')) {
+            const freshToken = getToken();
+            if (freshToken && freshToken !== socket.auth?.token) {
+              socket.auth = { token: freshToken };
+            }
+          }
           console.warn('[realtime] connection failed:', err.message);
         });
 

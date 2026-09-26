@@ -150,12 +150,12 @@ export default function Dashboard() {
 
   // ── FIX 3: read the FLAT executive report shape ──
   // reportsService.executive() returns:
-  //   { totalBookings, completedBookings, cancelledBookings,
-  //     completionRate, cancellationRate, totalRevenue }
-  // NOT { volume: { totalBookings }, cash: { collected } }
+  // Backend returns nested: { volume: { totalBookings }, cash: { collected: "12345.00" } }
+  // Mock returns flat: { totalBookings, totalRevenue }
+  // Handle both, and Number() the string money values
   const exec = executiveApi.data || {};
-  const totalBookings   = exec.totalBookings   ?? exec.volume?.totalBookings   ?? 0;
-  const totalRevenue    = exec.totalRevenue    ?? exec.cash?.collected         ?? 0;
+  const totalBookings   = Number(exec.volume?.totalBookings ?? exec.totalBookings ?? 0);
+  const totalRevenue    = Number(exec.cash?.collected ?? exec.totalRevenue ?? 0);
 
   // ── FIX 4: handle both real backend shape and mock array shape for fleet ──
   // Real backend: { fleet: { total, utilisation, byStatus: { AVAILABLE: N, ... } } }
@@ -254,7 +254,7 @@ export default function Dashboard() {
         <KpiCard label="Fleet Utilisation" value={`${Math.round(fleetUtilisation * 100)}%`}
           icon={Gauge} tone="primary" />
         <KpiCard label="Bookings (30d)"    value={totalBookings}
-          icon={CalendarCheck} tone="accent" />
+          icon={CalendarCheck} tone="blue" />
         <KpiCard label="Revenue Collected" value={formatCurrency(totalRevenue)}
           icon={IndianRupee} tone="green" />
         <KpiCard label="Booking Attempts" value={abandonedCount}

@@ -43,6 +43,8 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
     schema: isAssignOnly ? {} : {
       name: [required('Name')],
       mobile: [required('Mobile number')],
+      vehicleNumber: [required('Vehicle number')],
+      vehicleClass: [required('Vehicle class')],
     },
     onSubmit: async (vals) => {
       if (isAssignOnly) {

@@ -90,10 +90,12 @@ export const ROLE_PERMISSIONS = {
 // cancelled — none of which ever matched a real booking's actual status
 // string, so every transition-button lookup silently returned nothing).
 export const BOOKING_STATUS = {
+  ATTEMPTED: 'ATTEMPTED',
   PENDING:   'PENDING',
   CONFIRMED: 'CONFIRMED',
   ALLOCATED: 'ALLOCATED',
   EN_ROUTE:  'EN_ROUTE',
+  REACHED:   'REACHED',
   ONGOING:   'ONGOING',
   ARRIVED:   'ARRIVED',
   COMPLETED: 'COMPLETED',
@@ -203,14 +205,12 @@ export const TICKET_STATUS = {
 };
 
 export const STATUS_COLORS = {
-  // Real booking statuses (uppercase, matching the backend exactly) —
-  // added alongside the existing lowercase entries below, which are used
-  // by other status types (driver/vehicle/ticket) not yet re-verified
-  // against their own real backend enums.
+  ATTEMPTED: 'slate',
   PENDING:   'amber',
   CONFIRMED: 'blue',
   ALLOCATED: 'blue',
   EN_ROUTE:  'purple',
+  REACHED:   'purple',
   ONGOING:   'purple',
   ARRIVED:   'purple',
   COMPLETED: 'green',
@@ -268,9 +268,10 @@ export const BOOKING_TRANSITIONS = {
   PENDING:   ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['ALLOCATED', 'CANCELLED'],
   ALLOCATED: ['EN_ROUTE', 'CANCELLED'],
-  EN_ROUTE:  ['ONGOING', 'CANCELLED'],
-  ONGOING:   ['ARRIVED'],   // no longer cancellable once the trip has started
-  ARRIVED:   ['COMPLETED'], // no longer cancellable
+  EN_ROUTE:  ['ONGOING', 'CANCELLED'],   // REACHED is driver-only, admin skips to ONGOING
+  REACHED:   ['ONGOING'],                // driver reached pickup, admin can start trip
+  ONGOING:   ['ARRIVED'],
+  ARRIVED:   ['COMPLETED'],
   COMPLETED: [],
   CANCELLED: [],
   EXPIRED:   [],
@@ -290,6 +291,7 @@ export const BOOKING_TRANSITION_ACTION = {
   CONFIRMED: 'confirm',
   ALLOCATED: 'allocate',
   EN_ROUTE:  'en-route',
+  // REACHED is driver-only (no admin route) — kept in BOOKING_STATUS for display
   ONGOING:   'start',
   ARRIVED:   'arrive',
   COMPLETED: 'complete',
