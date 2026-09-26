@@ -122,7 +122,11 @@ class LiveTrackingSocket {
 
       this.io = io(httpBase, {
         auth: { token: getToken() },
-        transports: ['websocket'],
+        // Allow the long-poll fallback, not websocket-only: many proxies
+        // (Cloudflare/Railway) block raw websocket upgrades, which would
+        // otherwise leave the socket stuck 'connecting'. Socket.IO upgrades to
+        // websocket automatically once connected when it's available.
+        transports: ['websocket', 'polling'],
         reconnection: true,
       });
 

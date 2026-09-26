@@ -122,8 +122,21 @@ export default function Dispatch() {
     }
     setAssigning((p) => ({ ...p, [`reassign-${bookingId}`]: true }));
     try {
+      // The backend's reassign requires a vehicleId (assignSchema). When the
+      // dispatcher is only swapping the DRIVER, reuse the booking's current
+      // vehicle so the request validates instead of failing with a 400.
+      let vehicleId = a.vehicleId || null;
+      if (!vehicleId) {
+        const alloc = await dispatchService.allocation(bookingId);
+        vehicleId = alloc?.allocation?.vehicleId ?? alloc?.vehicleId ?? null;
+        if (!vehicleId) {
+          toast.error('Select a vehicle to reassign.');
+          setAssigning((p) => ({ ...p, [`reassign-${bookingId}`]: false }));
+          return;
+        }
+      }
       await apiClient.patch(`/admin/dispatch/bookings/${bookingId}/reassign`, {
-        ...(a.vehicleId ? { vehicleId: a.vehicleId } : {}),
+        vehicleId,
         ...(a.driverId  ? { driverId:  a.driverId  } : {}),
       });
       setAssignments((p) => ({ ...p, [`reassign-${bookingId}`]: { ...p[`reassign-${bookingId}`], done: true } }));
