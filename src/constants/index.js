@@ -24,6 +24,12 @@ export const PERMISSIONS = {
   BOOKINGS_MANAGE: 'BOOKING_MANAGE',
   DISPATCH_MANAGE: 'DISPATCH_MANAGE',
   TRIPS_VIEW:      'BOOKING_MANAGE',
+  // Matches the existing, unmodified GET /admin/bookings route. Note: with
+  // backend routes left as-is, this still isn't a full fix — the page also
+  // calls GET /admin/drivers (needs DRIVER_APPROVE, which OPS lacks) and the
+  // location/GPS routes (need DISPATCH_MANAGE, which OPS has but FLEET's
+  // BOOKING_MANAGE gap means FLEET can't even pass this gate). Only ADMIN
+  // (permission bypass) gets the page fully working without a backend change.
   PAYMENTS_VIEW:   'PAYMENT_VIEW',
   PAYMENTS_MANAGE: 'PAYMENT_VIEW',
   PAYMENTS_REFUND: 'PAYMENT_REFUND',
