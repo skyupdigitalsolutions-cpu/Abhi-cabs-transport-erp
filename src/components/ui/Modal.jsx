@@ -3,14 +3,13 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-export default function Modal({ open, onClose, title, children, footer, size = 'md' }) {
+export default function Modal({ open, onClose, title, children, footer, size = 'md', maxWidth }) {
   const panelRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === 'Escape' && onClose?.();
     document.addEventListener('keydown', onKey);
-    panelRef.current?.focus();
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
@@ -30,9 +29,12 @@ export default function Modal({ open, onClose, title, children, footer, size = '
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        tabIndex={-1}
-        className={cn('relative w-full rounded-2xl shadow-2xl focus:outline-none max-h-[85vh] flex flex-col', sizes[size])}
-        style={{ backgroundColor: '#ffffff', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}
+        className={cn('relative w-full rounded-2xl shadow-2xl focus:outline-none max-h-[85vh] flex flex-col', !maxWidth && sizes[size])}
+        style={{
+          backgroundColor: '#ffffff',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+          ...(maxWidth ? { maxWidth } : {}),
+        }}
       >
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #E8E8E4' }}>
           <h2 id="modal-title" className="text-sm font-extrabold tracking-tight" style={{ color: '#111111' }}>{title}</h2>

@@ -1,11 +1,7 @@
 import { forwardRef, useState } from 'react';
 import { cn } from '../../utils/cn';
 
-/**
- * Polished Textarea — branded focus ring, smooth transitions.
- * API unchanged: { className, error, rows, ...rest }
- */
-const Textarea = forwardRef(function Textarea({ className, error, rows = 4, style: externalStyle, ...props }, ref) {
+const Textarea = forwardRef(function Textarea({ className, error, rows = 4, style: externalStyle, onFocus, onBlur, ...rest }, ref) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -13,8 +9,8 @@ const Textarea = forwardRef(function Textarea({ className, error, rows = 4, styl
       ref={ref}
       rows={rows}
       className={cn('w-full resize-y', className)}
-      onFocus={(e) => { setFocused(true); props.onFocus?.(e); }}
-      onBlur={(e) => { setFocused(false); props.onBlur?.(e); }}
+      onFocus={(e) => { setFocused(true); onFocus?.(e); }}
+      onBlur={(e) => { setFocused(false); onBlur?.(e); }}
       style={{
         borderRadius: 10,
         border: `1.5px solid ${error ? '#EF4444' : focused ? '#FFC107' : '#E8E8E4'}`,
@@ -28,7 +24,7 @@ const Textarea = forwardRef(function Textarea({ className, error, rows = 4, styl
         transition: 'border-color 0.2s, box-shadow 0.2s',
         ...externalStyle,
       }}
-      {...props}
+      {...rest}
     />
   );
 });
