@@ -20,7 +20,7 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
     if (!note.trim()) {
       setError(action === 'cancel'
         ? 'Please add a reason for cancellation'
-        : 'Please add a note about the call');
+        : 'Please add a remark before proceeding');
       return false;
     }
     setError('');
@@ -124,8 +124,8 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
           </div>
         </div>
 
-        {/* Note */}
-        <FormField label="Note" required error={error}
+        {/* Remark */}
+        <FormField label="Remark" required error={error}
           hint="Add what was discussed on the call, or the reason for cancellation.">
           <Textarea
             value={note}
@@ -142,7 +142,6 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
             icon={XCircle}
             onClick={handleCancel}
             disabled={loading}
-            style={{ fontSize: 13 }}
           >
             Cancel Booking
           </Button>
@@ -152,15 +151,14 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
               icon={Clock}
               onClick={handleKeepPending}
               disabled={loading}
-              style={{ fontSize: 13 }}
             >
-              Add Note & Keep Pending
+              Keep Pending
             </Button>
             <Button
               icon={CheckCircle}
               onClick={handleConfirm}
               loading={loading}
-              style={{ backgroundColor: '#22A65A', boxShadow: '0 4px 12px rgba(34,166,90,0.3)', fontSize: 13 }}
+              style={{ backgroundColor: '#22A65A', boxShadow: '0 4px 12px rgba(34,166,90,0.3)' }}
             >
               Confirm
             </Button>
