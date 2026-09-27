@@ -171,11 +171,6 @@ export const adminPaymentsService = {
       return { data: paged, meta: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 } };
     }
   },
-    return {
-      items: rows.slice((page - 1) * limit, page * limit),
-      pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
-    };
-  },
 
   /** { drivers: [{driverId, driverName, driverPhone, pendingAmount, pendingCount}], totalPending } */
   async cashHandoverSummary() {
