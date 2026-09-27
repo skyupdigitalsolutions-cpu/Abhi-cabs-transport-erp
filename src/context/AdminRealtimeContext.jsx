@@ -186,10 +186,12 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
         // not just the ones that go wrong.
         socket.on('booking:attempted', (payload) => {
           if (payload.outcome === 'FAILED') return; // admin:alert covers this louder, below
-          const route = payload.pickupAddress && payload.dropAddress
-            ? ` — ${String(payload.pickupAddress).split(',')[0]} → ${String(payload.dropAddress).split(',')[0]}`
-            : '';
-          toast.info(`Booking attempt in progress${route}`, { duration: 5000 });
+          const pickup = payload.pickupAddress ? String(payload.pickupAddress).split(',')[0] : '';
+          const drop = payload.dropAddress ? String(payload.dropAddress).split(',')[0] : '';
+          const route = pickup && drop ? `${pickup} → ${drop}` : pickup || '';
+          const who = payload.guestName || payload.customerName || '';
+          const parts = [who, route, payload.tripType?.replace(/_/g, ' ')].filter(Boolean);
+          toast.info(`Booking attempt${parts.length ? ` — ${parts.join(' · ')}` : ''}`, { duration: 5000 });
           pushFeedItem({ kind: 'booking:attempted', ...payload });
         });
 

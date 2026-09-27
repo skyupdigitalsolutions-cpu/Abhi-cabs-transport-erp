@@ -62,8 +62,15 @@ export default function Navbar({ onMenuClick, title, liveConnected }) {
 
   const goToNotification = (item) => {
     setNotifOpen(false);
-    if (item.bookingId) navigate(`/admin/bookings/${item.bookingId}`);
-    else if (item.contactId) navigate('/admin/support');
+    if (item.bookingId) {
+      navigate(`/admin/bookings`);
+    } else if (item.contactId) {
+      navigate('/admin/support');
+    } else if (item.kind === 'booking:attempted' || item.kind === 'admin:alert' || item.kind === 'booking:abandoned') {
+      navigate('/admin/bookings');
+    } else {
+      navigate('/admin/notifications');
+    }
   };
 
   const name  = user?.name  || 'Admin';
@@ -175,33 +182,50 @@ function MenuItem({ icon: Icon, label, onClick, danger }) {
 // pushes (confirmed against bridge.js on the backend for field names) —
 // icon, a short human label, and whether it's safe to link somewhere real.
 const NOTIF_META = {
-  'booking:created':   { icon: Calendar,  label: (i) => `New booking ${i.bookingNumber || ''}`, clickable: true },
-  'booking:attempted': { icon: Car,       label: () => 'Booking attempt in progress', clickable: false },
-  'admin:alert':       { icon: AlertTriangle, label: (i) => `Booking attempt failed — ${i.reason || 'unknown reason'}`, clickable: false },
-  'trip:status':       { icon: Truck,     label: (i) => `Booking ${i.bookingNumber || ''} → ${i.status || ''}`, clickable: true },
-  'booking:allocated': { icon: Truck,     label: () => 'Driver/vehicle assigned', clickable: true },
-  'payment:received':  { icon: CreditCard, label: (i) => `Payment received${i.amount ? ` — ₹${i.amount}` : ''}`, clickable: true },
-  'booking:abandoned': { icon: MessageSquareWarning, label: (i) => `Abandoned booking — ${i.name || 'unknown'}`, clickable: true },
+  'booking:created':   { icon: Calendar,  label: (i) => `New booking ${i.bookingNumber || ''}`.trim(), clickable: true },
+  'booking:attempted': {
+    icon: Car,
+    label: (i) => {
+      const pickup = i.pickupAddress ? String(i.pickupAddress).split(',')[0].trim() : '';
+      const drop = i.dropAddress ? String(i.dropAddress).split(',')[0].trim() : '';
+      const route = pickup && drop ? `${pickup} → ${drop}` : pickup || 'Unknown route';
+      const type = i.tripType ? ` · ${i.tripType.replace(/_/g, ' ')}` : '';
+      return `Booking attempt — ${route}${type}`;
+    },
+    clickable: true,
+  },
+  'admin:alert':       {
+    icon: AlertTriangle,
+    label: (i) => {
+      const pickup = i.pickupAddress ? String(i.pickupAddress).split(',')[0].trim() : '';
+      return `⚠ Attempt failed${pickup ? ` — ${pickup}` : ''} — ${i.reason || i.failureReason || 'unknown'}`;
+    },
+    clickable: true,
+  },
+  'trip:status':       { icon: Truck,     label: (i) => `${i.bookingNumber || 'Booking'} → ${(i.status || '').replace(/_/g, ' ')}`, clickable: true },
+  'booking:allocated': { icon: Truck,     label: (i) => `Vehicle assigned${i.bookingNumber ? ` to ${i.bookingNumber}` : ''}`, clickable: true },
+  'payment:received':  { icon: CreditCard, label: (i) => `Payment received${i.amount ? ` — ₹${Number(i.amount).toLocaleString('en-IN')}` : ''}`, clickable: true },
+  'booking:abandoned': { icon: MessageSquareWarning, label: (i) => `Abandoned — ${i.name || i.pickupAddress?.split(',')[0] || 'unknown customer'}`, clickable: true },
 };
 
 function NotificationItem({ item, onClick }) {
-  const meta = NOTIF_META[item.kind] || { icon: Bell, label: () => item.kind, clickable: false };
+  const meta = NOTIF_META[item.kind] || { icon: Bell, label: () => item.kind, clickable: true };
   const Icon = meta.icon;
-  // Only actually navigate if there's real information to send them
-  // somewhere — no bookingId/contactId means nowhere honest to click to.
-  const canClick = meta.clickable && (item.bookingId || item.contactId);
 
   return (
-    <button
-      onClick={canClick ? onClick : undefined}
-      disabled={!canClick}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter') onClick?.(); }}
       className="w-full flex items-start gap-2.5 px-4 py-3 text-left border-b last:border-b-0"
       style={{
         borderColor: '#F7F8FC',
-        cursor: canClick ? 'pointer' : 'default',
+        cursor: 'pointer',
         backgroundColor: 'transparent',
+        transition: 'background-color 0.12s',
       }}
-      onMouseEnter={(e) => { if (canClick) e.currentTarget.style.backgroundColor = '#F9FAFB'; }}
+      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F9FAFB'; }}
       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
     >
       <div className="h-7 w-7 rounded-lg grid place-items-center shrink-0 mt-0.5" style={{ backgroundColor: '#F7F8FC' }}>
@@ -211,6 +235,6 @@ function NotificationItem({ item, onClick }) {
         <p className="text-xs font-medium leading-snug" style={{ color: '#1F2937' }}>{meta.label(item)}</p>
         <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>{timeAgo(item.at)}</p>
       </div>
-    </button>
+    </div>
   );
 }

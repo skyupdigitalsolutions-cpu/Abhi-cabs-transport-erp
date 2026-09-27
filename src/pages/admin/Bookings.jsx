@@ -63,6 +63,35 @@ export default function Bookings() {
     }
   };
 
+  const handleAddNoteKeepPending = async (bookingId, note) => {
+    // No backend endpoint for note-only update on PENDING bookings.
+    // Save locally so admin can see the note when they come back.
+    try {
+      const key = 'abhi_booking_notes';
+      const existing = JSON.parse(sessionStorage.getItem(key) || '{}');
+      existing[bookingId] = { note, by: user?.name || 'Admin', at: new Date().toISOString() };
+      sessionStorage.setItem(key, JSON.stringify(existing));
+      toast.success('Note saved — booking stays pending');
+      setConfirmingBooking(null);
+    } catch {
+      toast.error('Failed to save note');
+    }
+  };
+
+  const handleCancelFromModal = async (bookingId, reason) => {
+    setConfirmLoading(true);
+    try {
+      await bookingOpsService.cancel(bookingId, { reason, cancelledByType: 'ADMIN' });
+      toast.success('Booking cancelled');
+      setConfirmingBooking(null);
+      list.reload();
+    } catch (err) {
+      toast.error(err.message || 'Failed to cancel booking');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   // FRONTEND-ONLY fetch of cancellation reasons: the LIST endpoint
   // (BOOKING_LIST_SELECT on the backend) never included cancellationReason
   // at all — only the single-booking detail endpoint does. Changing that is
@@ -259,6 +288,8 @@ export default function Bookings() {
         onClose={() => setConfirmingBooking(null)}
         booking={confirmingBooking}
         onConfirm={handleConfirmBooking}
+        onAddNote={handleAddNoteKeepPending}
+        onCancel={handleCancelFromModal}
         loading={confirmLoading}
       />
     </div>

@@ -126,16 +126,35 @@ export default function CustomerDetail() {
   if (customer.status === 'error')   return <ErrorState message={customer.error?.message} onRetry={customer.refetch} />;
   if (!c) return <ErrorState message="Customer not found" />;
 
-  // Real totals across the customer's ENTIRE booking history (see fullStats
-  // effect above) — not the backend's stale, never-updated totalBookings
-  // column, and not just the small "recent" preview list either.
+  // Real totals across the customer's ENTIRE booking history
   const totalSpend     = fullStats.spend;
   const completedCount = fullStats.completed;
   const totalBookingsCount = fullStats.status === 'ready' ? fullStats.total : (c.totalBookings ?? 0);
 
+  // Detect guest customer and extract real contact info from their bookings
+  const isGuest = (() => {
+    if (typeof c.isGuest === 'boolean') return c.isGuest;
+    const email = (c.user?.email || '').toLowerCase();
+    return email.endsWith('@guest.invalid') || email.endsWith('@placeholder.local')
+      || email.startsWith('guest-') || email.startsWith('guest.')
+      || c.user?.name === 'Guest';
+  })();
+
+  // For guests, pull real name/phone/email from their most recent booking
+  const guestBooking = isGuest ? recentBookings.find((b) => b.guestName || b.guestPhone) : null;
+  const displayName  = isGuest
+    ? (guestBooking?.guestName || 'Guest Customer')
+    : (c.user?.name || '—');
+  const displayPhone = isGuest
+    ? (guestBooking?.guestPhone || null)
+    : (c.user?.phone || null);
+  const displayEmail = isGuest
+    ? (guestBooking?.guestEmail || null)
+    : (c.user?.email || null);
+
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Customers', to: '/admin/customers' }, { label: c.user?.name || 'Customer' }]} />
+      <Breadcrumb items={[{ label: 'Customers', to: '/admin/customers' }, { label: displayName }]} />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -147,8 +166,9 @@ export default function CustomerDetail() {
           </button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold" style={{ color: '#1F2937' }}>{c.user?.name || '—'}</h1>
+              <h1 className="text-xl font-bold" style={{ color: '#1F2937' }}>{displayName}</h1>
               <Badge tone={c.accountType === 'CORPORATE' ? 'blue' : 'slate'}>{accountTypeLabel(c.accountType)}</Badge>
+              {isGuest && <Badge tone="amber">Guest</Badge>}
               {c.user?.isActive === false && <Badge tone="red">Inactive</Badge>}
               {c.isLive && (
                 <span
@@ -162,15 +182,18 @@ export default function CustomerDetail() {
               )}
             </div>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
-              {c.user?.phone && (
+              {displayPhone && (
                 <span className="flex items-center gap-1 text-sm" style={{ color: '#6B7280' }}>
-                  <Phone size={13} />{c.user.phone}
+                  <Phone size={13} />{displayPhone}
                 </span>
               )}
-              {c.user?.email && (
+              {displayEmail && (
                 <span className="flex items-center gap-1 text-sm" style={{ color: '#6B7280' }}>
-                  <Mail size={13} />{c.user.email}
+                  <Mail size={13} />{displayEmail}
                 </span>
+              )}
+              {isGuest && !displayPhone && !displayEmail && (
+                <span className="text-sm" style={{ color: '#9CA3AF' }}>Web checkout — no registered account</span>
               )}
               {c.corporate?.companyName && (
                 <span className="flex items-center gap-1 text-sm" style={{ color: '#6B7280' }}>
@@ -197,10 +220,11 @@ export default function CustomerDetail() {
           <h2 className="text-sm font-bold mb-4" style={{ color: '#1F2937' }}>Profile</h2>
           <div className="space-y-3">
             {[
-              ['Name',         c.user?.name],
-              ['Phone',        c.user?.phone],
-              ['Email',        c.user?.email],
+              ['Name',         displayName],
+              ['Phone',        displayPhone || (isGuest ? 'Not provided' : null)],
+              ['Email',        displayEmail || (isGuest ? 'No account' : null)],
               ['Account type', accountTypeLabel(c.accountType)],
+              ...(isGuest ? [['Type', 'Guest checkout (no login)']] : []),
               ['Joined',       formatDate(c.createdAt)],
               ...(c.corporate ? [['Company', c.corporate.companyName], ['GSTIN', c.corporate.gstin]] : []),
             ].map(([label, value]) => (
