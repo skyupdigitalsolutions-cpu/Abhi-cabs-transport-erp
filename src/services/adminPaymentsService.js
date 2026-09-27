@@ -137,12 +137,40 @@ export const adminPaymentsService = {
   // "Confirm receipt" is stored in this browser (localStorage) — see
   // cashHandoverStore below — because there is no backend endpoint to save it.
 
+  // ---- Cash handovers — now uses real backend endpoints ----------------------
+  //   GET  /admin/payments/cash-handovers     → list all cash payments
+  //   POST /admin/payments/:id/reconcile      → confirm receipt
+
   async cashHandovers(params = {}) {
-    const { page = 1, limit = 10, status, driverId } = params;
-    let rows = await loadCashHandoverRows();
-    if (status)   rows = rows.filter((r) => r.status === status);
-    if (driverId) rows = rows.filter((r) => r.driverId === driverId);
-    const total = rows.length;
+    try {
+      const res = await apiClient.get('/admin/payments/cash-handovers', { params });
+      const items = Array.isArray(res?.data) ? res.data : res?.items || [];
+      return {
+        data: items.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          status: p.reconciledAt ? 'CONFIRMED' : 'PENDING',
+          driverId: null,
+          driver: null,
+          createdAt: p.paidAt || p.createdAt,
+          confirmedAt: p.reconciledAt || null,
+          confirmedBy: p.reconciledBy ? { id: p.reconciledBy } : null,
+          note: p.reconcileNote || null,
+          payment: { id: p.id, paidAt: p.paidAt, booking: p.booking || null },
+        })),
+        meta: res?.meta || res?.pagination || { page: 1, total: items.length },
+      };
+    } catch {
+      // Fallback to the assembled approach if endpoint doesn't exist yet
+      const { page = 1, limit = 10, status, driverId } = params;
+      let rows = await loadCashHandoverRows();
+      if (status)   rows = rows.filter((r) => r.status === status);
+      if (driverId) rows = rows.filter((r) => r.driverId === driverId);
+      const total = rows.length;
+      const paged = rows.slice((page - 1) * limit, page * limit);
+      return { data: paged, meta: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 } };
+    }
+  },
     return {
       items: rows.slice((page - 1) * limit, page * limit),
       pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
@@ -176,17 +204,24 @@ export const adminPaymentsService = {
   },
 
   async confirmCashHandover(id, note) {
-    const store = cashHandoverStore.read();
-    if (store[id]) throw new Error('This cash handover is already confirmed');
-    const me = getStoredUser();
-    store[id] = {
-      confirmedAt: new Date().toISOString(),
-      confirmedBy: { id: me?.id || null, name: me?.name || me?.email || 'Admin' },
-      note: note || null,
-    };
-    cashHandoverStore.write(store);
-    cashCache = null; // next read reflects the confirmation
-    return { id, status: 'CONFIRMED', ...store[id] };
+    try {
+      const res = await apiClient.post(`/admin/payments/${id}/reconcile`, { note: note || null });
+      cashCache = null;
+      return res;
+    } catch (apiErr) {
+      // Fallback to localStorage if backend endpoint doesn't exist yet
+      const store = cashHandoverStore.read();
+      if (store[id]) throw new Error('This cash handover is already confirmed');
+      const me = getStoredUser();
+      store[id] = {
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: { id: me?.id || null, name: me?.name || me?.email || 'Admin' },
+        note: note || null,
+      };
+      cashHandoverStore.write(store);
+      cashCache = null;
+      return { id, status: 'CONFIRMED', ...store[id] };
+    }
   },
 
   // ---- Refunds --------------------------------------------------------------

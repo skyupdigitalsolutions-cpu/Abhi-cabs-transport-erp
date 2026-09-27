@@ -47,7 +47,9 @@ function isGuestCustomer(r) {
   return !email
     || email.endsWith('@placeholder.local')
     || email.endsWith('@whatsapp.invalid')
-    || email.startsWith('guest.');
+    || email.endsWith('@guest.invalid')
+    || email.startsWith('guest.')
+    || email.startsWith('guest-');
 }
 
 export default function Customers() {
@@ -182,28 +184,41 @@ export default function Customers() {
   const columns = [
     {
       key: 'name', header: 'Customer',
-      render: (r) => (
-        <div>
-          <p style={{ fontWeight: 600, color: '#1F2937' }} className="flex items-center gap-1.5">
-            {r.user?.name || '—'}
-            {r.isLive && (
-              <span
-                className="inline-flex items-center gap-1 text-[10.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
-                style={{ backgroundColor: '#f0fdf4', color: '#22A65A' }}
-                title="Customer's app is open right now"
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#22A65A' }} />
-                Live
-              </span>
-            )}
-          </p>
-          <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1">
-            <Mail size={11} />
-            {/* A guest's placeholder email isn't a real address — don't show it as one */}
-            {isGuestCustomer(r) ? 'No email (guest)' : (r.user?.email || '—')}
-          </p>
-        </div>
-      ),
+      render: (r) => {
+        const guest = isGuestCustomer(r);
+        const displayName = guest
+          ? (r.user?.name === 'Guest' ? 'Guest Customer' : r.user?.name || 'Guest Customer')
+          : (r.user?.name || '—');
+        return (
+          <div>
+            <p style={{ fontWeight: 600, color: '#1F2937' }} className="flex items-center gap-1.5">
+              {displayName}
+              {guest && (
+                <span
+                  className="inline-flex items-center text-[10.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                  style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                >
+                  Guest
+                </span>
+              )}
+              {r.isLive && (
+                <span
+                  className="inline-flex items-center gap-1 text-[10.5px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                  style={{ backgroundColor: '#f0fdf4', color: '#22A65A' }}
+                  title="Customer's app is open right now"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#22A65A' }} />
+                  Live
+                </span>
+              )}
+            </p>
+            <p style={{ fontSize: 13.5, color: '#6B7280' }} className="flex items-center gap-1">
+              <Mail size={11} />
+              {guest ? 'Web checkout — no account' : (r.user?.email || '—')}
+            </p>
+          </div>
+        );
+      },
     },
     {
       key: 'phone', header: 'Phone',
