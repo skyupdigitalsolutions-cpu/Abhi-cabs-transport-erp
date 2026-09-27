@@ -124,14 +124,25 @@ export default function Bookings() {
     },
     {
       key: 'customer', header: 'Customer',
-      render: (r) => (
-        <div>
-          <p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>
-            {r.customer?.user?.name || r.corporate?.companyName || '—'}
-          </p>
-          <p style={{ fontSize: 12.5, color: '#9CA3AF' }}>{r.customer?.user?.phone || ''}</p>
-        </div>
-      ),
+      render: (r) => {
+        const userName = r.customer?.user?.name;
+        const isGuest = !userName || userName === 'Guest' || userName.startsWith('guest');
+        const displayName = isGuest
+          ? (r.guestName || r.corporate?.companyName || 'Guest')
+          : (userName || r.corporate?.companyName || '—');
+        const displayPhone = isGuest
+          ? (r.guestPhone || '')
+          : (r.customer?.user?.phone || '');
+        return (
+          <div>
+            <p style={{ fontWeight: 600, color: '#1F2937', fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}>
+              {displayName}
+              {isGuest && <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 5px', borderRadius: 4, backgroundColor: '#FEF3C7', color: '#92400E' }}>GUEST</span>}
+            </p>
+            {displayPhone && <p style={{ fontSize: 12.5, color: '#9CA3AF' }}>{displayPhone}</p>}
+          </div>
+        );
+      },
     },
     {
       key: 'status', header: 'Status',
