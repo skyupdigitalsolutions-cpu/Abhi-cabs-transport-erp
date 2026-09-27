@@ -34,7 +34,7 @@ function addr(val) {
 export default function Bookings() {
   const navigate = useNavigate();
   const toast    = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canManage = hasPermission(PERMISSIONS.BOOKINGS_MANAGE);
 
   // Server-side filters passed directly to useResourceList → backend query params
