@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Car, MapPin, ChevronDown, ChevronUp,
+  Car, MapPin, ChevronDown, ChevronUp, Zap, Database, Save, Clock, Search,
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
@@ -11,6 +11,7 @@ import Modal from '../../components/ui/Modal';
 import FormField from '../../components/ui/FormField';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
+import Textarea from '../../components/ui/Textarea';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Alert from '../../components/ui/Alert';
 import SearchInput from '../../components/ui/SearchInput';
@@ -19,6 +20,7 @@ import { fareConfigService } from '../../services';
 import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
 import { vehicleCatalogService } from '../../services';
+import { surgeService } from '../../services/surgeService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -31,7 +33,6 @@ import { vehicleCatalogService } from '../../services';
 const EMPTY_RATE_CARD = {
   cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
   baseFare: '', perKm: '', minimumFare: '',
-  // Advanced (all optional — left unset means "not using this feature" for this rate card)
   perMinute: '', cancellationFee: '',
   returnEmptyPct: '',
   minKmPerDay: '', waitingPerHour: '', freeWaitingMin: '',
@@ -50,7 +51,6 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const isEdit = !!initial;
   const [form, setForm] = useState(() => {
     if (!initial) return { ...EMPTY_RATE_CARD, cityId: '' };
-    // Backend returns Decimal fields as strings — coerce to plain numbers/strings for inputs.
     const flat = { ...initial };
     return { ...EMPTY_RATE_CARD, ...flat, cityId: initial.cityId };
   });
@@ -155,12 +155,13 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             </Alert>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="City" hint="Optional — leave blank for a global rate card.">
+            <FormField label="City" hint="Pick a city — its state is shown automatically.">
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityName || form.cityId || 'All cities'} />
               ) : (
                 <Select value={form.cityId} onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
                   placeholder="All cities (optional)"
+                  searchable
                   options={[
                     { value: '', label: 'All cities (no city filter)' },
                     ...cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
@@ -354,7 +355,7 @@ function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
           </p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[12.5px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: catBg, color: catColor }}>
-              <MapPin size={10} className="inline -mt-0.5 mr-0.5" />{cityName || (rate.cityId ? `City #${rate.cityId}` : 'All cities')}
+              <MapPin size={10} className="inline -mt-0.5 mr-0.5" />{cityName ? `${cityName}, ${rate.city?.state || ''}`.replace(/, $/, '') : (rate.cityId ? `City #${rate.cityId}` : 'All India')}
             </span>
             {!rate.isActive && <Badge tone="slate">Inactive</Badge>}
             {advancedTags.map((tag) => (
@@ -437,6 +438,7 @@ function VehicleRatesTab() {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [tripFilter, setTripFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
   const toast = useToast();
 
   const reload = () => {
@@ -454,11 +456,12 @@ function VehicleRatesTab() {
 
   const filtered = useMemo(() => rates.filter((r) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || r.vehicleClass.toLowerCase().includes(q) || (cityName(r.cityId) || '').toLowerCase().includes(q);
+    const matchSearch = !q || r.vehicleClass.toLowerCase().includes(q) || (cityName(r.cityId) || '').toLowerCase().includes(q) || (r.city?.state || '').toLowerCase().includes(q);
     const matchClass  = !classFilter || r.vehicleClass === classFilter;
     const matchTrip   = !tripFilter  || r.tripType === tripFilter;
-    return matchSearch && matchClass && matchTrip;
-  }), [rates, cities, search, classFilter, tripFilter]);
+    const matchState  = !stateFilter || (r.city?.state || '') === stateFilter;
+    return matchSearch && matchClass && matchTrip && matchState;
+  }), [rates, cities, search, classFilter, tripFilter, stateFilter]);
 
   const handleSubmit = async (values) => {
     try {
@@ -563,6 +566,11 @@ function VehicleRatesTab() {
           options={classes.map(c => ({ value: c, label: c }))}
           style={{ minWidth: 170 }}
         />
+        <Select value={stateFilter} onChange={e => setStateFilter(e.target.value)}
+          placeholder="All states"
+          options={[...new Set(cities.map(c => c.state).filter(Boolean))].sort().map(s => ({ value: s, label: s }))}
+          style={{ minWidth: 160 }}
+        />
         <Select value={tripFilter} onChange={e => setTripFilter(e.target.value)}
           placeholder="All trip types"
           options={TRIP_TYPES.map(t => ({ value: t.value, label: t.label }))}
@@ -620,27 +628,174 @@ function VehicleRatesTab() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Page root
 //
-// FIX: the Masters page used to have four tabs — Vehicle Rate Cards, Cargo
-// Types, Zones, and a standalone "Rate Cards" tab. Only Vehicle Rate Cards
-// was ever real. The other three had no backend table or endpoint at all —
-// Cargo Types was leftover from an unrelated freight-transport concept this
-// business doesn't have, Zones has no geographic-grouping concept anywhere
-// in the schema, and the standalone Rate Cards tab was a second, redundant,
-// disconnected pricing model that duplicated (and conflicted with) the real
-// one. All three, and the tab bar and generic mock-CRUD list that rendered
-// them, are removed rather than kept as permanent fake UI. If a real need
-// for cargo classification, service zones, or a separate rate-card concept
-// shows up later, it should be designed against an actual backend model,
-// not resurrected from this mock scaffolding.
+// ── Surge Pricing Tab ─────────────────────────────────────────────────────
+const TIERS = ['METRO', 'TALUKA', 'VILLAGE'];
+const TIER_META = {
+  METRO:   { icon: '🏙️', label: 'Metro', desc: 'City / urban', bg: '#EFF6FF', color: '#1D4ED8', tone: 'blue' },
+  TALUKA:  { icon: '🏘️', label: 'Taluka', desc: 'Town / semi-urban', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
+  VILLAGE: { icon: '🌾', label: 'Village', desc: 'Rural area', bg: '#F0FDF4', color: '#15803D', tone: 'green' },
+};
+const TIER_OPTIONS = TIERS.map((t) => ({ value: t, label: `${TIER_META[t].icon} ${TIER_META[t].label} — ${TIER_META[t].desc}` }));
+
+function SurgeFeeSetup({ rules, onSave }) {
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(null);
+  const [dirty, setDirty] = useState({});
+  useEffect(() => {
+    const f = {};
+    rules.forEach((r) => { f[r.tier] = { immediatePct: String(r.immediatePct), standardPct: String(r.standardPct), immediateWithinMinutes: String(r.immediateWithinMinutes) }; });
+    setForm(f); setDirty({});
+  }, [rules]);
+  const set = (tier, key, val) => { setForm((f) => ({ ...f, [tier]: { ...f[tier], [key]: val } })); setDirty((d) => ({ ...d, [tier]: true })); };
+  const save = async (tier) => {
+    setSaving(tier);
+    try { await onSave(tier, { immediatePct: Number(form[tier].immediatePct) || 0, standardPct: Number(form[tier].standardPct) || 0, immediateWithinMinutes: Number(form[tier].immediateWithinMinutes) || 60 }); setDirty((d) => ({ ...d, [tier]: false })); }
+    finally { setSaving(null); }
+  };
+  if (rules.length === 0) return <Alert type="info">No surge rules found. Seed METRO, TALUKA, VILLAGE rules in the database.</Alert>;
+  return (
+    <div style={{ borderRadius: 16, border: '1.5px solid #E8E8E4', backgroundColor: '#fff', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1.5px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #FFFBEA 0%, #FFF8E1 100%)' }}>
+        <div style={{ width: 34, height: 34, borderRadius: 9, background: '#FFC107', display: 'grid', placeItems: 'center', boxShadow: '0 3px 10px rgba(255,193,7,0.3)' }}><Zap size={16} color="#111" /></div>
+        <div><p style={{ fontWeight: 800, fontSize: 14.5, color: '#111' }}>Surge Rules by Tier</p><p style={{ fontSize: 12, color: '#92400E', fontWeight: 500 }}>Changes apply to new quotes only.</p></div>
+      </div>
+      {rules.map((rule, i) => { const tier = rule.tier; const m = TIER_META[tier] || TIER_META.METRO; const f = form[tier]; if (!f) return null; return (
+        <div key={tier} style={{ padding: '14px 18px', borderBottom: i < rules.length - 1 ? '1px solid #F0F0EC' : 'none', display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 140 }}><div style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ fontSize: 20 }}>{m.icon}</span><div><p style={{ fontWeight: 800, fontSize: 13.5, color: m.color }}>{m.label}</p><p style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>{m.desc}</p></div></div></div>
+          <div style={{ display: 'flex', gap: 8, flex: 1, alignItems: 'flex-end', flexWrap: 'wrap', minWidth: 280 }}>
+            <div style={{ flex: 1, minWidth: 80 }}><label style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}><Clock size={10} className="inline -mt-0.5 mr-0.5" />Immediate %</label><Input type="number" min="0" max="100" value={f.immediatePct} onChange={(e) => set(tier, 'immediatePct', e.target.value)} style={{ textAlign: 'center' }} /></div>
+            <div style={{ flex: 1, minWidth: 80 }}><label style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}><Zap size={10} className="inline -mt-0.5 mr-0.5" />Scheduled %</label><Input type="number" min="0" max="100" value={f.standardPct} onChange={(e) => set(tier, 'standardPct', e.target.value)} style={{ textAlign: 'center' }} /></div>
+            <div style={{ flex: 1, minWidth: 90 }}><label style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}>Window (min)</label><Input type="number" min="1" max="1440" value={f.immediateWithinMinutes} onChange={(e) => set(tier, 'immediateWithinMinutes', e.target.value)} style={{ textAlign: 'center' }} /></div>
+            <Button size="sm" icon={Save} onClick={() => save(tier)} loading={saving === tier} disabled={!dirty[tier]} style={!dirty[tier] ? {} : { backgroundColor: '#22A65A', boxShadow: '0 3px 8px rgba(34,166,90,0.25)' }}>Save</Button>
+          </div>
+        </div>); })}
+      <div style={{ padding: '10px 18px', backgroundColor: '#FAFAFA', borderTop: '1px solid #F0F0EC', fontSize: 11.5, color: '#6B7280' }}>
+        <strong>Immediate %</strong> applies when booking is within the window. <strong>Scheduled %</strong> applies to all. The higher is used.
+      </div>
+    </div>
+  );
+}
+
+function SurgeAreaForm({ open, onClose, initial, onSubmit }) {
+  const isEdit = !!initial;
+  const [form, setForm] = useState({ name: '', tier: 'TALUKA', centreLat: '', centreLng: '', radiusKm: '25', note: '' });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (open && initial) setForm({ name: initial.name || '', tier: initial.tier || 'TALUKA', centreLat: String(initial.centreLat ?? ''), centreLng: String(initial.centreLng ?? ''), radiusKm: String(initial.radiusKm ?? 25), note: initial.note || '' });
+    else if (open) setForm({ name: '', tier: 'TALUKA', centreLat: '', centreLng: '', radiusKm: '25', note: '' });
+    setErrors({});
+  }, [open, initial]);
+  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })); };
+  const submit = async () => {
+    const errs = {};
+    if (!form.name.trim()) errs.name = 'Required';
+    if (form.centreLat === '' || isNaN(Number(form.centreLat))) errs.centreLat = 'Required';
+    if (form.centreLng === '' || isNaN(Number(form.centreLng))) errs.centreLng = 'Required';
+    if (!form.radiusKm || Number(form.radiusKm) < 1) errs.radiusKm = 'Min 1 km';
+    setErrors(errs); if (Object.keys(errs).length) return;
+    setLoading(true);
+    try { await onSubmit({ name: form.name.trim(), tier: form.tier, centreLat: Number(form.centreLat), centreLng: Number(form.centreLng), radiusKm: Number(form.radiusKm), ...(form.note.trim() && { note: form.note.trim() }) }); onClose(); }
+    catch (err) { setErrors({ name: err.message || 'Failed' }); } finally { setLoading(false); }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Area' : 'Add Surge Area'} maxWidth={480}>
+      <div className="space-y-4">
+        <FormField label="Area name" required error={errors.name}><Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Ramanagara" disabled={isEdit} /></FormField>
+        <FormField label="Tier" required><Select value={form.tier} onChange={(e) => set('tier', e.target.value)} options={TIER_OPTIONS} /></FormField>
+        <div className="grid grid-cols-3 gap-3">
+          <FormField label="Latitude" required error={errors.centreLat}><Input type="number" step="any" value={form.centreLat} onChange={(e) => set('centreLat', e.target.value)} placeholder="12.9716" /></FormField>
+          <FormField label="Longitude" required error={errors.centreLng}><Input type="number" step="any" value={form.centreLng} onChange={(e) => set('centreLng', e.target.value)} placeholder="77.5946" /></FormField>
+          <FormField label="Radius (km)" required error={errors.radiusKm}><Input type="number" min="1" max="200" value={form.radiusKm} onChange={(e) => set('radiusKm', e.target.value)} placeholder="25" /></FormField>
+        </div>
+        <FormField label="Note" hint="Internal note."><Textarea value={form.note} onChange={(e) => set('note', e.target.value)} rows={2} /></FormField>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={loading} onClick={submit}>{isEdit ? 'Save' : 'Add Area'}</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
+function SurgePricingTab() {
+  const toast = useToast();
+  const [rules, setRules] = useState([]);
+  const [areas, setAreas] = useState([]);
+  const [status, setStatus] = useState('loading');
+  const [search, setSearch] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingArea, setEditingArea] = useState(null);
+  const load = useCallback(async () => {
+    setStatus('loading');
+    try { const [r, a] = await Promise.all([surgeService.listRules(), surgeService.listAreas()]); setRules(r.rules || []); setAreas(a.areas || []); setStatus('success'); }
+    catch (e) { toast.error(e.message || 'Failed to load'); setStatus('error'); }
+  }, [toast]);
+  useEffect(() => { load(); }, [load]);
+  const handleSaveRule = async (tier, body) => { await surgeService.updateRule(tier, body); toast.success(`${tier} updated`); load(); };
+  const handleCreateArea = async (body) => { await surgeService.createArea(body); toast.success(`${body.name} added`); load(); };
+  const handleUpdateArea = async (body) => { await surgeService.updateArea(editingArea.id, body); toast.success('Updated'); setEditingArea(null); load(); };
+  const handleDeactivateArea = async (area) => { if (!confirm(`Retire "${area.name}"?`)) return; await surgeService.deactivateArea(area.id); toast.success(`${area.name} retired`); load(); };
+  const handleReactivateArea = async (area) => { await surgeService.updateArea(area.id, { isActive: true }); toast.success(`${area.name} reactivated`); load(); };
+  const q = search.toLowerCase();
+  const filteredAreas = areas.filter((a) => !q || a.name.toLowerCase().includes(q) || a.tier.toLowerCase().includes(q));
+  if (status === 'loading') return <LoadingState label="Loading surge pricing…" />;
+  return (
+    <div className="space-y-5">
+      <SurgeFeeSetup rules={rules} onSave={handleSaveRule} />
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#6B7280' }}><MapPin size={12} className="inline -mt-0.5 mr-1" />Service Areas ({areas.length})</p>
+          <div className="flex gap-2 items-center">
+            <SearchInput value={search} onChange={setSearch} placeholder="Search areas…" style={{ maxWidth: 200 }} />
+            <Button size="sm" icon={Plus} onClick={() => { setEditingArea(null); setFormOpen(true); }}>Add Area</Button>
+          </div>
+        </div>
+        {filteredAreas.length === 0 ? (
+          <div style={{ padding: '36px 16px', textAlign: 'center', borderRadius: 14, border: '1.5px dashed #E8E8E4', backgroundColor: '#FAFAFA' }}>
+            <MapPin size={28} className="mx-auto mb-2" style={{ color: '#D1D5DB' }} /><p style={{ fontWeight: 700, fontSize: 13.5, color: '#6B7280' }}>{search ? 'No areas match' : 'No surge areas yet'}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">{filteredAreas.map((area) => { const am = TIER_META[area.tier] || TIER_META.METRO; return (
+            <div key={area.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E8E8E4', backgroundColor: '#fff', opacity: area.isActive ? 1 : 0.5 }}>
+              <span style={{ fontSize: 18 }}>{am.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}><p style={{ fontWeight: 700, fontSize: 13.5, color: '#111' }}>{area.name}{!area.isActive && <Badge tone="slate" className="ml-2">Retired</Badge>}</p><p style={{ fontSize: 11.5, color: '#6B7280', marginTop: 1 }}><Badge tone={am.tone} className="mr-1.5">{area.tier}</Badge>{area.centreLat.toFixed(4)}, {area.centreLng.toFixed(4)} · {area.radiusKm} km{area.note && <span style={{ color: '#9A9A9A' }}> — {area.note}</span>}</p></div>
+              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                <IconButton icon={Pencil} size="sm" label="Edit" onClick={() => { setEditingArea(area); setFormOpen(true); }} />
+                {area.isActive ? <IconButton icon={Trash2} size="sm" label="Retire" variant="danger" onClick={() => handleDeactivateArea(area)} /> : <IconButton icon={ToggleRight} size="sm" label="Reactivate" onClick={() => handleReactivateArea(area)} />}
+              </div>
+            </div>); })}</div>
+        )}
+      </div>
+      <SurgeAreaForm open={formOpen} onClose={() => { setFormOpen(false); setEditingArea(null); }} initial={editingArea} onSubmit={editingArea ? handleUpdateArea : handleCreateArea} />
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Masters() {
+  const [tab, setTab] = useState('rates');
+  const TABS = [
+    { key: 'rates', label: 'Rate Cards', icon: Database },
+    { key: 'surge', label: 'Surge Pricing', icon: Zap },
+  ];
   return (
     <div>
-      <PageHeader
-        title="Vehicle Rate Cards"
-        description="Set the fare — base fare, per-KM rate, and any outstation, night, driver-allowance or hourly-rental rules — for each vehicle class and trip type."
-      />
-      <VehicleRatesTab />
+      <PageHeader title="Rate Cards" />
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1.5px solid #E8E8E4' }}>
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '10px 18px', fontSize: 13.5, fontWeight: 700,
+              color: active ? '#111' : '#6B7280',
+              background: 'none', border: 'none', cursor: 'pointer',
+              borderBottom: `2.5px solid ${active ? '#FFC107' : 'transparent'}`,
+              marginBottom: -1.5, transition: 'color 0.15s, border-color 0.15s',
+            }}><t.icon size={14} />{t.label}</button>
+          );
+        })}
+      </div>
+      {tab === 'rates' && <VehicleRatesTab />}
+      {tab === 'surge' && <SurgePricingTab />}
     </div>
   );
 }
