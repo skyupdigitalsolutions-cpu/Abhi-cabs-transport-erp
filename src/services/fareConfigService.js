@@ -115,6 +115,60 @@ export const fareConfigService = {
   },
 
   /**
+   * State-wide pricing: the backend stores one rate card PER CITY, so pricing a
+   * whole state means one identical card per city. This creates them one after
+   * another through the normal create endpoint, so every existing rule (unique
+   * key, validation, cache refresh, audit) applies to each.
+   *
+   * Never throws for a single city: returns
+   *   { created: [cityId], skipped: [cityId] (already has this card), failed: [{ cityId, message }] }
+   * so the caller can report exactly what happened. Re-running is safe: cities
+   * that already have the card are skipped, only the failed ones are retried.
+   * A permission or network failure stops the run (every later call would fail
+   * the same way).
+   */
+  async createForCities(payload, cityIds) {
+    const out = { created: [], skipped: [], failed: [] };
+    for (let i = 0; i < cityIds.length; i++) {
+      const cityId = cityIds[i];
+      try {
+        await fareConfigService.create({ ...payload, cityId });
+        out.created.push(cityId);
+      } catch (e) {
+        if (e.code === 'FARE_CONFIG_EXISTS') { out.skipped.push(cityId); continue; }
+        out.failed.push({ cityId, message: e.message || 'Failed' });
+        if (e.status === 401 || e.status === 403 || e.code === 'NETWORK') {
+          cityIds.slice(i + 1).forEach((id) => out.failed.push({ cityId: id, message: 'Not attempted' }));
+          break;
+        }
+      }
+    }
+    return out;
+  },
+
+  /**
+   * Apply the same edit to several existing cards (the same class + trip type in
+   * the other cities of a state). Same reporting shape idea as createForCities:
+   *   { updated: [id], failed: [{ id, message }] }
+   */
+  async updateMany(ids, payload) {
+    const out = { updated: [], failed: [] };
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await fareConfigService.update(ids[i], payload);
+        out.updated.push(ids[i]);
+      } catch (e) {
+        out.failed.push({ id: ids[i], message: e.message || 'Failed' });
+        if (e.status === 401 || e.status === 403 || e.code === 'NETWORK') {
+          ids.slice(i + 1).forEach((id) => out.failed.push({ id, message: 'Not attempted' }));
+          break;
+        }
+      }
+    }
+    return out;
+  },
+
+  /**
    * PATCH /admin/fare-configs/:id — fare fields only.
    *
    * cityId, vehicleClass and tripType are rejected: those three plus
@@ -159,6 +213,24 @@ export const fareConfigService = {
   async remove(id) {
     const data = unwrap(await apiClient.del(`/admin/fare-configs/${id}`));
     return { deactivated: true, config: data.config };
+  },
+
+  /**
+   * DELETE /admin/fare-configs/:id/permanent  -- really removes the card.
+   *
+   * `remove` above only retires (hides) it. This deletes the row. Bookings
+   * already made are unaffected: each keeps its own frozen copy of the fare.
+   * The backend keeps a copy of the deleted card in the audit log.
+   *
+   * The only live card for a city + class + trip type is refused with 400
+   * LAST_ACTIVE_FARE_CONFIG unless `force` is passed, because quotes for that
+   * combination would stop working. The caller asks the admin, then retries.
+   */
+  async destroy(id, { force = false } = {}) {
+    const data = unwrap(
+      await apiClient.del(`/admin/fare-configs/${id}/permanent`, force ? { params: { force: 'true' } } : undefined),
+    );
+    return data.config;
   },
 
   /**

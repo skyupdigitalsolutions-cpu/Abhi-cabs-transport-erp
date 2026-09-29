@@ -14,6 +14,7 @@ import Select from '../../components/ui/Select';
 import Textarea from '../../components/ui/Textarea';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Alert from '../../components/ui/Alert';
+import Checkbox from '../../components/ui/Checkbox';
 import SearchInput from '../../components/ui/SearchInput';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
@@ -51,12 +52,16 @@ const EMPTY_RATE_CARD = {
   hourlyRate: '', hourlyKmPerHour: 10,
 };
 
+// City dropdown value meaning "every city in the chosen state" -- the backend keeps
+// one rate card per city, so this expands to one identical card per city.
+const ALL_CITIES = '__ALL_CITIES__';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Vehicle Rate Card Form — Simple / Advanced, matching the REAL FareConfig
 // fields (city + vehicleClass + tripType + baseFare/perKm/minimumFare, plus
 // optional outstation/round-trip/night/airport/hourly/surge fields).
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
+function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClose }) {
   const isEdit = !!initial;
   const toast = useToast();
   const [form, setForm] = useState(() => {
@@ -69,6 +74,12 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const [errors, setErrors] = useState({});
   const [addingCity, setAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
+  const [applyToState, setApplyToState] = useState(false);
+  // Real cities (saved on the server) in the chosen state: what "All cities in
+  // <State>" expands to. Cities that only exist on this screen are left out.
+  const stateCityList = form._state
+    ? cities.filter((c) => c.state === form._state && Number(c.id) < 1000000)
+    : [];
 
   const handleAddCity = async () => {
     if (!newCityName.trim() || !form._state) return;
@@ -81,11 +92,15 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
       cities.push(newCity);
       set('cityId', String(newCity.id));
       toast.success(`${newCityName.trim()}, ${stateName} added`);
-    } catch {
-      const tempId = Date.now();
-      cities.push({ id: tempId, name: newCityName.trim(), state: stateName });
-      set('cityId', String(tempId));
-      toast.info(`${newCityName.trim()}, ${stateName} added locally`);
+    } catch (e) {
+      // No pretend city: if the server can't save it, a rate card can never be
+      // saved against it either (that is what produced "Invalid request data").
+      toast.error(
+        e.status === 404 || e.code === 'ENDPOINT_NOT_IMPLEMENTED'
+          ? `This server can't add new cities yet. Ask your developer to add the city in the database, or pick "All cities in ${stateName}" to price the whole state.`
+          : `Couldn't add the city: ${e.message || 'unknown error'}`,
+      );
+      return; // keep the box open
     }
     setAddingCity(false); setNewCityName('');
   };
@@ -125,8 +140,10 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
     // cities" card). Without this the request was sent with no cityId and came
     // back as a bare "Invalid request data".
     if (!isEdit) {
-      if (!form.cityId) nextErrors.cityId = 'Please select a city.';
-      else if (Number(form.cityId) >= 1000000) {
+      if (!form.cityId) nextErrors.cityId = 'Please select a city, or "All cities" for the state.';
+      else if (form.cityId === ALL_CITIES) {
+        if (stateCityList.length === 0) nextErrors.cityId = `There are no cities saved in ${form._state || 'that state'} yet.`;
+      } else if (Number(form.cityId) >= 1000000) {
         nextErrors.cityId = "That city was only added on this screen and isn't saved on the server. Pick an existing city.";
       }
     }
@@ -171,11 +188,17 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
       } : {};
 
       if (isEdit) {
-        await onSubmit({ ...base, ...advanced });
+        await onSubmit({
+          ...base, ...advanced,
+          // Also change the same class + trip type in the state's other cities.
+          ...(applyToState && stateSiblings.length > 0 && { _alsoUpdateIds: stateSiblings.map((r) => r.id) }),
+        });
       } else {
         await onSubmit({
+          // "All cities in <State>": the parent creates one identical card per city.
+          ...(form.cityId === ALL_CITIES && { _cityIds: stateCityList.map((c) => c.id), _stateName: form._state }),
           // Only send cityId if it's a real DB id (small int), not a temp local timestamp
-          ...(form.cityId && Number(form.cityId) < 1000000 && { cityId: Number(form.cityId) }),
+          ...(form.cityId && form.cityId !== ALL_CITIES && Number(form.cityId) < 1000000 && { cityId: Number(form.cityId) }),
           vehicleClass: form.vehicleClass,
           tripType: form.tripType,
           ...base,
@@ -214,7 +237,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
                 ]}
               />
             </FormField>
-            <FormField label="City" required={!isEdit} error={errors.cityId} hint={addingCity ? 'Type new city name' : 'Pick a city or add new.'}>
+            <FormField label="City" required={!isEdit} error={errors.cityId} hint={addingCity ? 'Type new city name' : form.cityId === ALL_CITIES ? `Creates one identical rate card for each of the ${stateCityList.length} cities in ${form._state}.` : form._state ? `Pick one city, or "All cities in ${form._state}" to price the whole state.` : 'Pick a state first to price a whole state at once.'}>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || 'All cities'} />
               ) : addingCity ? (
@@ -237,9 +260,14 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
                     onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
                     placeholder="Select a city"
                     searchable
-                    options={cities
-                      .filter((c) => !form._state || c.state === form._state)
-                      .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` }))}
+                    options={[
+                      ...(stateCityList.length > 0
+                        ? [{ value: ALL_CITIES, label: `All cities in ${form._state} (${stateCityList.length})` }]
+                        : []),
+                      ...cities
+                        .filter((c) => !form._state || c.state === form._state)
+                        .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
+                    ]}
                   />
                   <button onClick={() => setAddingCity(true)}
                     style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -263,6 +291,21 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
             </FormField>
           </div>
         </div>
+
+        {isEdit && stateSiblings.length > 0 && (
+          <div className="rounded-xl p-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+            <Checkbox
+              checked={applyToState}
+              onChange={(e) => setApplyToState(e.target.checked)}
+              label={`Also apply this change to the ${stateSiblings.length} other ${stateSiblings.length === 1 ? 'city' : 'cities'} in ${initial?.city?.state}`}
+            />
+            <p className="text-xs mt-1.5" style={{ color: '#92400E', marginLeft: 30 }}>
+              {stateSiblings.map((r) => r.city?.name).filter(Boolean).join(', ')} &mdash; their current{' '}
+              {initial?.vehicleClass} / {TRIP_TYPES.find((t) => t.value === initial?.tripType)?.label} rate card
+              gets the same prices.
+            </p>
+          </div>
+        )}
 
         {/* Core fare — required, always visible */}
         <div className="rounded-xl p-4" style={{ backgroundColor: '#eef2fb' }}>
@@ -545,14 +588,67 @@ function VehicleRatesTab() {
     return matchSearch && matchClass && matchTrip && matchState;
   }), [rates, cities, search, classFilter, tripFilter, stateFilter]);
 
+  // Other cities in the same state whose CURRENT card for this class + trip type
+  // can be changed together with the one being edited ("state-wise" pricing).
+  // Only offered when the edited card is itself live; staged future prices and
+  // retired cards are never touched.
+  const stateSiblings = useMemo(() => {
+    if (!editing || !editing.isActive || !editing.city?.state) return [];
+    const now = Date.now();
+    if (new Date(editing.effectiveFrom).getTime() > now) return [];
+    const newestPerCity = new Map();
+    for (const r of rates) {
+      if (r.id === editing.id || !r.isActive) continue;
+      if (r.vehicleClass !== editing.vehicleClass || r.tripType !== editing.tripType) continue;
+      if (r.city?.state !== editing.city.state || r.cityId === editing.cityId) continue;
+      const t = new Date(r.effectiveFrom).getTime();
+      if (t > now) continue;
+      const cur = newestPerCity.get(r.cityId);
+      if (!cur || t > new Date(cur.effectiveFrom).getTime()) newestPerCity.set(r.cityId, r);
+    }
+    return [...newestPerCity.values()];
+  }, [editing, rates]);
+
+  const cityLabel = (id) => cityName(id) || `city #${id}`;
+
   const handleSubmit = async (values) => {
+    // _cityIds / _stateName / _alsoUpdateIds are instructions from the form, not fields the API accepts.
+    const { _cityIds, _stateName, _alsoUpdateIds, ...body } = values;
     try {
       if (editing) {
-        await fareConfigService.update(editing.id, values);
-        toast.success('Rate card updated — new quotes use this immediately');
+        await fareConfigService.update(editing.id, body);
+        if (Array.isArray(_alsoUpdateIds) && _alsoUpdateIds.length > 0) {
+          const res = await fareConfigService.updateMany(_alsoUpdateIds, body);
+          const state = editing.city?.state || 'the state';
+          if (res.failed.length > 0) {
+            const names = res.failed.map((f) => rates.find((r) => r.id === f.id)?.city?.name || `card #${f.id}`).join(', ');
+            toast.error(`Updated ${editing.city?.name || 'this card'} and ${res.updated.length} other ${state} cit${res.updated.length === 1 ? 'y' : 'ies'}, but NOT: ${names}. Edit those separately.`);
+            reload();
+            setEditing(null); setFormOpen(false);
+            return;
+          }
+          toast.success(`Rate card updated in ${res.updated.length + 1} cities in ${state} \u2014 new quotes use it immediately`);
+        } else {
+          toast.success('Rate card updated \u2014 new quotes use this immediately');
+        }
+      } else if (Array.isArray(_cityIds)) {
+        // "All cities in <State>": one identical card per city.
+        const res = await fareConfigService.createForCities(body, _cityIds);
+        const noun = (n) => `${n} cit${n === 1 ? 'y' : 'ies'}`;
+        if (res.created.length > 0 || res.skipped.length > 0) {
+          const parts = [];
+          if (res.created.length > 0) parts.push(`created for ${noun(res.created.length)} in ${_stateName}`);
+          if (res.skipped.length > 0) parts.push(`${noun(res.skipped.length)} already had this rate card (${res.skipped.map(cityLabel).join(', ')}) \u2014 left unchanged`);
+          toast.success(`Rate card ${parts.join('; ')}`);
+        }
+        if (res.failed.length > 0) {
+          toast.error(`Failed for ${res.failed.map((f) => `${cityLabel(f.cityId)} (${f.message})`).join(', ')}. Press Create again to retry just those.`);
+          reload();
+          return; // keep the form open so the failed ones can be retried
+        }
       } else {
-        await fareConfigService.create(values);
-        toast.success('Rate card created — new quotes use this immediately');
+        await fareConfigService.create(body);
+        toast.success('Rate card created \u2014 new quotes use this immediately');
       }
       setEditing(null); setFormOpen(false); reload();
     } catch (e) {
@@ -738,8 +834,10 @@ function VehicleRatesTab() {
         size="lg"
       >
         <VehicleRateForm
+          key={editing ? `edit-${editing.id}` : 'new'}
           initial={editing}
           cities={cities}
+          stateSiblings={stateSiblings}
           onSubmit={handleSubmit}
           onClose={() => { setFormOpen(false); setEditing(null); }}
         />
