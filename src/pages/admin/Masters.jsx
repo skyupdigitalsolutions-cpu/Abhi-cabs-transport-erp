@@ -738,7 +738,7 @@ function VehicleRatesTab() {
 const TIERS = ['METRO', 'TALUKA', 'VILLAGE'];
 const TIER_META = {
   METRO:   { icon: '🏙️', label: 'Metro', desc: 'City / urban', bg: '#EFF6FF', color: '#1D4ED8', tone: 'blue' },
-  TALUKA:  { icon: '🏘️', label: 'Taluka', desc: 'Town / semi-urban', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
+  TALUKA:  { icon: '🏘️', label: 'District / Taluka', desc: 'District / semi-urban', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
   VILLAGE: { icon: '🌾', label: 'Village', desc: 'Rural area', bg: '#F0FDF4', color: '#15803D', tone: 'green' },
 };
 const TIER_OPTIONS = TIERS.map((t) => ({ value: t, label: `${TIER_META[t].icon} ${TIER_META[t].label} — ${TIER_META[t].desc}` }));
