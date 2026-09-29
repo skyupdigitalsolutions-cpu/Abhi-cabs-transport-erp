@@ -68,15 +68,21 @@ driverService.createTemporary = (payload) =>
     }
   );
 
-// Assigning (or re-assigning) a vehicle after the fact — for a temp driver
-// created without one. A plain partial PATCH, deliberately NOT routed
-// through driverService.update() since that always sends the full
-// name/phone/licenceNumber payload the real driver schema expects, which a
-// temp driver doesn't have. `spec` is either { assignedVehicleId } (from the
-// fleet) or { vehicleNumber } (typed manually) — see createTemporary above.
+// Assigning (or re-assigning) a vehicle that ALREADY EXISTS in the fleet to a
+// driver: PATCH /admin/drivers/:userId { assignedVehicleId }.
+//
+// That is the only vehicle field the backend's driver update accepts. It used to
+// send a typed { vehicleNumber, vehicleClass }, which the backend drops (and then
+// rejects the empty body), and typing a class by hand is how vehicles ended up
+// with a class no booking uses ("Vehicle is sedan, booking needs swift-dzire").
+// A vehicle keeps the class it already has in the fleet, so nothing can mismatch
+// here; new vehicles are added under Vehicles.
 driverService.assignVehicle = (driverId, spec) =>
   withMockFallback(
-    () => apiClient.patch(`/admin/drivers/${driverId}`, spec),
+    async () => {
+      if (!spec?.assignedVehicleId) throw new Error('Select a vehicle from the fleet.');
+      return apiClient.patch(`/admin/drivers/${driverId}`, { assignedVehicleId: spec.assignedVehicleId });
+    },
     async () => {
       await mockResolve(null);
       const idx = db.drivers.findIndex((d) => d.id === driverId || d.userId === driverId);
@@ -124,6 +130,22 @@ export const vehicleService = createCrudService({
   searchFields: ['registrationNumber', 'makeModel'],
   idPrefix:     'VEH',
 });
+
+// EVERY vehicle in the fleet. The API returns at most 100 per page, so read all
+// pages (capped at 20 = 2,000 vehicles). Used where a screen must pick from, or
+// look up, the whole fleet rather than one page of it.
+vehicleService.listAll = async ({ maxPages = 20 } = {}) => {
+  const all = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const res = await apiClient.get('/admin/vehicles', { params: { page, limit: 100 } });
+    all.push(...(res?.data ?? res?.items ?? res?.vehicles ?? []));
+    totalPages = res?.meta?.totalPages ?? res?.pagination?.totalPages ?? 1;
+    page += 1;
+  } while (page <= totalPages && page <= maxPages);
+  return all;
+};
 
 // Staff-facing booking list — /admin/bookings
 export const bookingService = createCrudService({

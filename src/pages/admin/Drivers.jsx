@@ -11,11 +11,12 @@ import Alert         from '../../components/ui/Alert';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import DriverFormDrawer from '../../components/driver/DriverFormDrawer';
 import TemporaryDriverModal from '../../components/driver/TemporaryDriverModal';
+import AssignVehicleDrawer from '../../components/driver/AssignVehicleDrawer';
 import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import { useApi }    from '../../hooks/useApi';
 import { useResourceList } from '../../hooks/useResourceList';
 import { useToast }  from '../../hooks/useToast';
-import { reportsService, driverService } from '../../services';
+import { reportsService, driverService, vehicleService } from '../../services';
 import { apiClient } from '../../services/apiClient';
 import { formatCurrency, formatDate, formatDateTime, titleCase } from '../../utils/formatters';
 
@@ -177,22 +178,42 @@ function RosterTab() {
   const [tempFormOpen,  setTempFormOpen]  = useState(false);
   const [assigning,     setAssigning]     = useState(null); // driver row needing a vehicle
 
+  // The backend's driver LIST returns only `assignedVehicleId` -- the vehicle
+  // itself (registration number) is on the single-driver endpoint only. The page
+  // read `assignedVehicle.registrationNumber`, which is never in the list, so
+  // every driver showed "No vehicle assigned" even with a vehicle. Look the
+  // registration up in the fleet instead (all pages; the API caps a page at 100, see vehicleService.listAll).
+  const [fleetTick, setFleetTick] = useState(0);
+  const fleetApi = useApi(async () => {
+    const byId = new Map();
+    (await vehicleService.listAll()).forEach((v) => byId.set(v.id, v.registrationNumber));
+    return byId;
+  }, [fleetTick]);
+  const fleetById = fleetApi.data || new Map();
+  // A vehicle is assigned if the row says so by id OR carries the vehicle itself.
+  const hasVehicle = (r) => Boolean(r.assignedVehicle?.registrationNumber || r.assignedVehicleId);
+  // Registration number when we can resolve it ('' while the fleet loads, or if it is not in the fleet).
+  const vehicleReg = (r) => r.assignedVehicle?.registrationNumber
+    || (r.assignedVehicleId ? fleetById.get(r.assignedVehicleId) : '') || '';
+  // Vehicles are created / changed by these handlers, so refresh the fleet with the list.
+  const reloadAll = () => { list.reload(); setFleetTick((t) => t + 1); };
+
   const handleSubmit = async (values) => {
     if (editing) { await driverService.update(editing.userId, values); toast.success('Driver updated'); }
     else         { await driverService.create(values);                 toast.success('Driver onboarded'); }
-    list.reload();
+    reloadAll();
   };
 
   const handleCreateTemporary = async (payload) => {
     await driverService.createTemporary(payload);
     toast.success(`Temporary driver ${payload.name} created${payload.vehicleNumber ? ` — vehicle ${payload.vehicleNumber}` : '. Assign a vehicle when ready.'}`);
-    list.reload();
+    reloadAll();
   };
 
   const handleAssignVehicle = async (spec) => {
     await driverService.assignVehicle(assigning.userId, spec);
     toast.success('Vehicle assigned');
-    list.reload();
+    reloadAll();
   };
 
   const handleDeactivate = async () => {
@@ -205,7 +226,7 @@ function RosterTab() {
         await apiClient.patch(`/admin/drivers/${deleting.userId}/deactivate`, {});
         toast.success('Driver deactivated');
       }
-      list.reload();
+      reloadAll();
     } catch (e) { toast.error(e.message || 'Could not deactivate'); }
     finally { setDeleteLoading(false); setDeleting(null); }
   };
@@ -230,18 +251,23 @@ function RosterTab() {
     {
       key: 'licenceNumber', header: 'Licence / Vehicle',
       render: (r) => r.driverType === 'TEMPORARY'
-        ? (r.assignedVehicle?.registrationNumber
-            ? <span style={{ color: '#1F2937', fontSize: 13 }}>{r.assignedVehicle.registrationNumber}</span>
-            : <span style={{ color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>No vehicle yet</span>)
+        ? (vehicleReg(r)
+            ? <span style={{ color: '#1F2937', fontSize: 13 }}>{vehicleReg(r)}</span>
+            : hasVehicle(r)
+              ? <span style={{ color: '#6B7280', fontSize: 12.5 }}>Vehicle assigned</span>
+              : <span style={{ color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>No vehicle yet</span>)
         : (
           <div>
             <p className="flex items-center gap-1 font-mono" style={{ color: '#1F2937', fontSize: 13 }}><IdCard size={12} />{r.licenceNumber}</p>
             {/* A vehicle is optional at registration, so a regular driver can
                 legitimately have none — surface that here so ops can assign
                 one rather than wondering why the driver can't go online. */}
-            {r.assignedVehicle?.registrationNumber
-              ? <p style={{ color: '#6B7280', fontSize: 12.5 }}>{r.assignedVehicle.registrationNumber}</p>
-              : <p style={{ color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>No vehicle assigned</p>}
+            {vehicleReg(r)
+              ? <p style={{ color: '#6B7280', fontSize: 12.5 }}>{vehicleReg(r)}</p>
+              : hasVehicle(r)
+                // Assigned, but its number is not resolved (fleet still loading, or not in the loaded fleet).
+                ? <p style={{ color: '#6B7280', fontSize: 12.5 }}>Vehicle assigned</p>
+                : <p style={{ color: '#D97706', fontSize: 12.5, fontWeight: 600 }}>No vehicle assigned</p>}
           </div>
         ),
     },
@@ -262,9 +288,9 @@ function RosterTab() {
         <div className="flex gap-2 justify-end">
           {/* A vehicle is optional at registration for EVERY driver type, so
               admin can assign one directly to whoever doesn't have one yet. */}
-          {!r.assignedVehicle?.registrationNumber && (
-            <Button size="sm" variant="primary" onClick={() => setAssigning(r)}>Assign Vehicle</Button>
-          )}
+          {hasVehicle(r)
+            ? <Button size="sm" variant="secondary" onClick={() => setAssigning(r)}>Change Vehicle</Button>
+            : <Button size="sm" variant="primary" onClick={() => setAssigning(r)}>Assign Vehicle</Button>}
           {/* Temp drivers skip the full onboarding form entirely — nothing there applies (no phone/licence). */}
           {r.driverType !== 'TEMPORARY' && (
             <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
@@ -299,7 +325,7 @@ function RosterTab() {
         emptyTitle="No drivers found" emptyDescription="Try adjusting your filters." />
       <DriverFormDrawer open={formOpen} onClose={() => setFormOpen(false)} initial={editing} onSubmit={handleSubmit} />
       <TemporaryDriverModal open={tempFormOpen} onClose={() => setTempFormOpen(false)} onSubmit={handleCreateTemporary} />
-      <TemporaryDriverModal open={!!assigning} onClose={() => setAssigning(null)} onSubmit={handleAssignVehicle} driver={assigning} />
+      <AssignVehicleDrawer open={!!assigning} onClose={() => setAssigning(null)} onSubmit={handleAssignVehicle} driver={assigning} />
       <ConfirmDialog open={!!deleting} title={deleting?.driverType === 'TEMPORARY' ? 'Remove temporary driver?' : 'Deactivate this driver?'} description={deleting ? (deleting.driverType === 'TEMPORARY' ? `${deleting.user?.name || deleting.user?.email} will be permanently removed.` : `${deleting.user?.name} will be deactivated and forced offline.`) : ''} confirmLabel={deleting?.driverType === 'TEMPORARY' ? 'Remove' : 'Deactivate'} danger loading={deleteLoading} onClose={() => setDeleting(null)} onConfirm={handleDeactivate} />
     </div>
   );

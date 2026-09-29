@@ -11,13 +11,19 @@ import { cleanPhoneInput, parseIndianMobile } from '../../utils/phone';
 import { vehicleCatalogService } from '../../services';
 
 /**
- * Two modes:
- *  - Create (no `driver` prop): name, mobile, email, vehicleNumber, vehicleClass
- *  - Assign vehicle (`driver` prop): just vehicle number + class
+ * Add a temporary (hired) driver: name, mobile, email, and the vehicle they will
+ * use (registration number + class). Assigning a vehicle to an EXISTING driver is
+ * a separate screen, AssignVehicleDrawer, which only offers vehicles already in
+ * the fleet.
  */
+// vehicleClass starts empty and is filled with the first REAL class once the
+// catalogue loads. It used to default to 'sedan', a class the fleet has retired:
+// a vehicle saved as sedan can never be dispatched to a booking for one of the
+// current model classes (swift-dzire, ertiga, ...), which the backend refuses
+// with "Vehicle is sedan, booking needs swift-dzire".
 const EMPTY = {
   name: '', mobile: '', email: '',
-  vehicleNumber: '', vehicleClass: 'sedan',
+  vehicleNumber: '', vehicleClass: '',
 };
 
 // Same rule as the backend (normaliseRegistration): spaces, dashes and other
@@ -30,87 +36,63 @@ const isVehicleNumber = (value) => {
     : '';
 };
 
-export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }) {
-  const isAssignOnly = !!driver;
-  const [classOptions, setClassOptions] = useState([{ value: 'sedan', label: 'Sedan' }]);
+export default function TemporaryDriverModal({ open, onClose, onSubmit }) {
+  const [classOptions, setClassOptions] = useState([]);
 
   useEffect(() => {
     if (!open) return;
-    vehicleCatalogService.list({ includeInactive: false })
-      .then((res) => {
-        const classes = (res?.data || res?.classes || []);
-        if (classes.length > 0) {
-          setClassOptions(classes.map((c) => ({
-            value: typeof c === 'string' ? c : c.vehicleClass,
-            label: typeof c === 'string' ? c.charAt(0).toUpperCase() + c.slice(1) : (c.label || c.vehicleClass),
-          })));
-        }
-      })
-      .catch(() => {});
-  }, [open]);
+    let cancelled = false;
+    // classOptions() returns [{ value: key, label: name, seats }] from the live
+    // catalogue (retired classes such as `sedan` are left out). The previous code
+    // read `res.data` / `res.classes` off what is actually an array, so the list
+    // never filled in and "Sedan" was the only choice.
+    vehicleCatalogService.classOptions({ includeInactive: false }).then((opts) => {
+      if (cancelled || !opts.length) return;
+      setClassOptions(opts);
+      // Pick the first real class unless one is already chosen.
+      setValues((v) => (v.vehicleClass ? v : { ...v, vehicleClass: opts[0].value }));
+    });
+    return () => { cancelled = true; };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { values, errors, touched, submitting, submitError, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
     initialValues: EMPTY,
-    schema: isAssignOnly ? {
-      vehicleNumber: [required('Vehicle number'), isVehicleNumber],
-    } : {
+    schema: {
       name: [required('Name')],
       mobile: [required('Mobile number'), isPhone],
       vehicleNumber: [required('Vehicle number'), isVehicleNumber],
       vehicleClass: [required('Vehicle class')],
     },
     onSubmit: async (vals) => {
-      if (isAssignOnly) {
-        const vn = vals.vehicleNumber.trim().toUpperCase().replace(/\s+/g, '');
-        if (!vn) return;
-        await onSubmit({ vehicleNumber: vn, vehicleClass: vals.vehicleClass });
-      } else {
-        const payload = {
-          name: vals.name.trim(),
-          mobile: parseIndianMobile(vals.mobile) || vals.mobile.trim(),
-          ...(vals.email.trim() && { email: vals.email.trim().toLowerCase() }),
-          vehicleNumber: vals.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ''),
-          vehicleClass: vals.vehicleClass,
-        };
-        await onSubmit(payload);
-      }
+      await onSubmit({
+        name: vals.name.trim(),
+        mobile: parseIndianMobile(vals.mobile) || vals.mobile.trim(),
+        ...(vals.email.trim() && { email: vals.email.trim().toLowerCase() }),
+        vehicleNumber: vals.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ''),
+        vehicleClass: vals.vehicleClass,
+        ...(seatsFor(vals.vehicleClass) && { seatingCapacity: seatsFor(vals.vehicleClass) }),
+      });
       onClose();
     },
   });
 
   useEffect(() => { if (open) setValues(EMPTY); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const seatsFor = (cls) => classOptions.find((o) => o.value === cls)?.seats || undefined;
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title={isAssignOnly ? 'Assign a Vehicle' : 'Add Temporary Driver'}
+      title="Add Temporary Driver"
       footer={
         <>
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleSubmit} loading={submitting}>{isAssignOnly ? 'Assign' : 'Create'}</Button>
+          <Button size="sm" onClick={handleSubmit} loading={submitting}>Create</Button>
         </>
       }
     >
       {submitError && <Alert type="error" className="mb-4">{submitError}</Alert>}
 
-      {isAssignOnly ? (
-        <div className="space-y-4">
-          <Alert type="info" className="mb-4">
-            Assigning a vehicle to <strong>{driver.user?.name || driver.user?.email}</strong>.
-          </Alert>
-          <FormField label="Vehicle number" required error={touched.vehicleNumber && errors.vehicleNumber}>
-            <Input value={values.vehicleNumber}
-              onChange={(e) => setValue('vehicleNumber', e.target.value.toUpperCase())}
-              onBlur={() => setFieldTouched('vehicleNumber')}
-              placeholder="e.g. KA 01 AB 1234" autoFocus />
-          </FormField>
-          <FormField label="Vehicle class" required>
-            <Select value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value)}
-              options={classOptions} />
-          </FormField>
-        </div>
-      ) : (
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Driver name" required error={touched.name && errors.name}>
@@ -138,11 +120,10 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
             </FormField>
             <FormField label="Vehicle class">
               <Select value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value)}
-                options={classOptions} />
+                placeholder="Select vehicle class" options={classOptions} />
             </FormField>
           </div>
         </form>
-      )}
     </Drawer>
   );
 }

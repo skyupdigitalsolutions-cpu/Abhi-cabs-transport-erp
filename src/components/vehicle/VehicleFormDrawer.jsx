@@ -11,6 +11,7 @@ import { useForm } from '../../hooks/useForm';
 import { required } from '../../utils/validators';
 import { VEHICLE_STATUS } from '../../constants';
 import { apiClient } from '../../services/apiClient';
+import { vehicleCatalogService } from '../../services/vehicleCatalogService';
 import { useToast } from '../../hooks/useToast';
 import {
   CheckCircle, AlertTriangle, Clock, Upload,
@@ -40,7 +41,13 @@ import {
  * four expiry dates it captures are ALSO mapped to their real top-level
  * columns, since those drive compliance filtering/sorting on the backend.
  */
-const VEHICLE_CLASS_SUGGESTIONS = ['hatchback', 'sedan', 'suv', 'tempo'];
+// Shown until the live catalogue loads (or if it cannot be reached). These are
+// the current model classes; the old four names ('hatchback', 'sedan', 'suv',
+// 'tempo') are retired and led to vehicles saved under a class no booking uses.
+const VEHICLE_CLASS_SUGGESTIONS = [
+  'swift-dzire', 'ertiga', 'innova', 'innova-crysta', 'innova-hycross', 'fortuner', 'mercedes-e',
+  'tempo-12', 'tempo-17', 'urbania-13', 'urbania-16', 'urbania-maharaja', 'benz-22', 'benz-28', 'benz-33',
+];
 
 const DOC_CONFIG = [
   {
@@ -240,6 +247,15 @@ function ComplianceTab({ docValues, files }) {
 }
 
 export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) {
+  const [classSuggestions, setClassSuggestions] = useState(VEHICLE_CLASS_SUGGESTIONS);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    vehicleCatalogService.classOptions({ includeInactive: false }).then((opts) => {
+      if (!cancelled && opts.length) setClassSuggestions(opts.map((o) => o.value));
+    });
+    return () => { cancelled = true; };
+  }, [open]);
   const [activeTab, setActiveTab] = useState('info');
   const [docValues, setDocValues] = useState({});
   const [files, setFiles] = useState({});
@@ -410,8 +426,8 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
           <FormField label="Registration number" required error={touched.registrationNumber && errors.registrationNumber} hint="e.g. KA05AB1234">
             <Input value={values.registrationNumber} onChange={(e) => setValue('registrationNumber', e.target.value.toUpperCase())} onBlur={() => setFieldTouched('registrationNumber')} maxLength={16} placeholder="KA05AB1234" />
           </FormField>
-          <FormField label="Vehicle class" required error={touched.vehicleClass && errors.vehicleClass} hint="Free text — hatchback, sedan, suv, tempo are the classes this backend currently prices.">
-            <ComboInput suggestions={VEHICLE_CLASS_SUGGESTIONS} value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value.toLowerCase())} onBlur={() => setFieldTouched('vehicleClass')} placeholder="sedan" />
+          <FormField label="Vehicle class" required error={touched.vehicleClass && errors.vehicleClass} hint="Must match a class used by rate cards and bookings, e.g. swift-dzire, ertiga, innova-crysta. A vehicle can only be dispatched to bookings of its own class.">
+            <ComboInput suggestions={classSuggestions} value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value.toLowerCase())} onBlur={() => setFieldTouched('vehicleClass')} placeholder="sedan" />
           </FormField>
           <FormField label="Make & model">
             <Input value={values.makeModel} onChange={(e) => setValue('makeModel', e.target.value)} placeholder="e.g. Maruti Suzuki Dzire" maxLength={80} />

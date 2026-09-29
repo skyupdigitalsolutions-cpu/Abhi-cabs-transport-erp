@@ -67,6 +67,14 @@ function AssignModal({ open, onClose, onAssign, booking }) {
   const [drivers, setDrivers] = useState([]);
   const [loadingDistances, setLoadingDistances] = useState(false);
 
+  // The backend refuses a vehicle whose class differs from the booking's
+  // ("Vehicle is sedan, booking needs swift-dzire"). The Dispatch board already
+  // hides those; this list offered every available vehicle, so the wrong one
+  // could be picked and only failed after pressing Assign.
+  const wantedClass = booking?.vehicleClass || '';
+  const matchingVehicles = wantedClass ? vehicles.filter((v) => v.vehicleClass === wantedClass) : vehicles;
+  const otherClassCount = vehicles.length - matchingVehicles.length;
+
   useEffect(() => {
     if (!open) return;
     apiClient.get('/admin/dispatch/vehicles')
@@ -131,10 +139,21 @@ function AssignModal({ open, onClose, onAssign, booking }) {
       </>}
     >
       <div className="space-y-4">
-        <FormField label="Vehicle" required>
+        <FormField
+          label="Vehicle"
+          required
+          hint={wantedClass ? `Only ${wantedClass} vehicles are listed — this booking needs that class.` : undefined}
+        >
           <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} placeholder="Select vehicle"
-            options={vehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.makeModel} (${v.seatingCapacity} seats)` }))} />
+            options={matchingVehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.makeModel || v.vehicleClass} (${v.seatingCapacity} seats)` }))} />
         </FormField>
+        {wantedClass && matchingVehicles.length === 0 && (
+          <Alert type="warning">
+            No available <strong>{wantedClass}</strong> vehicle.
+            {otherClassCount > 0 && ` ${otherClassCount} available vehicle${otherClassCount > 1 ? 's are' : ' is'} of a different class and can't take this booking.`}
+            {' '}Add one in Vehicles, or change an existing vehicle's class to {wantedClass}.
+          </Alert>
+        )}
         <FormField
           label="Driver"
           hint={loadingDistances ? 'Ranking by live distance to pickup…' : 'Nearest online, KYC-verified drivers listed first.'}
