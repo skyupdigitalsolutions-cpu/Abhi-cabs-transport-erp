@@ -160,7 +160,8 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
         await onSubmit({ ...base, ...advanced });
       } else {
         await onSubmit({
-          ...(form.cityId && { cityId: Number(form.cityId) }),
+          // Only send cityId if it's a real DB id (small int), not a temp local timestamp
+          ...(form.cityId && Number(form.cityId) < 1000000 && { cityId: Number(form.cityId) }),
           vehicleClass: form.vehicleClass,
           tripType: form.tripType,
           ...base,
