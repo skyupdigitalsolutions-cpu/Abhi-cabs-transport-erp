@@ -121,9 +121,23 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
     // visible failure. minimumFare is no longer required here (see below);
     // city and per-KM still are, but now say so.
     const nextErrors = {};
+    // The backend needs a real city on every rate card (there is no "all
+    // cities" card). Without this the request was sent with no cityId and came
+    // back as a bare "Invalid request data".
+    if (!isEdit) {
+      if (!form.cityId) nextErrors.cityId = 'Please select a city.';
+      else if (Number(form.cityId) >= 1000000) {
+        nextErrors.cityId = "That city was only added on this screen and isn't saved on the server. Pick an existing city.";
+      }
+    }
     if (form.perKm === '') nextErrors.perKm = 'Per-KM rate is required.';
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.keys(nextErrors).length > 0) {
+      // A toast as well: the City field sits at the top of a scrolling form and
+      // may be out of view when Create is pressed.
+      toast.error(Object.values(nextErrors)[0]);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -200,7 +214,7 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
                 ]}
               />
             </FormField>
-            <FormField label="City" hint={addingCity ? 'Type new city name' : 'Pick a city or add new.'}>
+            <FormField label="City" required={!isEdit} error={errors.cityId} hint={addingCity ? 'Type new city name' : 'Pick a city or add new.'}>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || 'All cities'} />
               ) : addingCity ? (
@@ -221,14 +235,11 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
                   <Select
                     value={form.cityId}
                     onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
-                    placeholder="All cities (global rate)"
+                    placeholder="Select a city"
                     searchable
-                    options={[
-                      { value: '', label: 'All cities (global rate)' },
-                      ...cities
-                        .filter((c) => !form._state || c.state === form._state)
-                        .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
-                    ]}
+                    options={cities
+                      .filter((c) => !form._state || c.state === form._state)
+                      .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` }))}
                   />
                   <button onClick={() => setAddingCity(true)}
                     style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -545,7 +556,10 @@ function VehicleRatesTab() {
       }
       setEditing(null); setFormOpen(false); reload();
     } catch (e) {
-      toast.error(e.message || 'Save failed');
+      const detail = Array.isArray(e.fieldErrors) && e.fieldErrors.length
+        ? e.fieldErrors.map((f) => `${f.field}: ${f.message}`).join(', ')
+        : '';
+      toast.error(detail ? `${e.message || 'Save failed'} \u2014 ${detail}` : (e.message || 'Save failed'));
     }
   };
 
@@ -584,22 +598,32 @@ function VehicleRatesTab() {
   const handleDelete = async () => {
     setDelLoad(true);
     try {
-      await fareConfigService.remove(deleting.id);
-      toast.success('Rate card retired');
+      await fareConfigService.destroy(deleting.id);
+      toast.success('Rate card deleted');
       reload();
     } catch (e) {
-      // Backend blocks DELETE on last active card — ask admin and force via PATCH
-      const force = confirm(
-        `⚠️ Cannot retire via normal route.\n\n` +
-        `"${e.message || 'This is the last active card'}"\n\n` +
-        `Force-deactivate this rate card anyway?`
-      );
-      if (force) {
-        try {
-          await fareConfigService.update(deleting.id, { isActive: false });
-          toast.success('Rate card force-retired');
-          reload();
-        } catch (e2) { toast.error(e2.message || 'Failed'); }
+      if (e.code === 'LAST_ACTIVE_FARE_CONFIG') {
+        // The backend won't delete the ONLY live card for a class + trip type
+        // without an explicit go-ahead: quotes for it would stop working.
+        const force = confirm(
+          `${e.message}\n\n` +
+          `Deleting it permanently means this vehicle can't be booked for this trip type until you add a new rate card.\n\n` +
+          `Delete it anyway?`
+        );
+        if (force) {
+          try {
+            await fareConfigService.destroy(deleting.id, { force: true });
+            toast.success('Rate card deleted');
+            reload();
+          } catch (e2) { toast.error(e2.message || 'Delete failed'); }
+        }
+      } else if (e.code === 'FARE_CONFIG_NOT_FOUND') {
+        toast.error('This rate card no longer exists');
+        reload();
+      } else if (e.status === 404 || e.code === 'ENDPOINT_NOT_IMPLEMENTED') {
+        toast.error('Permanent delete is not on this backend yet \u2014 deploy the updated backend first.');
+      } else {
+        toast.error(e.message || 'Delete failed');
       }
     } finally {
       setDeleting(null); setDelLoad(false);
@@ -725,7 +749,7 @@ function VehicleRatesTab() {
         open={!!deleting} onClose={() => setDeleting(null)} onConfirm={handleDelete}
         loading={delLoad} danger title="Delete rate card?"
         confirmLabel="Delete"
-        description={`This ${deleting?.vehicleClass} / ${TRIP_TYPES.find(t => t.value === deleting?.tripType)?.label} rate card will be permanently removed. Past bookings already priced against it keep their frozen fare and are unaffected.`}
+        description={`This ${deleting?.vehicleClass} / ${TRIP_TYPES.find(t => t.value === deleting?.tripType)?.label} rate card will be permanently deleted and can't be restored. Past bookings already priced against it keep their frozen fare and are unaffected.`}
       />
     </>
   );
