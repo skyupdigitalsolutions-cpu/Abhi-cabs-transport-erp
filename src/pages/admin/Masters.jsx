@@ -484,7 +484,26 @@ function VehicleRatesTab() {
       toast.success(rate.isActive ? 'Rate card deactivated' : 'Rate card activated');
       reload();
     } catch (e) {
-      toast.error(e.message || 'Update failed');
+      const isLastCard = (e.message || '').includes('only live') || (e.code === 'LAST_ACTIVE_FARE_CONFIG');
+      if (isLastCard && rate.isActive) {
+        // Backend blocks DELETE on last active card — offer force deactivate via PATCH
+        const force = confirm(
+          `This is the last active ${rate.vehicleClass.toUpperCase()} / ${rate.tripType.replace(/_/g, ' ')} rate card.\n\n` +
+          `Deactivating it will make this combination unbookable — customers will see "no fare available".\n\n` +
+          `Are you sure you want to deactivate it?`
+        );
+        if (force) {
+          try {
+            await fareConfigService.update(rate.id, { isActive: false });
+            toast.success('Rate card force-deactivated — no active card for this combination');
+            reload();
+          } catch (e2) {
+            toast.error(e2.message || 'Failed to deactivate');
+          }
+        }
+      } else {
+        toast.error(e.message || 'Update failed');
+      }
     }
   };
 
@@ -492,11 +511,30 @@ function VehicleRatesTab() {
     setDelLoad(true);
     try {
       await fareConfigService.remove(deleting.id);
-      toast.success('Rate card deleted');
+      toast.success('Rate card retired');
+      reload();
     } catch (e) {
-      toast.error(e.message || 'Delete failed');
+      const isLastCard = (e.message || '').includes('only live') || (e.code === 'LAST_ACTIVE_FARE_CONFIG');
+      if (isLastCard) {
+        const force = confirm(
+          `This is the last active rate card for this combination.\n\n` +
+          `Retiring it will make this vehicle/trip type unbookable.\n\n` +
+          `Are you sure?`
+        );
+        if (force) {
+          try {
+            await fareConfigService.update(deleting.id, { isActive: false });
+            toast.success('Rate card force-retired');
+            reload();
+          } catch (e2) {
+            toast.error(e2.message || 'Failed to retire');
+          }
+        }
+      } else {
+        toast.error(e.message || 'Delete failed');
+      }
     } finally {
-      setDeleting(null); setDelLoad(false); reload();
+      setDeleting(null); setDelLoad(false);
     }
   };
 
@@ -676,17 +714,68 @@ function SurgeFeeSetup({ rules, onSave }) {
   );
 }
 
+const KARNATAKA_DISTRICTS = [
+  { name: 'Bengaluru Urban',  lat: 12.9716, lng: 77.5946, radius: 30 },
+  { name: 'Bengaluru Rural',  lat: 13.1318, lng: 77.3960, radius: 35 },
+  { name: 'Mysuru',           lat: 12.2958, lng: 76.6394, radius: 30 },
+  { name: 'Mangaluru (DK)',   lat: 12.9141, lng: 74.8560, radius: 30 },
+  { name: 'Hubli-Dharwad',    lat: 15.3647, lng: 75.1240, radius: 25 },
+  { name: 'Belagavi',         lat: 15.8497, lng: 74.4977, radius: 35 },
+  { name: 'Kalaburagi',       lat: 17.3297, lng: 76.8343, radius: 35 },
+  { name: 'Tumakuru',         lat: 13.3379, lng: 77.1173, radius: 30 },
+  { name: 'Ramanagara',       lat: 12.7159, lng: 77.2810, radius: 25 },
+  { name: 'Mandya',           lat: 12.5218, lng: 76.8951, radius: 25 },
+  { name: 'Hassan',           lat: 13.0068, lng: 76.1004, radius: 30 },
+  { name: 'Chikkamagaluru',   lat: 13.3161, lng: 75.7720, radius: 30 },
+  { name: 'Shivamogga',       lat: 13.9299, lng: 75.5681, radius: 30 },
+  { name: 'Davangere',        lat: 14.4644, lng: 75.9218, radius: 25 },
+  { name: 'Chitradurga',      lat: 14.2226, lng: 76.3984, radius: 30 },
+  { name: 'Ballari',          lat: 15.1394, lng: 76.9214, radius: 30 },
+  { name: 'Raichur',          lat: 16.2120, lng: 77.3439, radius: 30 },
+  { name: 'Bidar',            lat: 17.9104, lng: 77.5199, radius: 30 },
+  { name: 'Vijayapura',       lat: 16.8302, lng: 75.7100, radius: 30 },
+  { name: 'Bagalkot',         lat: 16.1691, lng: 75.6615, radius: 25 },
+  { name: 'Gadag',            lat: 15.4166, lng: 75.6263, radius: 20 },
+  { name: 'Haveri',           lat: 14.7951, lng: 75.3989, radius: 25 },
+  { name: 'Uttara Kannada',   lat: 14.6681, lng: 74.6899, radius: 40 },
+  { name: 'Udupi',            lat: 13.3389, lng: 74.7421, radius: 25 },
+  { name: 'Kodagu (Coorg)',   lat: 12.4244, lng: 75.7382, radius: 25 },
+  { name: 'Chamarajanagar',   lat: 11.9261, lng: 76.9437, radius: 25 },
+  { name: 'Kolar',            lat: 13.1360, lng: 78.1292, radius: 25 },
+  { name: 'Chikkaballapur',   lat: 13.4355, lng: 77.7315, radius: 25 },
+  { name: 'Yadgir',           lat: 16.7700, lng: 77.1383, radius: 25 },
+  { name: 'Koppal',           lat: 15.3547, lng: 76.1546, radius: 25 },
+].sort((a, b) => a.name.localeCompare(b.name));
+
+const DISTRICT_OPTIONS = KARNATAKA_DISTRICTS.map((d) => ({ value: d.name, label: d.name }));
+
 function SurgeAreaForm({ open, onClose, initial, onSubmit }) {
   const isEdit = !!initial;
+  const [mode, setMode] = useState('district');
+  const [selectedDistrict, setSelectedDistrict] = useState('');
   const [form, setForm] = useState({ name: '', tier: 'TALUKA', centreLat: '', centreLng: '', radiusKm: '25', note: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    if (open && initial) setForm({ name: initial.name || '', tier: initial.tier || 'TALUKA', centreLat: String(initial.centreLat ?? ''), centreLng: String(initial.centreLng ?? ''), radiusKm: String(initial.radiusKm ?? 25), note: initial.note || '' });
-    else if (open) setForm({ name: '', tier: 'TALUKA', centreLat: '', centreLng: '', radiusKm: '25', note: '' });
+    if (open && initial) {
+      setMode('custom'); setSelectedDistrict('');
+      setForm({ name: initial.name || '', tier: initial.tier || 'TALUKA', centreLat: String(initial.centreLat ?? ''), centreLng: String(initial.centreLng ?? ''), radiusKm: String(initial.radiusKm ?? 25), note: initial.note || '' });
+    } else if (open) {
+      setMode('district'); setSelectedDistrict('');
+      setForm({ name: '', tier: 'TALUKA', centreLat: '', centreLng: '', radiusKm: '25', note: '' });
+    }
     setErrors({});
   }, [open, initial]);
+
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })); };
+
+  const handleDistrictSelect = (districtName) => {
+    setSelectedDistrict(districtName);
+    const d = KARNATAKA_DISTRICTS.find((x) => x.name === districtName);
+    if (d) { setForm((f) => ({ ...f, name: d.name, centreLat: String(d.lat), centreLng: String(d.lng), radiusKm: String(d.radius) })); setErrors({}); }
+  };
+
   const submit = async () => {
     const errs = {};
     if (!form.name.trim()) errs.name = 'Required';
@@ -698,16 +787,54 @@ function SurgeAreaForm({ open, onClose, initial, onSubmit }) {
     try { await onSubmit({ name: form.name.trim(), tier: form.tier, centreLat: Number(form.centreLat), centreLng: Number(form.centreLng), radiusKm: Number(form.radiusKm), ...(form.note.trim() && { note: form.note.trim() }) }); onClose(); }
     catch (err) { setErrors({ name: err.message || 'Failed' }); } finally { setLoading(false); }
   };
+
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Area' : 'Add Surge Area'} maxWidth={480}>
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Area' : 'Add Surge Area'} maxWidth={520}>
       <div className="space-y-4">
-        <FormField label="Area name" required error={errors.name}><Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Ramanagara" disabled={isEdit} /></FormField>
+        {/* Mode toggle — only on create */}
+        {!isEdit && (
+          <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 10, backgroundColor: '#F3F4F6' }}>
+            {[
+              { key: 'district', label: '📍 Pick District', desc: 'Select from Karnataka districts' },
+              { key: 'custom',   label: '🗺️ Custom Area',   desc: 'Enter lat/lng manually' },
+            ].map((m) => (
+              <button key={m.key} onClick={() => { setMode(m.key); setSelectedDistrict(''); setForm((f) => ({ ...f, name: '', centreLat: '', centreLng: '', radiusKm: '25' })); }}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none', backgroundColor: mode === m.key ? '#fff' : 'transparent', boxShadow: mode === m.key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none', cursor: 'pointer', transition: 'all 0.15s' }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: mode === m.key ? '#111' : '#6B7280', margin: 0 }}>{m.label}</p>
+                <p style={{ fontSize: 11, color: '#9A9A9A', margin: '2px 0 0', fontWeight: 500 }}>{m.desc}</p>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* District picker */}
+        {mode === 'district' && !isEdit && (
+          <FormField label="District" required error={errors.name}>
+            <Select value={selectedDistrict} onChange={(e) => handleDistrictSelect(e.target.value)} options={DISTRICT_OPTIONS} placeholder="Select a district…" searchable />
+          </FormField>
+        )}
+
+        {/* Custom name */}
+        {(mode === 'custom' || isEdit) && (
+          <FormField label="Area name" required error={errors.name}>
+            <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Whitefield Tech Park" disabled={isEdit} />
+          </FormField>
+        )}
+
         <FormField label="Tier" required><Select value={form.tier} onChange={(e) => set('tier', e.target.value)} options={TIER_OPTIONS} /></FormField>
+
         <div className="grid grid-cols-3 gap-3">
           <FormField label="Latitude" required error={errors.centreLat}><Input type="number" step="any" value={form.centreLat} onChange={(e) => set('centreLat', e.target.value)} placeholder="12.9716" /></FormField>
           <FormField label="Longitude" required error={errors.centreLng}><Input type="number" step="any" value={form.centreLng} onChange={(e) => set('centreLng', e.target.value)} placeholder="77.5946" /></FormField>
           <FormField label="Radius (km)" required error={errors.radiusKm}><Input type="number" min="1" max="200" value={form.radiusKm} onChange={(e) => set('radiusKm', e.target.value)} placeholder="25" /></FormField>
         </div>
+
+        {mode === 'district' && selectedDistrict && (
+          <div style={{ padding: '8px 12px', borderRadius: 10, backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', fontSize: 12, color: '#15803D' }}>
+            📍 <strong>{selectedDistrict}</strong> — centre at {form.centreLat}, {form.centreLng} with {form.radiusKm} km radius. You can adjust these values.
+          </div>
+        )}
+
         <FormField label="Note" hint="Internal note."><Textarea value={form.note} onChange={(e) => set('note', e.target.value)} rows={2} /></FormField>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={loading} onClick={submit}>{isEdit ? 'Save' : 'Add Area'}</Button></div>
       </div>
