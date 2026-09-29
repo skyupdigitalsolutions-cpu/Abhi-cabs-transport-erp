@@ -262,7 +262,7 @@ function FleetTab({ canManage }) {
     { key: 'insuranceExpiry', header: 'Insurance', render: (r) => <ExpiryChip dateStr={r.insuranceExpiry} /> },
     { key: 'pucExpiry', header: 'PUC', render: (r) => <ExpiryChip dateStr={r.pucExpiry} /> },
     { key: 'status', header: 'Operational Status', render: (r) => <StatusBadge status={r.status} /> },
-    { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
+    { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not completed</Badge> },
     ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} /><IconButton icon={Pencil} label="Edit" onClick={() => openEdit(r)} disabled={detailLoading === r.id} /><IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} /></div>) }] : []),
   ];
 

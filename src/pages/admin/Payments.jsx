@@ -18,6 +18,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { adminPaymentsService } from '../../services';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
 import { PERMISSIONS } from '../../constants';
+import { dateFilterProps } from '../../utils/dateRange';
 
 // Backend listPaymentsQuerySchema accepts:
 //   status, method, purpose, from, to, bookingId, sortBy, order, page, limit
@@ -41,6 +42,7 @@ function PaymentsTab() {
     sortDir: 'desc',
     limit: 10,
   });
+  const dates = dateFilterProps(list);
 
   const columns = [
     {
@@ -117,13 +119,13 @@ function PaymentsTab() {
         ]}
         extra={
           <div className="flex items-center gap-2">
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', whiteSpace: 'nowrap' }}>From</label>
-            <Input type="date" value={list.filters.from || ''}
-              onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', whiteSpace: 'nowrap' }} title="Filters by payment date">From</label>
+            <Input type="date" title="Filters by payment date" value={dates.fromValue} max={dates.toValue || undefined}
+              onChange={(e) => dates.onFromChange(e.target.value)}
               style={{ fontSize: 12, padding: '5px 8px' }} />
             <label style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>To</label>
-            <Input type="date" value={list.filters.to || ''}
-              onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
+            <Input type="date" title="Filters by payment date" value={dates.toValue} min={dates.fromValue || undefined}
+              onChange={(e) => dates.onToChange(e.target.value)}
               style={{ fontSize: 12, padding: '5px 8px' }} />
           </div>
         }

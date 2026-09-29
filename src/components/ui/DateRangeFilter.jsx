@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Calendar, X } from 'lucide-react';
 import Input from './Input';
+import { customRange, formatRangeLabel, startOfDaysAgo } from '../../utils/dateRange';
 
 /**
  * DateRangeFilter — a dropdown with quick presets (Today / This Week / This
@@ -28,51 +29,64 @@ const PRESETS = [
 
 function presetToRange(key, customFrom, customTo) {
   const now = new Date();
-  if (key === 'today') {
-    const from = new Date(now); from.setHours(0, 0, 0, 0);
-    return { from: from.toISOString(), to: now.toISOString() };
-  }
-  if (key === '7d')  return { from: new Date(now - 7  * 86400000).toISOString(), to: now.toISOString() };
-  if (key === '30d') return { from: new Date(now - 30 * 86400000).toISOString(), to: now.toISOString() };
+  // Presets are calendar days ending now, counted from midnight: "Last 7 Days" is
+  // today plus the six days before it. (It used to be a rolling 7 x 24 hours,
+  // which starts partway through a day and dropped that day's earlier records.)
+  if (key === 'today') return { from: startOfDaysAgo(0).toISOString(),  to: now.toISOString() };
+  if (key === '7d')    return { from: startOfDaysAgo(6).toISOString(),  to: now.toISOString() };
+  if (key === '30d')   return { from: startOfDaysAgo(29).toISOString(), to: now.toISOString() };
   if (key === 'month') {
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     return { from: from.toISOString(), to: now.toISOString() };
   }
-  if (key === 'custom' && customFrom && customTo) {
-    return { from: new Date(customFrom).toISOString(), to: new Date(customTo + 'T23:59:59').toISOString() };
-  }
+  // Custom: both picked days in full, in the admin's own timezone (see utils/dateRange.js).
+  if (key === 'custom') return customRange(customFrom, customTo);
   return null;
 }
 
 export default function DateRangeFilter({ onChange, label = 'Date range' }) {
   const [open, setOpen] = useState(false);
-  const [preset, setPreset] = useState(null);
+  const [preset, setPreset] = useState(null);   // the range that is actually APPLIED
+  const [panel, setPanel] = useState(null);      // 'custom' while the date boxes are showing
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
   function apply(key) {
-    setPreset(key);
-    if (key !== 'custom') {
-      onChange(presetToRange(key));
-      setOpen(false);
+    if (key === 'custom') {
+      // Only opens the date boxes. Nothing is applied (and the button does not
+      // claim a range) until Apply is pressed.
+      setPanel('custom');
+      return;
     }
+    setPanel(null);
+    setPreset(key);
+    onChange(presetToRange(key));
+    setOpen(false);
   }
 
   function applyCustom() {
-    if (!customFrom || !customTo) return;
-    onChange(presetToRange('custom', customFrom, customTo));
+    const range = presetToRange('custom', customFrom, customTo);
+    if (!range) return;
+    // A reversed pair is swapped by customRange; show the boxes the same way.
+    if (customFrom > customTo) { setCustomFrom(customTo); setCustomTo(customFrom); }
+    setPreset('custom');
+    onChange(range);
     setOpen(false);
   }
 
   function clear() {
     setPreset(null);
+    setPanel(null);
     setCustomFrom('');
     setCustomTo('');
     onChange(null);
     setOpen(false);
   }
 
-  const activeLabel = preset ? PRESETS.find((p) => p.key === preset)?.label : label;
+  // Say what is applied: the actual dates for a custom range, not just "Custom Range".
+  const activeLabel = preset === 'custom'
+    ? (formatRangeLabel(customFrom, customTo) || 'Custom Range')
+    : preset ? PRESETS.find((p) => p.key === preset)?.label : label;
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -108,7 +122,7 @@ export default function DateRangeFilter({ onChange, label = 'Date range' }) {
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
                 padding: '7px 8px', borderRadius: 6, border: 'none',
-                background: preset === p.key ? '#FFFBEA' : 'transparent',
+                background: (preset === p.key || panel === p.key) ? '#FFFBEA' : 'transparent',
                 fontSize: 12.5, fontWeight: 600, color: '#111111', cursor: 'pointer',
               }}
             >
@@ -116,13 +130,13 @@ export default function DateRangeFilter({ onChange, label = 'Date range' }) {
             </button>
           ))}
 
-          {preset === 'custom' && (
+          {panel === 'custom' && (
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F0F0EC', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={{ fontSize: 10.5, fontWeight: 700, color: '#5A5A5A' }}>FROM</label>
-              <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+              <Input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)}
                 style={{ padding: '5px 8px', fontSize: 12.5 }} />
               <label style={{ fontSize: 10.5, fontWeight: 700, color: '#5A5A5A', marginTop: 2 }}>TO</label>
-              <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+              <Input type="date" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)}
                 style={{ padding: '5px 8px', fontSize: 12.5 }} />
               <button
                 onClick={applyCustom}

@@ -15,6 +15,7 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { formatDate, accountTypeLabel } from '../../utils/formatters';
 import { PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
+import { startOfDayDate, endOfDayDate } from '../../utils/dateRange';
 
 /**
  * Customers / Clients — "All users / Registered / Guest Users" filter.
@@ -137,8 +138,10 @@ export default function Customers() {
       : userType === 'registered' ? registeredRows
       : allRows;
     if (!dateFiltering) return base;
-    const from = appliedRange.from ? new Date(appliedRange.from) : null;
-    const to   = appliedRange.to ? new Date(appliedRange.to + 'T23:59:59') : null;
+    // Whole days in the admin's timezone. `new Date('YYYY-MM-DD')` would start the
+    // From day at 05:30 in India (midnight UTC) and drop the first hours of it.
+    const from = startOfDayDate(appliedRange.from);
+    const to   = endOfDayDate(appliedRange.to);
     return base.filter((r) => {
       const joined = r.createdAt ? new Date(r.createdAt) : null;
       if (!joined) return false;
@@ -352,15 +355,21 @@ export default function Customers() {
       <div className="flex flex-wrap items-end gap-3 mb-4 bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex flex-col gap-1">
           <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined From</label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined To</label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
         </div>
         <Button
           size="sm"
-          onClick={() => setAppliedRange({ from: dateFrom, to: dateTo })}
+          onClick={() => {
+            // "5 Sep to 1 Sep" can only mean 1 Sep to 5 Sep.
+            let f = dateFrom; let t = dateTo;
+            if (f && t && f > t) [f, t] = [t, f];
+            setDateFrom(f); setDateTo(t);
+            setAppliedRange({ from: f, to: t });
+          }}
           disabled={!dateFrom && !dateTo}
         >
           Search

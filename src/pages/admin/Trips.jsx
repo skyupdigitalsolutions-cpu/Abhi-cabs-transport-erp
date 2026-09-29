@@ -21,6 +21,7 @@ import Input       from '../../components/ui/Input';
 import { useResourceList } from '../../hooks/useResourceList';
 import { bookingService }  from '../../services';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
+import { dateFilterProps } from '../../utils/dateRange';
 
 const TRIP_STATUSES = ['ALLOCATED', 'EN_ROUTE', 'ONGOING', 'ARRIVED', 'COMPLETED'];
 const TRIP_TYPES    = ['ONE_WAY', 'ROUND_TRIP', 'AIRPORT', 'HOURLY'];
@@ -43,6 +44,7 @@ export default function Trips() {
     sortDir: 'desc',
     limit:   20,
   });
+  const dates = dateFilterProps(list);
 
   // Client-filter: only show trip-relevant statuses in the Trips tab.
   // When the user picks a specific status from the dropdown, show that only.
@@ -153,18 +155,22 @@ export default function Trips() {
             padding: '6px 10px', borderRadius: 10, backgroundColor: '#F7F8FC',
             border: '1px solid #E8E8E4',
           }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>From</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }} title="Filters by pickup date">Pickup from</span>
             <Input
               type="date"
-              value={list.filters.from ? list.filters.from.slice(0, 10) : ''}
-              onChange={(e) => list.setFilter('from', e.target.value ? new Date(e.target.value).toISOString() : '')}
+              title="Filters by pickup date"
+              value={dates.fromValue}
+              max={dates.toValue || undefined}
+              onChange={(e) => dates.onFromChange(e.target.value)}
               style={{ minWidth: 140 }}
             />
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>To</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>to</span>
             <Input
               type="date"
-              value={list.filters.to ? list.filters.to.slice(0, 10) : ''}
-              onChange={(e) => list.setFilter('to', e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : '')}
+              title="Filters by pickup date"
+              value={dates.toValue}
+              min={dates.fromValue || undefined}
+              onChange={(e) => dates.onToChange(e.target.value)}
               style={{ minWidth: 140 }}
             />
           </div>

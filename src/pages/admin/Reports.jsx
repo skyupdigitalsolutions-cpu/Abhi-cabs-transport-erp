@@ -15,6 +15,7 @@ import { useApi }  from '../../hooks/useApi';
 import { useToast } from '../../hooks/useToast';
 import { reportsService, bookingService, adminPaymentsService, contactService, bookingOpsService } from '../../services';
 import { formatCurrency, titleCase, formatDate } from '../../utils/formatters';
+import { customRange, startOfDaysAgo } from '../../utils/dateRange';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const REPORT_TABS = [
@@ -44,14 +45,18 @@ const PAYMENT_METHODS  = ['UPI', 'CARD', 'NETBANKING', 'WALLET', 'CASH'];
 const PAYMENT_STATUSES = ['CREATED','AUTHORISED','CAPTURED','PARTIALLY_PAID','FAILED','REFUNDED'];
 
 function rangeFor(rangeKey, customFrom, customTo) {
-  if (rangeKey === 'custom' && customFrom && customTo) {
-    return { from: new Date(customFrom).toISOString(), to: new Date(customTo + 'T23:59:59').toISOString() };
+  if (rangeKey === 'custom') {
+    // Both days in full, in the admin's own timezone. Falls through to the
+    // default window until BOTH dates are picked.
+    const r = customRange(customFrom, customTo);
+    if (r) return r;
   }
   const DAYS = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
   const days = DAYS[rangeKey] || 30;
-  const to   = new Date();
-  const from = new Date(Date.now() - days * 86400000);
-  return { from: from.toISOString(), to: to.toISOString() };
+  // Calendar days ending now: "Last 7 days" is today plus the six days before
+  // it, counted from midnight -- not a rolling 7 x 24 hours that starts partway
+  // through a day.
+  return { from: startOfDaysAgo(days - 1).toISOString(), to: new Date().toISOString() };
 }
 
 const n = (v) => Number(v) || 0;
@@ -998,7 +1003,14 @@ export default function Reports() {
   const [exporting,  setExporting]  = useState(false);
   const toast = useToast();
 
-  const range     = useMemo(() => rangeFor(rangeKey, customFrom, customTo), [rangeKey, customFrom, customTo]);
+  // Recompute the range only when it really changes. While "custom" is chosen but
+  // only ONE date is picked, the range is unchanged, so nothing reloads. It used
+  // to rebuild (with a fresh "now") on the first date and refetch every report,
+  // which reset the date boxes before the second date could be chosen.
+  const customBounds = rangeKey === 'custom' ? customRange(customFrom, customTo) : null;
+  const customKey = customBounds ? `${customBounds.from}|${customBounds.to}` : '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const range     = useMemo(() => rangeFor(rangeKey, customFrom, customTo), [rangeKey, customKey]);
   const rangeLabel = RANGE_PRESETS.find((p) => p.value === rangeKey)?.label || 'Custom';
 
   const executive  = useApi(() => reportsService.executive(range), [JSON.stringify(range)]);
@@ -1042,10 +1054,10 @@ export default function Reports() {
             {/* Custom date range */}
             {rangeKey === 'custom' && (
               <>
-                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                <Input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)}
                   style={{ fontSize: 13, padding: '5px 8px' }} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#6B7280' }}>to</span>
-                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                <Input type="date" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)}
                   style={{ fontSize: 13, padding: '5px 8px' }} />
               </>
             )}
