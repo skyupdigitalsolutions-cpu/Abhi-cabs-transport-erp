@@ -19,6 +19,16 @@ const EMPTY = {
   vehicleNumber: '', vehicleClass: 'sedan',
 };
 
+// Same rule as the backend (normaliseRegistration): spaces, dashes and other
+// punctuation are ignored, and what is left must be 6-16 letters/digits.
+const isVehicleNumber = (value) => {
+  const cleaned = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!cleaned) return ''; // "required" reports the empty case
+  return cleaned.length < 6 || cleaned.length > 16
+    ? 'Enter a valid vehicle number, e.g. KA 01 AB 1234'
+    : '';
+};
+
 export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }) {
   const isAssignOnly = !!driver;
   const [classOptions, setClassOptions] = useState([{ value: 'sedan', label: 'Sedan' }]);
@@ -40,10 +50,12 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
 
   const { values, errors, touched, submitting, submitError, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
     initialValues: EMPTY,
-    schema: isAssignOnly ? {} : {
+    schema: isAssignOnly ? {
+      vehicleNumber: [required('Vehicle number'), isVehicleNumber],
+    } : {
       name: [required('Name')],
       mobile: [required('Mobile number')],
-      vehicleNumber: [required('Vehicle number')],
+      vehicleNumber: [required('Vehicle number'), isVehicleNumber],
       vehicleClass: [required('Vehicle class')],
     },
     onSubmit: async (vals) => {
@@ -56,7 +68,7 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
           name: vals.name.trim(),
           mobile: vals.mobile.trim(),
           ...(vals.email.trim() && { email: vals.email.trim().toLowerCase() }),
-          vehicleNumber: vals.vehicleNumber.trim().toUpperCase().replace(/\s+/g, '') || undefined,
+          vehicleNumber: vals.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ''),
           vehicleClass: vals.vehicleClass,
         };
         await onSubmit(payload);
@@ -86,9 +98,10 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
           <Alert type="info" className="mb-4">
             Assigning a vehicle to <strong>{driver.user?.name || driver.user?.email}</strong>.
           </Alert>
-          <FormField label="Vehicle number" required>
+          <FormField label="Vehicle number" required error={touched.vehicleNumber && errors.vehicleNumber}>
             <Input value={values.vehicleNumber}
               onChange={(e) => setValue('vehicleNumber', e.target.value.toUpperCase())}
+              onBlur={() => setFieldTouched('vehicleNumber')}
               placeholder="e.g. KA 01 AB 1234" autoFocus />
           </FormField>
           <FormField label="Vehicle class" required>
@@ -114,9 +127,11 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
               onBlur={() => setFieldTouched('email')} placeholder="driver@example.com" />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Vehicle number (optional)" hint="Can assign later from the roster.">
+            <FormField label="Vehicle number" required error={touched.vehicleNumber && errors.vehicleNumber}
+              hint="The registration number of the car this driver will use.">
               <Input value={values.vehicleNumber}
                 onChange={(e) => setValue('vehicleNumber', e.target.value.toUpperCase())}
+                onBlur={() => setFieldTouched('vehicleNumber')}
                 placeholder="KA 01 AB 1234" />
             </FormField>
             <FormField label="Vehicle class">
