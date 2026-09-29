@@ -6,7 +6,8 @@ import Select from '../ui/Select';
 import Button from '../ui/Button';
 import Alert from '../ui/Alert';
 import { useForm } from '../../hooks/useForm';
-import { required, isEmail } from '../../utils/validators';
+import { required, isEmail, isPhone } from '../../utils/validators';
+import { cleanPhoneInput, parseIndianMobile } from '../../utils/phone';
 import { vehicleCatalogService } from '../../services';
 
 /**
@@ -54,7 +55,7 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
       vehicleNumber: [required('Vehicle number'), isVehicleNumber],
     } : {
       name: [required('Name')],
-      mobile: [required('Mobile number')],
+      mobile: [required('Mobile number'), isPhone],
       vehicleNumber: [required('Vehicle number'), isVehicleNumber],
       vehicleClass: [required('Vehicle class')],
     },
@@ -66,7 +67,7 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
       } else {
         const payload = {
           name: vals.name.trim(),
-          mobile: vals.mobile.trim(),
+          mobile: parseIndianMobile(vals.mobile) || vals.mobile.trim(),
           ...(vals.email.trim() && { email: vals.email.trim().toLowerCase() }),
           vehicleNumber: vals.vehicleNumber.trim().toUpperCase().replace(/\s+/g, ''),
           vehicleClass: vals.vehicleClass,
@@ -117,7 +118,8 @@ export default function TemporaryDriverModal({ open, onClose, onSubmit, driver }
                 onBlur={() => setFieldTouched('name')} placeholder="e.g. Ramesh K" autoFocus />
             </FormField>
             <FormField label="Mobile number" required error={touched.mobile && errors.mobile}>
-              <Input type="tel" value={values.mobile} onChange={(e) => setValue('mobile', e.target.value)}
+              <Input type="tel" inputMode="numeric" value={values.mobile}
+                onChange={(e) => setValue('mobile', cleanPhoneInput(e.target.value))}
                 onBlur={() => setFieldTouched('mobile')} placeholder="e.g. 9876543210" />
             </FormField>
           </div>

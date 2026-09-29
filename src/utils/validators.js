@@ -1,3 +1,5 @@
+import { isIndianMobile } from './phone';
+
 export const required = (label = 'This field') => (value) =>
   value === undefined || value === null || String(value).trim() === '' ? `${label} is required` : '';
 
@@ -10,8 +12,11 @@ export const maxLength = (n, label = 'This field') => (value) =>
 export const isEmail = (value) =>
   value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? 'Enter a valid email address' : '';
 
+// Strict Indian mobile rule (see utils/phone.js). This used to strip non-digits
+// and keep the LAST 10, which accepted "abc9876543210" and turned an 11-digit
+// typo into a different valid-looking number.
 export const isPhone = (value) =>
-  value && !/^[6-9]\d{9}$/.test(String(value).replace(/\D/g, '').slice(-10)) ? 'Enter a valid 10-digit phone number' : '';
+  value && !isIndianMobile(value) ? 'Enter a valid 10-digit mobile number (starts with 6, 7, 8 or 9)' : '';
 
 export const isOtp = (len = 6) => (value) =>
   value && !new RegExp(`^\\d{${len}}$`).test(value) ? `Enter the ${len}-digit OTP` : '';

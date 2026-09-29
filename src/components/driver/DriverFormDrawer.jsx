@@ -9,6 +9,7 @@ import Checkbox from '../ui/Checkbox';
 import DocumentUploader from '../ui/DocumentUploader';
 import { useForm } from '../../hooks/useForm';
 import { required, isPhone, isEmail } from '../../utils/validators';
+import { cleanPhoneInput } from '../../utils/phone';
 import { KYC_STATUS } from '../../constants';
 import { vehicleService } from '../../services';
 
@@ -159,7 +160,7 @@ export default function DriverFormDrawer({ open, onClose, initial, onSubmit }) {
               <Input value={values.name} onChange={(e) => setValue('name', e.target.value)} onBlur={() => setFieldTouched('name')} maxLength={80} placeholder="e.g. Ravi Kumar" />
             </FormField>
             <FormField label="Phone number" required error={touched.phone && errors.phone} hint="Must be a 10-digit Indian mobile number starting 6–9.">
-              <Input type="tel" inputMode="numeric" value={values.phone} onChange={(e) => setValue('phone', e.target.value.replace(/\D/g, ''))} onBlur={() => setFieldTouched('phone')} maxLength={10} placeholder="9876543210" />
+              <Input type="tel" inputMode="numeric" value={values.phone} onChange={(e) => setValue('phone', cleanPhoneInput(e.target.value))} onBlur={() => setFieldTouched('phone')} placeholder="9876543210" />
             </FormField>
             <FormField label="Email (optional)" error={touched.email && errors.email}>
               <Input type="email" value={values.email} onChange={(e) => setValue('email', e.target.value)} onBlur={() => setFieldTouched('email')} placeholder="driver1@example.com" />
