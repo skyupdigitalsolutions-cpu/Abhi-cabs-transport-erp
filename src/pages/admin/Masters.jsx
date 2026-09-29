@@ -17,6 +17,7 @@ import Alert from '../../components/ui/Alert';
 import SearchInput from '../../components/ui/SearchInput';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
+import { apiClient } from '../../services/apiClient';
 import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
 import { vehicleCatalogService } from '../../services';
@@ -29,6 +30,14 @@ import { surgeService } from '../../services/surgeService';
 // Vehicle classes and trip types now live in constants/index.js so this form,
 // BookingFormDrawer and Vehicles can't drift apart — they were three separate
 // copies of the same list.
+
+const INDIAN_STATES = [
+  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi',
+  'Goa','Gujarat','Haryana','Himachal Pradesh','Jammu & Kashmir','Jharkhand',
+  'Karnataka','Kerala','Ladakh','Madhya Pradesh','Maharashtra','Manipur',
+  'Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan',
+  'Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal',
+].sort();
 
 const EMPTY_RATE_CARD = {
   cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
@@ -49,6 +58,7 @@ const EMPTY_RATE_CARD = {
 // ─────────────────────────────────────────────────────────────────────────────
 function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const isEdit = !!initial;
+  const toast = useToast();
   const [form, setForm] = useState(() => {
     if (!initial) return { ...EMPTY_RATE_CARD, cityId: '' };
     const flat = { ...initial };
@@ -57,6 +67,28 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [addingCity, setAddingCity] = useState(false);
+  const [newCityName, setNewCityName] = useState('');
+  const [newCityState, setNewCityState] = useState('');
+
+  const handleAddCity = async () => {
+    if (!newCityName.trim() || !newCityState) return;
+    try {
+      const res = await apiClient.post('/admin/fare-configs/cities', {
+        name: newCityName.trim(), state: newCityState, country: 'India',
+      });
+      const newCity = res?.data?.city || res?.city || { id: Date.now(), name: newCityName.trim(), state: newCityState };
+      cities.push(newCity);
+      set('cityId', String(newCity.id));
+      toast.success(`${newCityName.trim()}, ${newCityState} added`);
+    } catch {
+      const tempId = Date.now();
+      cities.push({ id: tempId, name: newCityName.trim(), state: newCityState });
+      set('cityId', String(tempId));
+      toast.info(`${newCityName.trim()} added locally`);
+    }
+    setAddingCity(false); setNewCityName(''); setNewCityState('');
+  };
 
   // Vehicle classes come from the backend's vehicle_catalog, never a
   // hardcoded list — see services/vehicleCatalogService.js. includeInactive
@@ -154,18 +186,34 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
               one instead. This keeps it clear which rate card actually priced a past booking.
             </Alert>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="City" hint="Pick a city — its state is shown automatically.">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <FormField label="City" hint="Select or add a new city.">
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityName || form.cityId || 'All cities'} />
+              ) : addingCity ? (
+                <div className="space-y-2">
+                  <Input value={newCityName} onChange={(e) => setNewCityName(e.target.value)} placeholder="City name" autoFocus />
+                  <Select value={newCityState} onChange={(e) => setNewCityState(e.target.value)} placeholder="State"
+                    searchable options={INDIAN_STATES.map((s) => ({ value: s, label: s }))} />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleAddCity} disabled={!newCityName.trim() || !newCityState}>Add</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setAddingCity(false)}>Cancel</Button>
+                  </div>
+                </div>
               ) : (
-                <Select value={form.cityId} onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
-                  placeholder="All cities (optional)"
-                  searchable
-                  options={[
-                    { value: '', label: 'All cities (no city filter)' },
-                    ...cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
-                  ]} />
+                <div>
+                  <Select value={form.cityId} onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
+                    placeholder="All cities (optional)"
+                    searchable
+                    options={[
+                      { value: '', label: 'All cities (global rate)' },
+                      ...cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
+                    ]} />
+                  <button onClick={() => setAddingCity(true)}
+                    style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                    + Add new city
+                  </button>
+                </div>
               )}
             </FormField>
             <FormField label="Vehicle class" required>
