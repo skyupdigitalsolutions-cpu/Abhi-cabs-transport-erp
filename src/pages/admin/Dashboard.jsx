@@ -41,6 +41,7 @@ import { apiClient } from '../../services/apiClient';
 import { CardSkeleton } from '../../components/ui/Skeleton';
 import ErrorState   from '../../components/ui/ErrorState';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
+import { attemptWho, attemptState, ATTEMPT_LABEL } from '../../utils/attemptDetails';
 
 
 // FIX: the bookings chart used to be entirely fabricated — it took the
@@ -274,14 +275,18 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {abandonedRecent.map((a) => {
-              const name  = a.customer?.user?.name || 'Guest';
-              const phone = a.customer?.user?.phone || '—';
+              // The signed-in customer's account, or "Guest visitor" (a guest's details are under
+              // Reports > Booking Attempts > Left details at checkout).
+              const who = attemptWho(a);
+              const name  = who.name;
+              const phone = who.phone || '';
               const route = [a.pickupAddress, a.dropAddress].filter(Boolean).join(' → ');
-              const oc = { PENDING: 'In progress', ABANDONED: 'Abandoned', FAILED: 'Failed', COMPLETED: 'Completed' }[a.outcome] || a.outcome;
+              // A draft nobody has touched for 30 minutes is Abandoned, even if the backend job has not marked it yet.
+              const oc = ATTEMPT_LABEL[attemptState(a).outcome] || a.outcome;
               return (
                 <div key={a.id} className="flex items-start justify-between gap-3 py-2" style={{ borderBottom: '1px solid #F3F4F6' }}>
                   <div>
-                    <p className="text-sm font-medium" style={{ color: '#1F2937' }}>{name} · {phone}</p>
+                    <p className="text-sm font-medium" style={{ color: '#1F2937' }}>{phone ? `${name} · ${phone}` : name}</p>
                     <p className="text-xs" style={{ color: '#9CA3AF' }}>{oc ? `${oc} · ` : ''}{route || (a.payload?.stage ? `Stage: ${a.payload.stage}` : 'Booking funnel')}</p>
                   </div>
                   <span className="text-xs whitespace-nowrap" style={{ color: '#9CA3AF' }}>

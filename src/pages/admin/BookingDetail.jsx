@@ -5,7 +5,7 @@ import {
   CheckCircle, XCircle, Truck, PlayCircle, ClipboardList, FileText, Navigation,
 } from 'lucide-react';
 import { useApi } from '../../hooks/useApi';
-import { bookingService, bookingOpsService, adminService } from '../../services';
+import { bookingService, bookingOpsService, adminService, vehicleService } from '../../services';
 import { apiClient } from '../../services/apiClient';
 import Breadcrumb from '../../components/ui/Breadcrumb';
 import Card from '../../components/ui/Card';
@@ -64,6 +64,8 @@ function AssignModal({ open, onClose, onAssign, booking }) {
   const [driverId, setDriverId] = useState('');
   const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [vehiclesTick, setVehiclesTick] = useState(0);
   const [drivers, setDrivers] = useState([]);
   const [loadingDistances, setLoadingDistances] = useState(false);
 
@@ -73,12 +75,39 @@ function AssignModal({ open, onClose, onAssign, booking }) {
   // could be picked and only failed after pressing Assign.
   const wantedClass = booking?.vehicleClass || '';
   const matchingVehicles = wantedClass ? vehicles.filter((v) => v.vehicleClass === wantedClass) : vehicles;
-  const otherClassCount = vehicles.length - matchingVehicles.length;
+  const otherVehicles = wantedClass ? vehicles.filter((v) => v.vehicleClass !== wantedClass) : [];
+  const otherClassCount = otherVehicles.length;
+
+  // Available vehicles, read straight from the fleet (the database), NOT from
+  // /admin/dispatch/vehicles: that list is cached by the backend for up to a
+  // minute and the cache is only cleared when a vehicle is assigned or released,
+  // not when one is edited or added. Change a vehicle's class under Vehicles and
+  // the dispatch list kept showing the old class, so this modal reported "no
+  // available swift-dzire vehicle" for a vehicle that had just become one.
+  // The fleet list needs the vehicle permission; if it is refused (a dispatcher
+  // without it) the dispatch list is used instead.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setVehiclesLoading(true);
+    (async () => {
+      let list;
+      try {
+        const all = await vehicleService.listAll();
+        list = all.filter((v) => v.isActive !== false && v.status === 'AVAILABLE');
+      } catch {
+        const r = await apiClient.get('/admin/dispatch/vehicles');
+        list = r?.vehicles || [];
+      }
+      if (!cancelled) setVehicles(list);
+    })()
+      .catch(() => { if (!cancelled) setVehicles([]); })
+      .finally(() => { if (!cancelled) setVehiclesLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, vehiclesTick]);
 
   useEffect(() => {
     if (!open) return;
-    apiClient.get('/admin/dispatch/vehicles')
-      .then((r) => setVehicles(r.vehicles || []));
 
     // Online + KYC-verified only — an offline or unverified driver can't
     // actually take the trip, so offering them here would just set up a
@@ -144,13 +173,21 @@ function AssignModal({ open, onClose, onAssign, booking }) {
           required
           hint={wantedClass ? `Only ${wantedClass} vehicles are listed — this booking needs that class.` : undefined}
         >
-          <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} placeholder="Select vehicle"
+          <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} placeholder={vehiclesLoading ? 'Loading vehicles\u2026' : 'Select vehicle'}
             options={matchingVehicles.map((v) => ({ value: v.id, label: `${v.registrationNumber} · ${v.makeModel || v.vehicleClass} (${v.seatingCapacity} seats)` }))} />
         </FormField>
-        {wantedClass && matchingVehicles.length === 0 && (
+        <button
+          type="button"
+          onClick={() => setVehiclesTick((t) => t + 1)}
+          disabled={vehiclesLoading}
+          style={{ fontSize: 12, fontWeight: 600, color: '#3B65DB', background: 'none', border: 'none', cursor: vehiclesLoading ? 'default' : 'pointer', padding: 0, marginTop: -8 }}
+        >
+          {vehiclesLoading ? 'Loading vehicles\u2026' : 'Refresh vehicle list'}
+        </button>
+        {!vehiclesLoading && wantedClass && matchingVehicles.length === 0 && (
           <Alert type="warning">
             No available <strong>{wantedClass}</strong> vehicle.
-            {otherClassCount > 0 && ` ${otherClassCount} available vehicle${otherClassCount > 1 ? 's are' : ' is'} of a different class and can't take this booking.`}
+            {otherClassCount > 0 && ` ${otherClassCount} available vehicle${otherClassCount > 1 ? 's are' : ' is'} of a different class and can't take this booking: ${otherVehicles.slice(0, 5).map((v) => `${v.registrationNumber} (${v.vehicleClass})`).join(', ')}${otherClassCount > 5 ? ` and ${otherClassCount - 5} more` : ''}.`}
             {' '}Add one in Vehicles, or change an existing vehicle's class to {wantedClass}.
           </Alert>
         )}

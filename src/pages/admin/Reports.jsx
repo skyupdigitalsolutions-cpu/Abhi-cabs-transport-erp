@@ -16,6 +16,8 @@ import { useToast } from '../../hooks/useToast';
 import { reportsService, bookingService, adminPaymentsService, contactService, bookingOpsService } from '../../services';
 import { formatCurrency, titleCase, formatDate } from '../../utils/formatters';
 import { customRange, startOfDaysAgo } from '../../utils/dateRange';
+import { attemptWho, attemptState, attemptSections, stageLabel as attemptStageLabel, ATTEMPT_LABEL, ATTEMPT_TONE, ABANDONED_TOPIC, isAbandonedCheckout, parseAbandonedCheckout, CONTACT_STATUS_LABEL, CONTACT_STATUS_TONE } from '../../utils/attemptDetails';
+import { formatDateTime } from '../../utils/formatters';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const REPORT_TABS = [
@@ -874,7 +876,142 @@ function CancellationsTab({ bookings, onRefresh, refreshing }) {
 // tracking → GET /admin/bookings/attempts?outcome=ABANDONED. These are visitors
 // who progressed through the booking funnel (viewed fares / chose payment) but
 // never confirmed. Paginated, on-demand.
+// Customers who filled in the checkout form and left without booking: everything they
+// typed, one record each. Fed by the website's abandoned-checkout message (see
+// utils/attemptDetails.js for why it travels as a support message).
+function LeftDetailsList() {
+  const [page, setPage] = useState(1);
+  const [openId, setOpenId] = useState(null);
+  const limit = 20;
+  const { data, status, error, refetch } = useApi(
+    () => contactService.list({ search: ABANDONED_TOPIC, page, limit }),
+    [page]
+  );
+  // apiClient turns { items, pagination } into { data, meta }; accept either.
+  const rows = (data?.data ?? data?.items ?? []).filter(isAbandonedCheckout);
+  const meta = data?.meta ?? data?.pagination ?? {};
+  const total = meta.total ?? rows.length;
+  const totalPages = meta.totalPages ?? 1;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div>
+          <h3 className="text-base font-semibold">Left details at checkout</h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Customers who filled in their details at checkout and left without booking, with everything they
+            entered. Recorded once they have typed a name, a phone number and an email, and also listed in
+            Support &amp; SOS.
+            {total > 0 && ` ${total} total.`}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refetch}>Refresh</Button>
+      </div>
+
+      {status === 'loading' ? (
+        <LoadingState />
+      ) : status === 'error' ? (
+        <ErrorState message={error?.message || 'Could not load abandoned checkouts'} onRetry={refetch} />
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-gray-500 py-8 text-center">No abandoned checkouts recorded yet.</p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {rows.map((c) => {
+              const parsed = parseAbandonedCheckout(c.message);
+              const route = [parsed.summary.pickup, parsed.summary.drop].filter(Boolean).join(' \u2192 ');
+              const open = openId === c.id;
+              return (
+                <div key={c.id} className="p-3 rounded-lg" style={{ backgroundColor: '#FAFAFA', border: '1px solid #F0F0F0' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{c.name}  {'\u00b7'}  {c.mobile}</p>
+                      {c.email && <p className="text-xs text-gray-600 mt-0.5">{c.email}</p>}
+                      {route && <p className="text-xs text-gray-600 mt-0.5">{route}</p>}
+                    </div>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                      {c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                    <Badge tone={CONTACT_STATUS_TONE[c.status] || 'slate'}>{CONTACT_STATUS_LABEL[c.status] || c.status || 'New'}</Badge>
+                    {parsed.summary.tripType && <Badge tone="slate">{parsed.summary.tripType.replace(/_/g, ' ')}</Badge>}
+                    {parsed.summary.vehicle && <span>{parsed.summary.vehicle}</span>}
+                    {parsed.summary.total && <span>Est. {parsed.summary.total}</span>}
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(open ? null : c.id)}
+                      aria-expanded={open}
+                      className="ml-auto font-semibold"
+                      style={{ color: '#3B65DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      {open ? 'Hide details' : 'View all details'}
+                    </button>
+                  </div>
+                  {open && (
+                    parsed.parsed ? (
+                      <div className="mt-3 pt-3 grid gap-4 sm:grid-cols-3" style={{ borderTop: '1px solid #EDEDED' }}>
+                        {parsed.sections.map((sec) => (
+                          <div key={sec.title}>
+                            <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#6B7280' }}>{sec.title}</p>
+                            <dl className="space-y-1">
+                              {sec.rows.map(([label, value]) => (
+                                <div key={label}>
+                                  <dt className="text-[11px]" style={{ color: '#9CA3AF' }}>{label}</dt>
+                                  <dd className="text-xs font-medium" style={{ color: '#1F2937', wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <pre className="mt-3 pt-3 text-xs whitespace-pre-wrap" style={{ borderTop: '1px solid #EDEDED', color: '#1F2937', fontFamily: 'inherit' }}>{c.message}</pre>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-3" style={{ borderTop: '1px solid #F0F0F0' }}>
+              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <span className="text-xs text-gray-400">Page {page} of {totalPages}</span>
+              <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// The "Booking Attempts" report tab: two views of the customers who did not finish.
 function AbandonedBookingsTab() {
+  const [view, setView] = useState('attempts');
+  const VIEWS = [['attempts', 'All attempts'], ['details', 'Left details at checkout']];
+  return (
+    <div>
+      <div className="flex items-center gap-1 mb-3 rounded-xl border p-1 w-fit" style={{ borderColor: '#E5E7EB', backgroundColor: '#fff' }}>
+        {VIEWS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setView(key)}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg"
+            style={{ backgroundColor: view === key ? '#111111' : 'transparent', color: view === key ? '#fff' : '#6B7280', border: 'none', cursor: 'pointer' }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {view === 'attempts' ? <TripsStartedList /> : <LeftDetailsList />}
+    </div>
+  );
+}
+
+function TripsStartedList() {
+  const [openId, setOpenId] = useState(null); // the attempt whose full details are showing
   const [page, setPage] = useState(1);
   // Default to ALL outcomes. Draft attempts are stored as PENDING and only
   // become ABANDONED after ~30 min via the backend worker's sweep job — so
@@ -889,9 +1026,8 @@ function AbandonedBookingsTab() {
   const items = data?.items ?? [];
   const total = data?.pagination?.total ?? 0;
   const totalPages = data?.pagination?.totalPages ?? 1;
-  const stageLabel = (a) => a?.payload?.stage || (a?.estimatedFare != null ? 'FARES_VIEWED' : 'STARTED');
-  const outcomeTone = { PENDING: 'blue', ABANDONED: 'amber', FAILED: 'red', COMPLETED: 'green' };
-  const outcomeLabel = { PENDING: 'In progress', ABANDONED: 'Abandoned', FAILED: 'Failed', COMPLETED: 'Completed' };
+  const outcomeTone = ATTEMPT_TONE;
+  const outcomeLabel = ATTEMPT_LABEL;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -899,8 +1035,9 @@ function AbandonedBookingsTab() {
         <div>
           <h3 className="text-base font-semibold">Booking attempts</h3>
           <p className="text-sm text-gray-500 mt-0.5">
-            Everyone who started the booking funnel. In-progress attempts are recorded live;
-            they turn Abandoned after ~30 minutes (needs the backend worker running).
+            Every trip a visitor started: where to and from, the fare they saw, how far they got. In-progress
+            attempts turn Abandoned after ~30 minutes. A guest's name and phone are not part of the attempt;
+            if they typed them at checkout and left, they appear under "Left details at checkout".
             {total > 0 && ` ${total} total.`}
           </p>
         </div>
@@ -931,14 +1068,21 @@ function AbandonedBookingsTab() {
         <>
           <div className="space-y-2">
             {items.map((a) => {
-              const name  = a.customer?.user?.name || 'Guest';
-              const phone = a.customer?.user?.phone || '—';
-              const route = [a.pickupAddress, a.dropAddress].filter(Boolean).join(' → ');
+              // What the customer typed, else their account (a guest's account is just "Guest").
+              const who = attemptWho(a);
+              const state = attemptState(a);
+              const route = [a.pickupAddress, a.dropAddress].filter(Boolean).join(' \u2192 ');
+              const open = openId === a.id;
+              const sections = attemptSections(a, { dateTime: formatDateTime, money: formatCurrency });
               return (
                 <div key={a.id} className="p-3 rounded-lg" style={{ backgroundColor: '#FAFAFA', border: '1px solid #F0F0F0' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-800">{name} · {phone}</p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {who.name}
+                        {who.phone ? `  \u00b7  ${who.phone}` : who.isGuest ? '  \u00b7  contact details not saved with the attempt' : ''}
+                      </p>
+                      {who.email && <p className="text-xs text-gray-600 mt-0.5">{who.email}</p>}
                       {route && <p className="text-xs text-gray-600 mt-0.5">{route}</p>}
                     </div>
                     <span className="text-xs text-gray-400 whitespace-nowrap">
@@ -946,11 +1090,37 @@ function AbandonedBookingsTab() {
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                    <Badge tone={outcomeTone[a.outcome] || 'slate'}>{outcomeLabel[a.outcome] || a.outcome || 'Attempt'}</Badge>
-                    {a.tripType && <Badge tone="slate">{a.tripType}</Badge>}
-                    <Badge tone="amber">{stageLabel(a)}</Badge>
+                    <Badge tone={outcomeTone[state.outcome] || 'slate'}>{outcomeLabel[state.outcome] || state.outcome || 'Attempt'}</Badge>
+                    {a.tripType && <Badge tone="slate">{String(a.tripType).replace(/_/g, ' ')}</Badge>}
+                    <Badge tone="amber">{attemptStageLabel(a)}</Badge>
                     {a.estimatedFare != null && <span>Est. {formatCurrency(n(a.estimatedFare))}</span>}
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(open ? null : a.id)}
+                      aria-expanded={open}
+                      className="ml-auto font-semibold"
+                      style={{ color: '#3B65DB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      {open ? 'Hide details' : 'View all details'}
+                    </button>
                   </div>
+                  {open && (
+                    <div className="mt-3 pt-3 grid gap-4 sm:grid-cols-3" style={{ borderTop: '1px solid #EDEDED' }}>
+                      {sections.map((sec) => (
+                        <div key={sec.title}>
+                          <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#6B7280' }}>{sec.title}</p>
+                          <dl className="space-y-1">
+                            {sec.rows.map(([label, value]) => (
+                              <div key={label}>
+                                <dt className="text-[11px]" style={{ color: '#9CA3AF' }}>{label}</dt>
+                                <dd className="text-xs font-medium" style={{ color: '#1F2937', wordBreak: 'break-word' }}>{value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}

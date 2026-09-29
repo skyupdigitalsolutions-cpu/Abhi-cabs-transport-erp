@@ -113,9 +113,17 @@ export const bookingOpsService = {
 
   /** GET /admin/bookings/attempts — includes abandoned funnel data. */
   async attempts(params = {}) {
-    return withMockFallback(
+    const res = await withMockFallback(
       () => apiClient.get('/admin/bookings/attempts', { params }),
       () => mockResolve({ data: [], meta: { page: 1, limit: 10, total: 0, totalPages: 1 } })
     );
+    // apiClient rewrites the backend's { items, pagination } into { data, meta }.
+    // The Dashboard card and the Reports tab read `items` / `pagination`, so they
+    // got NOTHING: every attempt the backend had saved showed as "No booking
+    // attempts recorded yet". Hand them the shape they read, whichever arrives.
+    return {
+      items: res?.data ?? res?.items ?? [],
+      pagination: res?.meta ?? res?.pagination ?? { page: 1, limit: 10, total: 0, totalPages: 1 },
+    };
   },
 };
