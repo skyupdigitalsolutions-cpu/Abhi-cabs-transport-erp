@@ -479,31 +479,34 @@ function VehicleRatesTab() {
   };
 
   const handleToggle = async (rate) => {
-    try {
-      await fareConfigService.setActive(rate.id, !rate.isActive);
-      toast.success(rate.isActive ? 'Rate card deactivated' : 'Rate card activated');
-      reload();
-    } catch (e) {
-      const isLastCard = (e.message || '').includes('only live') || (e.code === 'LAST_ACTIVE_FARE_CONFIG');
-      if (isLastCard && rate.isActive) {
-        // Backend blocks DELETE on last active card — offer force deactivate via PATCH
+    if (rate.isActive) {
+      // Deactivating — try DELETE first, fallback to PATCH
+      try {
+        await fareConfigService.setActive(rate.id, false);
+        toast.success('Rate card deactivated');
+        reload();
+      } catch (e) {
+        // Backend blocks DELETE on last active card — ask admin and force via PATCH
         const force = confirm(
-          `This is the last active ${rate.vehicleClass.toUpperCase()} / ${rate.tripType.replace(/_/g, ' ')} rate card.\n\n` +
-          `Deactivating it will make this combination unbookable — customers will see "no fare available".\n\n` +
-          `Are you sure you want to deactivate it?`
+          `⚠️ This may be the last active ${rate.vehicleClass.toUpperCase()} / ${rate.tripType.replace(/_/g, ' ')} rate card.\n\n` +
+          `Deactivating it could make this combination unbookable.\n\n` +
+          `Deactivate anyway?`
         );
         if (force) {
           try {
             await fareConfigService.update(rate.id, { isActive: false });
-            toast.success('Rate card force-deactivated — no active card for this combination');
+            toast.success('Rate card deactivated');
             reload();
-          } catch (e2) {
-            toast.error(e2.message || 'Failed to deactivate');
-          }
+          } catch (e2) { toast.error(e2.message || 'Failed'); }
         }
-      } else {
-        toast.error(e.message || 'Update failed');
       }
+    } else {
+      // Activating — always works
+      try {
+        await fareConfigService.setActive(rate.id, true);
+        toast.success('Rate card activated');
+        reload();
+      } catch (e) { toast.error(e.message || 'Failed'); }
     }
   };
 
@@ -514,24 +517,18 @@ function VehicleRatesTab() {
       toast.success('Rate card retired');
       reload();
     } catch (e) {
-      const isLastCard = (e.message || '').includes('only live') || (e.code === 'LAST_ACTIVE_FARE_CONFIG');
-      if (isLastCard) {
-        const force = confirm(
-          `This is the last active rate card for this combination.\n\n` +
-          `Retiring it will make this vehicle/trip type unbookable.\n\n` +
-          `Are you sure?`
-        );
-        if (force) {
-          try {
-            await fareConfigService.update(deleting.id, { isActive: false });
-            toast.success('Rate card force-retired');
-            reload();
-          } catch (e2) {
-            toast.error(e2.message || 'Failed to retire');
-          }
-        }
-      } else {
-        toast.error(e.message || 'Delete failed');
+      // Backend blocks DELETE on last active card — ask admin and force via PATCH
+      const force = confirm(
+        `⚠️ Cannot retire via normal route.\n\n` +
+        `"${e.message || 'This is the last active card'}"\n\n` +
+        `Force-deactivate this rate card anyway?`
+      );
+      if (force) {
+        try {
+          await fareConfigService.update(deleting.id, { isActive: false });
+          toast.success('Rate card force-retired');
+          reload();
+        } catch (e2) { toast.error(e2.message || 'Failed'); }
       }
     } finally {
       setDeleting(null); setDelLoad(false);
