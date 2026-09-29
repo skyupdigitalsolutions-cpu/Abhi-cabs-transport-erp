@@ -40,7 +40,7 @@ const INDIAN_STATES = [
 ].sort();
 
 const EMPTY_RATE_CARD = {
-  cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
+  _state: '', cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
   baseFare: '', perKm: '', minimumFare: '',
   perMinute: '', cancellationFee: '',
   returnEmptyPct: '',
@@ -69,25 +69,25 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
   const [errors, setErrors] = useState({});
   const [addingCity, setAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
-  const [newCityState, setNewCityState] = useState('');
 
   const handleAddCity = async () => {
-    if (!newCityName.trim() || !newCityState) return;
+    if (!newCityName.trim() || !form._state) return;
+    const stateName = form._state;
     try {
       const res = await apiClient.post('/admin/fare-configs/cities', {
-        name: newCityName.trim(), state: newCityState, country: 'India',
+        name: newCityName.trim(), state: stateName, country: 'India',
       });
-      const newCity = res?.data?.city || res?.city || { id: Date.now(), name: newCityName.trim(), state: newCityState };
+      const newCity = res?.data?.city || res?.city || { id: Date.now(), name: newCityName.trim(), state: stateName };
       cities.push(newCity);
       set('cityId', String(newCity.id));
-      toast.success(`${newCityName.trim()}, ${newCityState} added`);
+      toast.success(`${newCityName.trim()}, ${stateName} added`);
     } catch {
       const tempId = Date.now();
-      cities.push({ id: tempId, name: newCityName.trim(), state: newCityState });
+      cities.push({ id: tempId, name: newCityName.trim(), state: stateName });
       set('cityId', String(tempId));
-      toast.info(`${newCityName.trim()} added locally`);
+      toast.info(`${newCityName.trim()}, ${stateName} added locally`);
     }
-    setAddingCity(false); setNewCityName(''); setNewCityState('');
+    setAddingCity(false); setNewCityName('');
   };
 
   // Vehicle classes come from the backend's vehicle_catalog, never a
@@ -186,29 +186,49 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
               one instead. This keeps it clear which rate card actually priced a past booking.
             </Alert>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <FormField label="City" hint="Select or add a new city.">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="State" hint="Optional — filter cities by state.">
+              <Select
+                value={form._state || ''}
+                onChange={(e) => { set('_state', e.target.value); set('cityId', ''); }}
+                placeholder="All states"
+                searchable
+                options={[
+                  { value: '', label: 'All states' },
+                  ...INDIAN_STATES.map((s) => ({ value: s, label: s })),
+                ]}
+              />
+            </FormField>
+            <FormField label="City" hint={addingCity ? 'Type new city name' : 'Pick a city or add new.'}>
               {isEdit ? (
-                <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || form.cityName || form.cityId || 'All cities'} />
+                <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || 'All cities'} />
               ) : addingCity ? (
                 <div className="space-y-2">
-                  <Input value={newCityName} onChange={(e) => setNewCityName(e.target.value)} placeholder="City name" autoFocus />
-                  <Select value={newCityState} onChange={(e) => setNewCityState(e.target.value)} placeholder="State"
-                    searchable options={INDIAN_STATES.map((s) => ({ value: s, label: s }))} />
+                  <Input value={newCityName} onChange={(e) => setNewCityName(e.target.value)}
+                    placeholder="e.g. Mysuru" autoFocus />
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddCity} disabled={!newCityName.trim() || !newCityState}>Add</Button>
+                    <Button size="sm" onClick={handleAddCity}
+                      disabled={!newCityName.trim() || !(form._state)}>
+                      Add City
+                    </Button>
                     <Button size="sm" variant="secondary" onClick={() => setAddingCity(false)}>Cancel</Button>
                   </div>
+                  {!form._state && <p style={{ fontSize: 11, color: '#EF4444' }}>Select a state first</p>}
                 </div>
               ) : (
                 <div>
-                  <Select value={form.cityId} onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
-                    placeholder="All cities (optional)"
+                  <Select
+                    value={form.cityId}
+                    onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
+                    placeholder="All cities (global rate)"
                     searchable
                     options={[
                       { value: '', label: 'All cities (global rate)' },
-                      ...cities.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
-                    ]} />
+                      ...cities
+                        .filter((c) => !form._state || c.state === form._state)
+                        .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
+                    ]}
+                  />
                   <button onClick={() => setAddingCity(true)}
                     style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                     + Add new city
@@ -216,6 +236,8 @@ function VehicleRateForm({ initial, cities, onSubmit, onClose }) {
                 </div>
               )}
             </FormField>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Vehicle class" required>
               {isEdit ? <Input disabled value={form.vehicleClass} /> : (
                 <Select value={form.vehicleClass} onChange={(e) => set('vehicleClass', e.target.value)}
