@@ -492,7 +492,7 @@ function VehicleRatesTab() {
   const reload = () => {
     setLoading(true);
     setLoadError(null);
-    Promise.all([fareConfigService.list(), fareConfigService.cities()])
+    Promise.all([fareConfigService.list({ includeInactive: false }), fareConfigService.cities()])
       .then(([{ rows }, cityRows]) => { setRates(rows || []); setCities(cityRows || []); })
       .catch((e) => setLoadError(e))
       .finally(() => setLoading(false));
