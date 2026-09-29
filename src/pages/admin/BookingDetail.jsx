@@ -341,8 +341,18 @@ export default function BookingDetail() {
   //   pickupAddress, dropAddress, vehicleClass, tripType, estimatedFare/finalFare,
   //   pickupAt, customer.user.{name, phone} — NOT pickup/drop/cargoType/weightTon/
   //   clientName/clientPhone/scheduledAt/assignedDriverName, which don't exist.
-  const customerName = booking.customer?.user?.name || booking.corporate?.companyName || 'Unknown customer';
-  const customerPhone = booking.customer?.user?.phone;
+  // Guest checkout: the account is a throwaway named "Guest" with no phone. The
+  // name and number the customer typed are already stored on the booking
+  // (guestName / guestPhone), so show those for guest bookings.
+  const accountName = booking.customer?.user?.name;
+  const isGuest =
+    !accountName ||
+    accountName.toLowerCase().startsWith('guest') ||
+    (booking.customer?.user?.email || '').toLowerCase().endsWith('@guest.invalid');
+  const customerName = isGuest
+    ? (booking.guestName || booking.corporate?.companyName || 'Guest')
+    : (accountName || booking.corporate?.companyName || 'Unknown customer');
+  const customerPhone = isGuest ? booking.guestPhone : booking.customer?.user?.phone;
   const fare = booking.finalFare ?? booking.estimatedFare;
 
   const infoRows = [
@@ -380,7 +390,12 @@ export default function BookingDetail() {
           <Card>
             <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
               <div>
-                <h2 className="font-bold text-lg" style={{ color: '#1F2937' }}>{customerName}</h2>
+                <h2 className="font-bold text-lg flex items-center gap-2" style={{ color: '#1F2937' }}>
+                  {customerName}
+                  {isGuest && (
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, backgroundColor: '#FEF3C7', color: '#92400E' }}>GUEST</span>
+                  )}
+                </h2>
                 <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>{booking.bookingNumber}</p>
               </div>
               <StatusBadge status={booking.status} />
