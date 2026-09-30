@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FileText, Download, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { FileText, Download, Plus, Search, CheckCircle2, AlertTriangle } from 'lucide-react';
 import PageHeader  from '../../components/ui/PageHeader';
 import FilterBar   from '../../components/ui/FilterBar';
 import DataTable   from '../../components/ui/DataTable';
@@ -15,6 +15,7 @@ import { useApi } from '../../hooks/useApi';
 import { adminInvoicesService } from '../../services/adminInvoicesService';
 import { formatCurrency, formatDate, formatDateTime, titleCase } from '../../utils/formatters';
 import { downloadInvoice } from '../../utils/invoicePdf';
+import { bookingToInvoiceForm } from '../../utils/bookingToInvoice';
 
 const STATUS_TONE = { DRAFT: 'slate', ISSUED: 'blue', PAID: 'green', CANCELLED: 'red' };
 const STATUS_OPTS = ['DRAFT', 'ISSUED', 'PAID', 'CANCELLED'];
@@ -112,6 +113,61 @@ function GenerateInvoiceDrawer({ open, onClose }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // ── Booking lookup ────────────────────────────────────────────────────────
+  // Typing/pasting a booking number (ABH-2026-001044) or booking id fills the
+  // customer, trip and amount fields from the real booking.
+  const [lookup, setLookup] = useState({ state: 'idle', message: '' });
+  const lookupSeq = useRef(0);        // ignore a slow response that a newer lookup has overtaken
+  const lastFetched = useRef('');     // don't refetch the value we just filled in
+
+  const looksComplete = (v) =>
+    /^ABH-\d{4}-\d{6,}$/i.test(v) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+  const runLookup = async (raw, force = false) => {
+    const q = String(raw || '').trim();
+    if (!q) { setLookup({ state: 'idle', message: '' }); return; }
+    if (!force && q.toLowerCase() === lastFetched.current.toLowerCase()) return;
+
+    const seq = ++lookupSeq.current;
+    setLookup({ state: 'loading', message: '' });
+    try {
+      const booking = await adminInvoicesService.lookupBooking(q);
+      if (seq !== lookupSeq.current) return;
+      const mapped = bookingToInvoiceForm(booking);
+      lastFetched.current = q;
+      if (mapped.form.bookingNumber) lastFetched.current = mapped.form.bookingNumber;
+      setForm((f) => ({ ...f, ...mapped.form }));
+
+      const notes = [];
+      if (!mapped.meta.fareIsFinal) {
+        notes.push(booking.status === 'CANCELLED'
+          ? 'This booking is cancelled — check the amount before issuing.'
+          : `Trip is ${String(booking.status).toLowerCase()}, so the amount is the quoted fare, not the final one.`);
+      }
+      setLookup({
+        state: 'ok',
+        message: `Loaded ${mapped.form.bookingNumber || 'booking'} · ${booking.status}`,
+        warning: notes.join(' '),
+      });
+    } catch (e) {
+      if (seq !== lookupSeq.current) return;
+      const msg = e?.status === 403
+        ? 'Your role cannot read bookings, so details cannot be auto-filled. Fill them in manually.'
+        : (e?.message || 'Could not fetch this booking.');
+      setLookup({ state: 'error', message: msg });
+    }
+  };
+
+  // Auto-fetch shortly after a complete-looking number/id is typed or pasted.
+  useEffect(() => {
+    const v = form.bookingNumber.trim();
+    if (!looksComplete(v) || v.toLowerCase() === lastFetched.current.toLowerCase()) return undefined;
+    const t = setTimeout(() => runLookup(v), 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.bookingNumber]);
+
   const gstRate = 5;
   const baseFare = Number(form.baseFare) || 0;
   const extras = Number(form.extras) || 0;
@@ -177,6 +233,43 @@ function GenerateInvoiceDrawer({ open, onClose }) {
       </>}>
       <div className="space-y-4">
 
+        {/* Booking lookup — fills everything below */}
+        <FormField label="Booking ID / number"
+          hint="Paste the booking number (e.g. ABH-2026-001044) or booking id — customer, trip and amount fill in automatically.">
+          <div className="flex gap-2">
+            <Input
+              value={form.bookingNumber}
+              onChange={(e) => { set('bookingNumber', e.target.value); if (lookup.state !== 'idle') setLookup({ state: 'idle', message: '' }); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runLookup(form.bookingNumber, true); } }}
+              onBlur={() => { if (form.bookingNumber.trim()) runLookup(form.bookingNumber); }}
+              placeholder="ABH-2026-001044"
+              autoComplete="off"
+            />
+            <Button variant="secondary" icon={Search} loading={lookup.state === 'loading'}
+              disabled={!form.bookingNumber.trim()}
+              onClick={() => runLookup(form.bookingNumber, true)}>
+              Fetch
+            </Button>
+          </div>
+          {lookup.state === 'ok' && (
+            <div style={{ marginTop: 6 }}>
+              <p className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#15803d' }}>
+                <CheckCircle2 size={13} /> {lookup.message}
+              </p>
+              {lookup.warning && (
+                <p className="flex items-start gap-1.5 text-xs mt-1" style={{ color: '#92400E' }}>
+                  <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} /> {lookup.warning}
+                </p>
+              )}
+            </div>
+          )}
+          {lookup.state === 'error' && (
+            <p className="flex items-start gap-1.5 text-xs mt-1.5" style={{ color: '#DC2626' }}>
+              <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} /> {lookup.message}
+            </p>
+          )}
+        </FormField>
+
         {/* Invoice type toggle */}
         <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 10, backgroundColor: '#F3F4F6' }}>
           {[
@@ -229,10 +322,7 @@ function GenerateInvoiceDrawer({ open, onClose }) {
 
         {/* Trip details */}
         <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#6B7280' }}>Trip Details</p>
-        <div className="grid grid-cols-3 gap-3">
-          <FormField label="Booking #">
-            <Input value={form.bookingNumber} onChange={(e) => set('bookingNumber', e.target.value)} placeholder="ABH-2026-001044" />
-          </FormField>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Vehicle class">
             <Input value={form.vehicleClass} onChange={(e) => set('vehicleClass', e.target.value)} placeholder="sedan" />
           </FormField>

@@ -240,3 +240,4 @@ export { driverOpsService }      from './driverOpsService';
 export { adminInvoicesService }  from './adminInvoicesService';
 export { fareConfigService }     from './fareConfigService';
 export { vehicleCatalogService } from './vehicleCatalogService';
+export { bookingRequestService } from './bookingRequestService';

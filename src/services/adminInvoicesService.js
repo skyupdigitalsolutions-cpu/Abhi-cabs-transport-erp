@@ -21,7 +21,9 @@
  *   GET /admin/invoices/booking/:bookingId     — the invoice for a booking
  *   GET /admin/invoices/booking/:bookingId/ledger — its ledger entries
  */
-import { apiClient } from './apiClient';
+import { apiClient, ApiError } from './apiClient';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const adminInvoicesService = {
   async list(params = {}) {
@@ -36,6 +38,35 @@ export const adminInvoicesService = {
   async getForBooking(bookingId) {
     const data = await apiClient.get(`/admin/invoices/booking/${bookingId}`);
     return data.invoice || data;
+  },
+
+  /**
+   * The full booking for a booking id (UUID) OR a booking number (ABH-2026-001044).
+   *
+   *   number → GET /admin/bookings?search=<number>   (find the exact match)
+   *   then   → GET /admin/bookings/:id               (full record)
+   *
+   * Uses apiClient directly, NOT withMockFallback: if the backend is down this
+   * must fail loudly. A mock booking must never end up on a real invoice.
+   * Needs BOOKING_MANAGE (same permission as the Bookings page).
+   */
+  async lookupBooking(raw) {
+    const q = String(raw || '').trim();
+    if (!q) throw new ApiError('Enter a booking id or number.', { status: 400 });
+
+    let id = q;
+    if (!UUID_RE.test(q)) {
+      const res = await apiClient.get('/admin/bookings', { params: { search: q, limit: 10 } });
+      const rows = res?.data ?? res?.items ?? [];
+      const hit = rows.find((r) => String(r.bookingNumber || '').toLowerCase() === q.toLowerCase());
+      if (!hit) throw new ApiError(`No booking found with number ${q}.`, { status: 404, code: 'BOOKING_NOT_FOUND' });
+      id = hit.id;
+    }
+
+    const res = await apiClient.get(`/admin/bookings/${id}`);
+    const booking = res?.booking ?? res;
+    if (!booking || !booking.id) throw new ApiError('Booking not found.', { status: 404, code: 'BOOKING_NOT_FOUND' });
+    return booking;
   },
 
   /** { ledger: LedgerEntry[], balance: {...} } */

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield, XCircle, Eye, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield, XCircle, Eye, FileText, RotateCcw } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import Button        from '../../components/ui/Button';
 import IconButton    from '../../components/ui/IconButton';
@@ -263,7 +263,9 @@ function FleetTab({ canManage }) {
     { key: 'pucExpiry', header: 'PUC', render: (r) => <ExpiryChip dateStr={r.pucExpiry} /> },
     { key: 'status', header: 'Operational Status', render: (r) => <StatusBadge status={r.status} /> },
     { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
-    ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} /><IconButton icon={Pencil} label="Edit" onClick={() => openEdit(r)} disabled={detailLoading === r.id} /><IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} /></div>) }] : []),
+    ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} /><IconButton icon={Pencil} label="Edit" onClick={() => openEdit(r)} disabled={detailLoading === r.id} />{r.isActive === false || r.status === 'INACTIVE'
+            ? <IconButton icon={RotateCcw} label="Activate" onClick={() => handleActivate(r)} />
+            : <IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} />}</div>) }] : []),
   ];
 
   const handleSubmit = async (values) => {
@@ -295,9 +297,32 @@ function FleetTab({ canManage }) {
   };
   const handleDelete = async () => {
     setDeleteLoading(true);
-    try { await vehicleService.remove(deleting.id); toast.success('Vehicle deactivated'); setDeleting(null); list.reload(); }
-    catch (e) { toast.error(e.message); }
-    finally { setDeleteLoading(false); }
+    try {
+      await vehicleService.remove(deleting.id);
+      toast.success('Vehicle deactivated');
+      list.reload();
+    } catch (e) {
+      // The backend refuses while the vehicle is ASSIGNED to a driver or ON_TRIP
+      // (VEHICLE_IN_USE). Say what to do about it instead of a bare error.
+      toast.error(
+        e?.code === 'VEHICLE_IN_USE'
+          ? `${deleting?.registrationNumber} is ${String(deleting?.status || 'in use').replace('_', ' ').toLowerCase()} and can't be deactivated yet. Unassign it from the driver / finish the trip first.`
+          : (e?.message || 'Could not deactivate the vehicle')
+      );
+    } finally {
+      // Close the dialog either way — leaving it open after an error looked like the button did nothing.
+      setDeleteLoading(false);
+      setDeleting(null);
+    }
+  };
+
+  // Bring a deactivated vehicle back into the fleet (same call the Inactive tab uses).
+  const handleActivate = async (vehicle) => {
+    try {
+      await apiClient.patch(`/admin/vehicles/${vehicle.id}`, { status: 'AVAILABLE', isActive: true });
+      toast.success(`${vehicle.registrationNumber} activated`);
+      list.reload();
+    } catch (e) { toast.error(e?.message || 'Could not activate the vehicle'); }
   };
 
   const expiringCount = (list.rows || []).filter((v) => [v.insuranceExpiry, v.pucExpiry, v.permitExpiry, v.fitnessExpiry].filter(Boolean).some((d) => { const days = getDaysUntil(d); return days !== null && days <= 30; })).length;

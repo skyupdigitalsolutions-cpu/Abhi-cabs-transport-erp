@@ -231,6 +231,14 @@ function RosterTab() {
     finally { setDeleteLoading(false); setDeleting(null); }
   };
 
+  const handleActivate = async (driver) => {
+    try {
+      await apiClient.patch(`/admin/drivers/${driver.userId}/activate`, {});
+      toast.success(`${driver.user?.name || 'Driver'} activated`);
+      reloadAll();
+    } catch (e) { toast.error(e.message || 'Could not activate'); }
+  };
+
   const columns = [
     {
       key: 'name', header: 'Driver',
@@ -275,10 +283,13 @@ function RosterTab() {
     {
       key: 'isOnline', header: 'Status',
       render: (r) => (
-        <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: r.isOnline ? '#38B763' : '#9CA3AF' }}>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.isOnline ? '#38B763' : '#D1D5DB' }} />
-          {r.isOnline ? 'Online' : 'Offline'}
-        </span>
+        <div className="flex flex-col gap-1 items-start">
+          <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: r.isOnline ? '#38B763' : '#9CA3AF' }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: r.isOnline ? '#38B763' : '#D1D5DB' }} />
+            {r.isOnline ? 'Online' : 'Offline'}
+          </span>
+          {r.user?.isActive === false && <Badge tone="red">Deactivated</Badge>}
+        </div>
       ),
     },
     { key: 'rating', header: 'Rating', render: (r) => r.ratingCount > 0 ? <span style={{ color: '#1F2937' }}>★ {Number(r.ratingAvg ?? 0).toFixed(1)} <span style={{ color: '#9CA3AF' }}>({r.ratingCount})</span></span> : <span style={{ color: '#9CA3AF' }}>—</span> },
@@ -295,9 +306,13 @@ function RosterTab() {
           {r.driverType !== 'TEMPORARY' && (
             <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
           )}
-          <Button size="sm" variant="dangerOutline" onClick={() => setDeleting(r)}>
-            {r.driverType === 'TEMPORARY' ? 'Remove' : 'Deactivate'}
-          </Button>
+          {r.driverType !== 'TEMPORARY' && r.user?.isActive === false ? (
+            <Button size="sm" variant="primary" onClick={() => handleActivate(r)}>Activate</Button>
+          ) : (
+            <Button size="sm" variant="dangerOutline" onClick={() => setDeleting(r)}>
+              {r.driverType === 'TEMPORARY' ? 'Remove' : 'Deactivate'}
+            </Button>
+          )}
         </div>
       ),
     },

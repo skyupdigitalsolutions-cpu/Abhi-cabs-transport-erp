@@ -28,6 +28,7 @@ const Reports        = lazy(() => import('../pages/admin/Reports'));
 const Masters        = lazy(() => import('../pages/admin/Masters'));
 const Notifications  = lazy(() => import('../pages/admin/Notifications'));
 const Support        = lazy(() => import('../pages/admin/Support'));
+const BookingRequests = lazy(() => import('../pages/admin/BookingRequests'));
 const WhatsApp       = lazy(() => import('../pages/admin/WhatsApp'));
 const Discounts      = lazy(() => import('../pages/admin/Discounts'));
 const UsersRoles     = lazy(() => import('../pages/admin/UsersRoles'));
@@ -60,6 +61,7 @@ export default function AppRoutes() {
           <Route path="vehicles"     element={<P permission={PERMISSIONS.VEHICLES_VIEW}><Vehicles /></P>} />
           <Route path="bookings"     element={<P permission={PERMISSIONS.BOOKINGS_VIEW}><Bookings /></P>} />
           <Route path="bookings/:id" element={<P permission={PERMISSIONS.BOOKINGS_VIEW}><BookingDetail /></P>} />
+          <Route path="booking-requests" element={<P permission={PERMISSIONS.BOOKINGS_VIEW}><BookingRequests /></P>} />
           <Route path="dispatch"     element={<P permission={PERMISSIONS.DISPATCH_MANAGE}><Dispatch /></P>} />
           <Route path="trips"        element={<P permission={PERMISSIONS.TRIPS_VIEW}><Trips /></P>} />
           <Route path="tracking"     element={<P permission={PERMISSIONS.TRIPS_VIEW}><LiveTracking /></P>} />

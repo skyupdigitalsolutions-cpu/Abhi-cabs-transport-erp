@@ -564,12 +564,14 @@ function VehicleRatesTab() {
   const [classFilter, setClassFilter] = useState('');
   const [tripFilter, setTripFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
+  // Deactivated cards are kept (never deleted) and can be reactivated, so they must be reachable.
+  const [activeFilter, setActiveFilter] = useState('active'); // active | inactive | all
   const toast = useToast();
 
   const reload = () => {
     setLoading(true);
     setLoadError(null);
-    Promise.all([fareConfigService.list({ includeInactive: false }), fareConfigService.cities()])
+    Promise.all([fareConfigService.list({ includeInactive: true }), fareConfigService.cities()])
       .then(([{ rows }, cityRows]) => { setRates(rows || []); setCities(cityRows || []); })
       .catch((e) => setLoadError(e))
       .finally(() => setLoading(false));
@@ -585,8 +587,9 @@ function VehicleRatesTab() {
     const matchClass  = !classFilter || r.vehicleClass === classFilter;
     const matchTrip   = !tripFilter  || r.tripType === tripFilter;
     const matchState  = !stateFilter || (r.city?.state || '') === stateFilter;
-    return matchSearch && matchClass && matchTrip && matchState;
-  }), [rates, cities, search, classFilter, tripFilter, stateFilter]);
+    const matchActive = activeFilter === 'all' || (activeFilter === 'active' ? r.isActive : !r.isActive);
+    return matchSearch && matchClass && matchTrip && matchState && matchActive;
+  }), [rates, cities, search, classFilter, tripFilter, stateFilter, activeFilter]);
 
   // Other cities in the same state whose CURRENT card for this class + trip type
   // can be changed together with the one being edited ("state-wise" pricing).
@@ -661,33 +664,37 @@ function VehicleRatesTab() {
 
   const handleToggle = async (rate) => {
     if (rate.isActive) {
-      // Deactivating — try DELETE first, fallback to PATCH
+      // Deactivating retires the card (nothing is deleted).
       try {
         await fareConfigService.setActive(rate.id, false);
-        toast.success('Rate card deactivated');
+        toast.success('Rate card deactivated — find it under "Inactive cards" to reactivate');
         reload();
       } catch (e) {
-        // Backend blocks DELETE on last active card — ask admin and force via PATCH
+        // Only THIS refusal is the "last live card" case. Anything else (no
+        // permission, network, server error) used to be dressed up as it too,
+        // so the real reason was never shown.
+        if (e?.code !== 'LAST_ACTIVE_FARE_CONFIG') {
+          toast.error(e?.message || 'Could not deactivate this rate card');
+          return;
+        }
         const force = confirm(
-          `⚠️ This may be the last active ${rate.vehicleClass.toUpperCase()} / ${rate.tripType.replace(/_/g, ' ')} rate card.\n\n` +
-          `Deactivating it could make this combination unbookable.\n\n` +
+          `${e.message}\n\n` +
+          `Deactivating it will make ${rate.vehicleClass.toUpperCase()} / ${rate.tripType.replace(/_/g, ' ')} unbookable until you add a new rate card.\n\n` +
           `Deactivate anyway?`
         );
-        if (force) {
-          try {
-            await fareConfigService.update(rate.id, { isActive: false });
-            toast.success('Rate card deactivated');
-            reload();
-          } catch (e2) { toast.error(e2.message || 'Failed'); }
-        }
+        if (!force) return;
+        try {
+          await fareConfigService.update(rate.id, { isActive: false });
+          toast.success('Rate card deactivated — find it under "Inactive cards" to reactivate');
+          reload();
+        } catch (e2) { toast.error(e2?.message || 'Could not deactivate this rate card'); }
       }
     } else {
-      // Activating — always works
       try {
         await fareConfigService.setActive(rate.id, true);
         toast.success('Rate card activated');
         reload();
-      } catch (e) { toast.error(e.message || 'Failed'); }
+      } catch (e) { toast.error(e?.message || 'Could not activate this rate card'); }
     }
   };
 
@@ -802,6 +809,14 @@ function VehicleRatesTab() {
           options={TRIP_TYPES.map(t => ({ value: t.value, label: t.label }))}
           style={{ minWidth: 170 }}
         />
+        <Select value={activeFilter} onChange={e => setActiveFilter(e.target.value || 'active')}
+          options={[
+            { value: 'active', label: 'Active cards' },
+            { value: 'inactive', label: 'Inactive cards' },
+            { value: 'all', label: 'Active + inactive' },
+          ]}
+          style={{ minWidth: 160 }}
+        />
         <Button icon={Plus} onClick={() => { setEditing(null); setFormOpen(true); }}>
           Add Rate Card
         </Button>
@@ -811,7 +826,7 @@ function VehicleRatesTab() {
       {filtered.length === 0 ? (
         <div className="text-center py-12" style={{ color: '#6B7280' }}>
           <Car size={36} className="mx-auto mb-2 opacity-30" />
-          <p className="text-sm">{rates.length === 0 ? 'No rate cards configured yet.' : 'No rate cards match your filters.'}</p>
+          <p className="text-sm">{rates.length === 0 ? 'No rate cards configured yet.' : activeFilter === 'inactive' ? 'No inactive rate cards.' : 'No rate cards match your filters.'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">

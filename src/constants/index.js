@@ -311,6 +311,7 @@ export const ADMIN_NAV = [
   { label: 'Drivers',      to: '/admin/drivers',    icon: 'IdCard',         permission: PERMISSIONS.DRIVERS_VIEW },
   { label: 'Vehicles',     to: '/admin/vehicles',   icon: 'Truck',          permission: PERMISSIONS.VEHICLES_VIEW },
   { label: 'Bookings',     to: '/admin/bookings',   icon: 'CalendarCheck',  permission: PERMISSIONS.BOOKINGS_VIEW },
+  { label: 'Booking Requests', to: '/admin/booking-requests', icon: 'Inbox', permission: PERMISSIONS.BOOKINGS_VIEW },
   { label: 'Dispatch',     to: '/admin/dispatch',   icon: 'Radio',          permission: PERMISSIONS.DISPATCH_MANAGE },
   { label: 'Trips',        to: '/admin/trips',      icon: 'Route',          permission: PERMISSIONS.TRIPS_VIEW },
   { label: 'Live Tracking',to: '/admin/tracking',   icon: 'MapPin',         permission: PERMISSIONS.TRIPS_VIEW },
