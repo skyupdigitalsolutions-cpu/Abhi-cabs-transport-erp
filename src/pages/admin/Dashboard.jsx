@@ -27,7 +27,7 @@
  */
 import { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, CalendarCheck, IndianRupee, Gauge, Radio, Zap, AlertTriangle } from 'lucide-react';
+import { Truck, CalendarCheck, IndianRupee, Radio, Zap, AlertTriangle } from 'lucide-react';
 import PageHeader   from '../../components/ui/PageHeader';
 import Card         from '../../components/ui/Card';
 import KpiCard      from '../../components/dashboard/KpiCard';
@@ -166,8 +166,7 @@ export default function Dashboard() {
     ? null  // mock — build byStatus from array
     : (fleetRaw?.fleet || fleetRaw || null);
 
-  const fleetTotal       = fleetObj?.total ?? 0;
-  const fleetUtilisation = fleetObj?.utilisation ?? 0;
+  const fleetTotal = fleetObj?.total ?? 0;
 
   const fleetStatus = useMemo(() => {
     if (fleetObj?.byStatus) {
@@ -249,11 +248,9 @@ export default function Dashboard() {
       />
 
       {/* ── KPI cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KpiCard label="Fleet Vehicles"    value={fleetTotal}
           icon={Truck} tone="purple" />
-        <KpiCard label="Fleet Utilisation" value={`${Math.round(fleetUtilisation * 100)}%`}
-          icon={Gauge} tone="primary" />
         <KpiCard label="Bookings (30d)"    value={totalBookings}
           icon={CalendarCheck} tone="blue" />
         <KpiCard label="Revenue Collected" value={formatCurrency(totalRevenue)}

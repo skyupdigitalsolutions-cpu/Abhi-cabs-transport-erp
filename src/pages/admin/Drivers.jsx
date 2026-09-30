@@ -249,7 +249,15 @@ function RosterTab() {
         </div>
       ),
     },
-    { key: 'email', header: 'Email', render: (r) => r.user?.email ? <span className="flex items-center gap-1" style={{ color: '#6B7280', fontSize: 13 }}><Mail size={12} />{r.user.email}</span> : <span style={{ color: '#9CA3AF' }}>—</span> },
+    {
+      key: 'email', header: 'Email',
+      render: (r) => r.user?.email ? (
+        <span className="flex items-center gap-1" title={r.user.email} style={{ color: '#6B7280', fontSize: 13, maxWidth: 200 }}>
+          <Mail size={12} style={{ flexShrink: 0 }} />
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.user.email}</span>
+        </span>
+      ) : <span style={{ color: '#9CA3AF' }}>—</span>,
+    },
     {
       key: 'type', header: 'Type',
       render: (r) => r.driverType === 'TEMPORARY'
@@ -294,22 +302,27 @@ function RosterTab() {
     },
     { key: 'rating', header: 'Rating', render: (r) => r.ratingCount > 0 ? <span style={{ color: '#1F2937' }}>★ {Number(r.ratingAvg ?? 0).toFixed(1)} <span style={{ color: '#9CA3AF' }}>({r.ratingCount})</span></span> : <span style={{ color: '#9CA3AF' }}>—</span> },
     {
-      key: 'actions', header: '', className: 'text-right',
+      // Header + left alignment so the three slots line up under "Actions".
+      // Each slot has a FIXED width: the labels differ ("Change" vs "Assign
+      // Vehicle", "Activate" vs "Deactivate"), and right-aligned buttons of
+      // different widths pushed Edit / Deactivate to a different x on every row.
+      key: 'actions', header: 'Actions',
       render: (r) => (
-        <div className="flex gap-2 justify-end">
+        <div style={{ display: 'grid', gridTemplateColumns: '128px 60px 96px', gap: 8, alignItems: 'center' }}>
           {/* A vehicle is optional at registration for EVERY driver type, so
               admin can assign one directly to whoever doesn't have one yet. */}
           {hasVehicle(r)
-            ? <Button size="sm" variant="secondary" onClick={() => setAssigning(r)}>Change Vehicle</Button>
-            : <Button size="sm" variant="primary" onClick={() => setAssigning(r)}>Assign Vehicle</Button>}
-          {/* Temp drivers skip the full onboarding form entirely — nothing there applies (no phone/licence). */}
-          {r.driverType !== 'TEMPORARY' && (
-            <Button size="sm" variant="secondary" onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
-          )}
+            ? <Button size="sm" variant="secondary" block onClick={() => setAssigning(r)}>Change Vehicle</Button>
+            : <Button size="sm" variant="primary" block onClick={() => setAssigning(r)}>Assign Vehicle</Button>}
+          {/* Temp drivers skip the full onboarding form entirely — nothing there applies (no phone/licence).
+              The empty div keeps their Remove button in the same column as everyone else's. */}
+          {r.driverType !== 'TEMPORARY'
+            ? <Button size="sm" variant="secondary" block onClick={() => { setEditing(r); setFormOpen(true); }}>Edit</Button>
+            : <div />}
           {r.driverType !== 'TEMPORARY' && r.user?.isActive === false ? (
-            <Button size="sm" variant="primary" onClick={() => handleActivate(r)}>Activate</Button>
+            <Button size="sm" variant="primary" block onClick={() => handleActivate(r)}>Activate</Button>
           ) : (
-            <Button size="sm" variant="dangerOutline" onClick={() => setDeleting(r)}>
+            <Button size="sm" variant="dangerOutline" block onClick={() => setDeleting(r)}>
               {r.driverType === 'TEMPORARY' ? 'Remove' : 'Deactivate'}
             </Button>
           )}
