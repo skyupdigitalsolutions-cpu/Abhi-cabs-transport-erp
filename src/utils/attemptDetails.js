@@ -97,7 +97,6 @@ export function attemptSections(a, format = {}) {
         ['Drop', a?.dropAddress],
         ['Extra stops', stops ? `${stops} stop${stops > 1 ? 's' : ''}` : ''],
         ['Pickup time', a?.pickupAt && fmtDT(a.pickupAt)],
-        ['Return time', p.returnAt && fmtDT(p.returnAt)],
         ['Rental package', p.rentalPackage],
       ]),
     },

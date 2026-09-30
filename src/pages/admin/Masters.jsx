@@ -42,7 +42,7 @@ const INDIAN_STATES = [
 
 const EMPTY_RATE_CARD = {
   _state: '', cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
-  baseFare: '', perKm: '', minimumFare: '',
+  baseFare: '', perKm: '', minimumKm: '',
   perMinute: '', cancellationFee: '',
   returnEmptyPct: '',
   minKmPerDay: '', waitingPerHour: '', freeWaitingMin: '',
@@ -58,7 +58,7 @@ const ALL_CITIES = '__ALL_CITIES__';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vehicle Rate Card Form — Simple / Advanced, matching the REAL FareConfig
-// fields (city + vehicleClass + tripType + baseFare/perKm/minimumFare, plus
+// fields (city + vehicleClass + tripType + baseFare/perKm/minimumKm, plus
 // optional outstation/round-trip/night/airport/hourly/surge fields).
 // ─────────────────────────────────────────────────────────────────────────────
 function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClose }) {
@@ -129,12 +129,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    // FIX: this used to be `if (cityId === '' || perKm === '' || minimumFare === '') return;`
-    // — a silent no-op. Leaving any of those blank and clicking Create did
-    // nothing at all: no toast, no red text, nothing. That's the "the button
-    // doesn't work" bug — it wasn't the button, it was validation with no
-    // visible failure. minimumFare is no longer required here (see below);
-    // city and per-KM still are, but now say so.
+    // City and per-KM are required; minimumKm is optional.
     const nextErrors = {};
     // The backend needs a real city on every rate card (there is no "all
     // cities" card). Without this the request was sent with no cityId and came
@@ -159,14 +154,12 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
     setLoading(true);
     try {
       // baseFare: field removed from UI — always 0.
-      // minimumFare: OPTIONAL. Left blank, it's simply not sent — the
-      // database defaults it to 0, which fare.service.js already treats as
-      // "no floor enforced" (`config.minimumFare ?? 0`), so this can never
-      // misprice a trip; it just turns the rule off.
+      // minimumKm: OPTIONAL. Left blank, it's simply not sent — the
+      // database defaults it to 0, meaning no minimum distance is enforced.
       const base = {
         baseFare: Number(form.baseFare) || 0,
         perKm: Number(form.perKm),
-        ...(form.minimumFare !== '' && { minimumFare: Number(form.minimumFare) }),
+        ...(form.minimumKm !== '' && { minimumKm: Number(form.minimumKm) }),
         // Driver allowance is optional and available in BOTH Simple and Advanced
         // modes — left blank it is simply not sent (DB defaults to 0 = none).
         ...(form.driverAllowance !== '' && { driverAllowance: Number(form.driverAllowance) }),
@@ -316,8 +309,8 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
             <FormField label="Per KM (₹)" required error={errors.perKm}>
               <Input type="number" min="0" value={form.perKm} onChange={(e) => { set('perKm', e.target.value); setErrors((er) => ({ ...er, perKm: undefined })); }} placeholder="e.g. 14" />
             </FormField>
-            <FormField label="Minimum fare (₹)" hint={isEdit ? 'Optional. Left blank on an edit, the existing minimum fare is kept unchanged.' : 'Optional. Left blank, no floor is enforced — the fare is never topped up to a minimum.'}>
-              <Input type="number" min="0" value={form.minimumFare} onChange={(e) => set('minimumFare', e.target.value)} placeholder="e.g. 250 (optional)" />
+            <FormField label="Minimum KM" hint={isEdit ? 'Optional. Left blank on an edit, the existing minimum KM is kept unchanged.' : 'Optional. The minimum chargeable distance for this rate card. Left blank, no minimum is enforced.'}>
+              <Input type="number" min="0" value={form.minimumKm} onChange={(e) => set('minimumKm', e.target.value)} placeholder="e.g. 100 (optional)" />
             </FormField>
             <FormField label="Driver allowance / day (₹)" hint="Optional. Paid to the driver per day; applies to all trip types except Airport. Leave blank for none.">
               <Input type="number" min="0" value={form.driverAllowance} onChange={(e) => set('driverAllowance', e.target.value)} placeholder="e.g. 300 (optional)" />
@@ -337,7 +330,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
         </div>
         {mode === 'simple' && (
           <p className="text-xs -mt-3" style={{ color: '#9A9A9A' }}>
-            Simple mode: this rate card charges distance × per-KM rate, plus the optional minimum fare
+            Simple mode: this rate card charges distance × per-KM rate, with an optional minimum KM
             and driver allowance above. Switch to Advanced to add outstation, night, airport or
             hourly-rental rules.
           </p>
@@ -505,8 +498,8 @@ function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
           <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.perKm)}</p>
         </div>
         <div className="p-3">
-          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#7c3aed' }}>Minimum</p>
-          <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.minimumFare)}</p>
+          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#7c3aed' }}>Min KM</p>
+          <p className="text-base font-black" style={{ color: '#1F2937' }}>{Number(rate.minimumKm) > 0 ? `${rate.minimumKm} km` : '—'}</p>
         </div>
       </div>
 

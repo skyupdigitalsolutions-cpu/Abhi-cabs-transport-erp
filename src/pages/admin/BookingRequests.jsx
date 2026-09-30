@@ -243,7 +243,6 @@ export default function BookingRequests() {
                   {selected.vehicleClass ? ` · ${selected.vehicleClass}` : ''}
                   {selected.passengers ? ` · ${selected.passengers} passengers` : ''}</p>
                 <p><b>Pickup:</b> {formatDateTime(selected.pickupAt)}</p>
-                {selected.returnAt && <p><b>Return:</b> {formatDateTime(selected.returnAt)}</p>}
                 {selected.note && <p><b>Customer note:</b> {selected.note}</p>}
               </div>
             </div>

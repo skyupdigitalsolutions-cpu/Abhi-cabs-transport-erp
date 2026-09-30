@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Save, Eye, EyeOff, Key, Bell, Building2, Shield } from 'lucide-react';
+import { Save, Eye, EyeOff, Key, Bell, Building2, Shield, Trophy, Plus, Trash2 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import Card       from '../../components/ui/Card';
 import FormField  from '../../components/ui/FormField';
@@ -10,9 +10,11 @@ import Badge      from '../../components/ui/Badge';
 import { useToast } from '../../hooks/useToast';
 import { APP_NAME } from '../../constants';
 import { authService } from '../../services';
+import { getTiers, saveTiers } from '../../lib/loyaltyTiers';
 
 const TABS = [
   { key: 'company',       label: 'Company',       icon: Building2 },
+  { key: 'loyalty',       label: 'Loyalty Tiers',  icon: Trophy    },
   { key: 'notifications', label: 'Notifications', icon: Bell      },
   { key: 'security',      label: 'Security',      icon: Shield    },
   { key: 'api',           label: 'API Keys',      icon: Key       },
@@ -129,6 +131,9 @@ export default function Settings() {
         </Card>
       )}
 
+      {/* Loyalty Tiers */}
+      {tab === 'loyalty' && <LoyaltyTiersTab />}
+
       {/* Notifications */}
       {tab === 'notifications' && (
         <Card className="max-w-xl space-y-5">
@@ -212,6 +217,156 @@ export default function Settings() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Loyalty Tiers Tab ─────────────────────────────────────────────────
+function LoyaltyTiersTab() {
+  const toast = useToast();
+  const [tiers, setTiers] = useState(() => getTiers());
+  const [dirty, setDirty] = useState(false);
+
+  const updateTier = (idx, key, value) => {
+    setTiers((prev) => prev.map((t, i) => i === idx ? { ...t, [key]: key === 'minPoints' ? Number(value) || 0 : value } : t));
+    setDirty(true);
+  };
+
+  const addTier = () => {
+    const highest = tiers.length > 0 ? Math.max(...tiers.map((t) => t.minPoints)) : 0;
+    setTiers((prev) => [...prev, { name: '', minPoints: highest + 10, color: '#6B7280' }]);
+    setDirty(true);
+  };
+
+  const removeTier = (idx) => {
+    setTiers((prev) => prev.filter((_, i) => i !== idx));
+    setDirty(true);
+  };
+
+  const save = () => {
+    const valid = tiers.filter((t) => t.name.trim());
+    if (valid.length === 0) {
+      toast.error('Add at least one tier with a name.');
+      return;
+    }
+    const dupes = new Set();
+    for (const t of valid) {
+      if (dupes.has(t.name.trim().toLowerCase())) {
+        toast.error(`Duplicate tier name: "${t.name}"`);
+        return;
+      }
+      dupes.add(t.name.trim().toLowerCase());
+    }
+    const saved = saveTiers(valid);
+    setTiers(saved);
+    setDirty(false);
+    toast.success(`${saved.length} loyalty tier${saved.length === 1 ? '' : 's'} saved`);
+  };
+
+  const PRESET_COLORS = ['#CD7F32', '#9CA3AF', '#F59E0B', '#7c3aed', '#3B82F6', '#059669', '#DC2626', '#EC4899'];
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <Card className="space-y-5">
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: '#111111' }}>Loyalty Tiers</h3>
+          <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+            Each completed trip earns the customer 1 loyalty point. Configure the tiers below —
+            customers are automatically assigned the highest tier they qualify for.
+          </p>
+        </div>
+
+        <Alert type="info">
+          A customer with 35 points and tiers set at Silver (15), Gold (30), Platinum (60)
+          would be <strong>Gold</strong> — the highest tier they've reached.
+        </Alert>
+
+        {/* Tier rows */}
+        <div className="space-y-3">
+          {tiers.map((tier, idx) => (
+            <div key={idx} className="flex items-end gap-3 rounded-xl p-3"
+              style={{ backgroundColor: '#FAFAFA', border: '1px solid #F0F0EC' }}>
+              {/* Color dot */}
+              <div>
+                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#9A9A9A' }}>Color</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {PRESET_COLORS.map((c) => (
+                    <button key={c} type="button" onClick={() => updateTier(idx, 'color', c)}
+                      style={{
+                        width: 22, height: 22, borderRadius: 6, backgroundColor: c,
+                        border: tier.color === c ? '2.5px solid #111' : '1.5px solid #E5E7EB',
+                        cursor: 'pointer', transition: 'border-color 0.15s',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Name */}
+              <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#9A9A9A' }}>Tier name</p>
+                <input
+                  value={tier.name}
+                  onChange={(e) => updateTier(idx, 'name', e.target.value)}
+                  placeholder="e.g. Gold"
+                  style={{
+                    width: '100%', height: 36, padding: '0 10px', borderRadius: 8,
+                    border: '1.5px solid #E5E7EB', fontSize: 13, fontWeight: 700,
+                    color: '#111', outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* Min points */}
+              <div style={{ flex: '0 0 100px' }}>
+                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#9A9A9A' }}>Min points</p>
+                <input
+                  type="number"
+                  min="0"
+                  value={tier.minPoints}
+                  onChange={(e) => updateTier(idx, 'minPoints', e.target.value)}
+                  style={{
+                    width: '100%', height: 36, padding: '0 10px', borderRadius: 8,
+                    border: '1.5px solid #E5E7EB', fontSize: 13, fontWeight: 700,
+                    color: '#111', outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* Preview */}
+              <div style={{ flex: '0 0 auto' }}>
+                <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#9A9A9A' }}>Preview</p>
+                <span style={{
+                  display: 'inline-block', padding: '5px 12px', borderRadius: 8,
+                  fontSize: 12, fontWeight: 800, color: '#fff',
+                  backgroundColor: tier.color || '#6B7280',
+                }}>
+                  {tier.name || '—'}
+                </span>
+              </div>
+
+              {/* Delete */}
+              <button type="button" onClick={() => removeTier(idx)}
+                style={{
+                  flex: '0 0 auto', width: 36, height: 36, borderRadius: 8,
+                  border: '1.5px solid #FECACA', backgroundColor: '#FEF2F2',
+                  display: 'grid', placeItems: 'center', cursor: 'pointer',
+                }}
+                title="Remove tier"
+              >
+                <Trash2 size={14} style={{ color: '#DC2626' }} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button variant="secondary" size="sm" icon={Plus} onClick={addTier}>Add tier</Button>
+          <Button size="sm" icon={Save} onClick={save} disabled={!dirty}>
+            {dirty ? 'Save tiers' : 'Saved'}
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

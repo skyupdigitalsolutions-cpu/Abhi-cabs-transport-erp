@@ -1,20 +1,24 @@
 import { useState } from 'react';
-import { Phone, CheckCircle, Clock, XCircle, User, MapPin, Car } from 'lucide-react';
+import { Phone, CheckCircle, Clock, XCircle, User, MapPin, Car, CalendarClock } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import FormField from '../ui/FormField';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
 
 /**
- * ConfirmBookingModal — Three actions for a PENDING booking:
+ * ConfirmBookingModal — Four actions for a PENDING booking:
  *   1. Confirm — moves to CONFIRMED
- *   2. Add Note & Keep Pending — saves note, stays PENDING
+ *   2. Keep Pending + optional follow-up — saves note + follow-up date/time, stays PENDING
  *   3. Cancel Booking — moves to CANCELLED with reason
  */
 export default function ConfirmBookingModal({ open, onClose, booking, onConfirm, onAddNote, onCancel, loading }) {
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
+  const [showFollowUp, setShowFollowUp] = useState(false);
 
   const requireNote = (action) => {
     if (!note.trim()) {
@@ -34,7 +38,14 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
 
   const handleKeepPending = () => {
     if (!requireNote('note')) return;
-    onAddNote?.(booking.id, note.trim());
+    // Build a follow-up ISO string if both date and time are set
+    let followUp = null;
+    if (followUpDate && followUpTime) {
+      followUp = new Date(`${followUpDate}T${followUpTime}:00`).toISOString();
+    } else if (followUpDate) {
+      followUp = new Date(`${followUpDate}T09:00:00`).toISOString();
+    }
+    onAddNote?.(booking.id, note.trim(), followUp);
   };
 
   const handleCancel = () => {
@@ -42,12 +53,29 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
     onCancel?.(booking.id, note.trim());
   };
 
-  const handleClose = () => { setNote(''); setError(''); onClose(); };
+  const handleClose = () => {
+    setNote(''); setError('');
+    setFollowUpDate(''); setFollowUpTime('');
+    setShowFollowUp(false);
+    onClose();
+  };
 
   if (!booking) return null;
 
   const customerName = booking.customer?.user?.name || booking.guestName || '—';
   const customerPhone = booking.customer?.user?.phone || booking.guestPhone || '—';
+  const today = new Date().toISOString().split('T')[0];
+
+  // Check if there's an existing follow-up stored
+  let existingFollowUp = null;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem('abhi_booking_notes') || '{}');
+    const entry = stored[booking.id];
+    if (entry?.followUp) {
+      const d = new Date(entry.followUp);
+      if (d > new Date()) existingFollowUp = d;
+    }
+  } catch { /* ignore */ }
 
   return (
     <Modal open={open} onClose={handleClose} title="Confirm Booking" maxWidth={520}>
@@ -76,6 +104,27 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
             </p>
           </div>
         </div>
+
+        {/* Existing follow-up reminder */}
+        {existingFollowUp && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px', borderRadius: 12,
+            backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE',
+          }}>
+            <CalendarClock size={16} style={{ color: '#2563EB', flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1D4ED8', margin: 0 }}>
+                Follow-up scheduled
+              </p>
+              <p style={{ fontSize: 12, color: '#3B82F6', margin: '1px 0 0', fontWeight: 500 }}>
+                {existingFollowUp.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {' at '}
+                {existingFollowUp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Booking summary */}
         <div style={{ borderRadius: 14, border: '1.5px solid #E8E8E4', overflow: 'hidden', background: '#fff' }}>
@@ -134,6 +183,64 @@ export default function ConfirmBookingModal({ open, onClose, booking, onConfirm,
             rows={3} maxLength={500}
           />
         </FormField>
+
+        {/* Follow-up date/time */}
+        {!showFollowUp ? (
+          <button
+            type="button"
+            onClick={() => setShowFollowUp(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '9px 14px', borderRadius: 10,
+              border: '1.5px dashed #D1D5DB', backgroundColor: '#FAFAFA',
+              color: '#6B7280', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', transition: 'border-color 0.15s',
+              width: '100%',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#3B65DB'; e.currentTarget.style.color = '#3B65DB'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#D1D5DB'; e.currentTarget.style.color = '#6B7280'; }}
+          >
+            <CalendarClock size={15} />
+            Add follow-up date & time
+          </button>
+        ) : (
+          <div style={{
+            padding: 14, borderRadius: 12,
+            backgroundColor: '#F0F4FF', border: '1.5px solid #BFDBFE',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10,
+            }}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1D4ED8', margin: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <CalendarClock size={14} /> Follow-up reminder
+              </p>
+              <button type="button" onClick={() => { setShowFollowUp(false); setFollowUpDate(''); setFollowUpTime(''); }}
+                style={{ fontSize: 12, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                Remove
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <FormField label="Date" style={{ margin: 0 }}>
+                <Input
+                  type="date"
+                  min={today}
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Time" style={{ margin: 0 }}>
+                <Input
+                  type="time"
+                  value={followUpTime}
+                  onChange={(e) => setFollowUpTime(e.target.value)}
+                />
+              </FormField>
+            </div>
+            <p style={{ fontSize: 11.5, color: '#6B7280', margin: '8px 0 0' }}>
+              Saved with "Keep Pending" so you remember to call back.
+            </p>
+          </div>
+        )}
 
         {/* Three action buttons */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap', paddingTop: 4 }}>

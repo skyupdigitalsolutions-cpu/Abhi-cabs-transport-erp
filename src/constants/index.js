@@ -324,6 +324,7 @@ export const ADMIN_NAV = [
   { label: 'WhatsApp',         to: '/admin/whatsapp',         icon: 'MessageCircle',  permission: PERMISSIONS.SETTINGS_MANAGE },
   { label: 'Discounts & Offers', to: '/admin/discounts',  icon: 'Tag',            permission: PERMISSIONS.FARE_EDIT },
   { label: 'Users & Roles',      to: '/admin/users',      icon: 'ShieldCheck',    permission: PERMISSIONS.USERS_MANAGE },
+  { label: 'Settings',           to: '/admin/settings',   icon: 'Settings',       permission: PERMISSIONS.SETTINGS_MANAGE },
 ];
 
 // UNUSED. Nothing imports DRIVER_NAV, and no /driver/* routes exist in

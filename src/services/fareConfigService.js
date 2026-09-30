@@ -101,7 +101,7 @@ export const fareConfigService = {
   /**
    * POST /admin/fare-configs
    *
-   * Required: cityId, vehicleClass, tripType, baseFare, perKm, minimumFare.
+   * Required: cityId, vehicleClass, tripType, baseFare, perKm.
    * Everything else is optional and defaults to 0, meaning "this rule is off".
    *
    * Expect 409 FARE_CONFIG_EXISTS when a card already covers that city, class

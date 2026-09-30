@@ -65,15 +65,23 @@ export default function Bookings() {
     }
   };
 
-  const handleAddNoteKeepPending = async (bookingId, note) => {
+  const handleAddNoteKeepPending = async (bookingId, note, followUp) => {
     // No backend endpoint for note-only update on PENDING bookings.
     // Save locally so admin can see the note when they come back.
     try {
       const key = 'abhi_booking_notes';
       const existing = JSON.parse(sessionStorage.getItem(key) || '{}');
-      existing[bookingId] = { note, by: user?.name || 'Admin', at: new Date().toISOString() };
+      existing[bookingId] = {
+        note,
+        by: user?.name || 'Admin',
+        at: new Date().toISOString(),
+        ...(followUp && { followUp }),
+      };
       sessionStorage.setItem(key, JSON.stringify(existing));
-      toast.success('Note saved — booking stays pending');
+      const msg = followUp
+        ? `Note saved with follow-up on ${new Date(followUp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} — booking stays pending`
+        : 'Note saved — booking stays pending';
+      toast.success(msg);
       setConfirmingBooking(null);
     } catch {
       toast.error('Failed to save note');
@@ -151,9 +159,37 @@ export default function Bookings() {
       render: (r) => {
         const loaded = reasons[r.id];
         const isLoading = r.status === 'CANCELLED' && loaded === undefined;
+        // Check for follow-up on pending bookings
+        let followUp = null;
+        if (r.status === 'PENDING') {
+          try {
+            const stored = JSON.parse(sessionStorage.getItem('abhi_booking_notes') || '{}');
+            if (stored[r.id]?.followUp) followUp = new Date(stored[r.id].followUp);
+          } catch { /* ignore */ }
+        }
+        const isOverdue = followUp && followUp < new Date();
         return (
           <div>
             <StatusBadge status={r.status} />
+            {r.status === 'PENDING' && followUp && (
+              <p
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  marginTop: 4, fontSize: 11, fontWeight: 700,
+                  color: isOverdue ? '#DC2626' : '#2563EB',
+                }}
+                title={`Follow-up: ${followUp.toLocaleString('en-IN')}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                  <circle cx="16" cy="16" r="2" />
+                </svg>
+                {isOverdue ? 'Overdue · ' : ''}
+                {followUp.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                {', '}
+                {followUp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+              </p>
+            )}
             {r.status === 'PENDING' && canManage && (
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirmingBooking(r); }}

@@ -33,6 +33,10 @@ const BookingRequests = lazyRetry(() => import('../pages/admin/BookingRequests')
 const WhatsApp       = lazyRetry(() => import('../pages/admin/WhatsApp'));
 const Discounts      = lazyRetry(() => import('../pages/admin/Discounts'));
 const UsersRoles     = lazyRetry(() => import('../pages/admin/UsersRoles'));
+const Settings       = lazyRetry(() => import('../pages/admin/Settings'));
+
+// ── Customer-facing (public, no auth) ─────────────────────────────────
+const BookingRequestPage = lazyRetry(() => import('../pages/customer/BookingRequestPage'));
 
 const NotFound       = lazyRetry(() => import('../pages/NotFound'));
 const Unauthorized   = lazyRetry(() => import('../pages/Unauthorized'));
@@ -75,7 +79,11 @@ export default function AppRoutes() {
           <Route path="whatsapp"     element={<P permission={PERMISSIONS.SETTINGS_MANAGE}><WhatsApp /></P>} />
           <Route path="discounts"    element={<P permission={PERMISSIONS.FARE_EDIT}><Discounts /></P>} />
           <Route path="users"        element={<P permission={PERMISSIONS.USERS_MANAGE}><UsersRoles /></P>} />
+          <Route path="settings"    element={<P permission={PERMISSIONS.SETTINGS_MANAGE}><Settings /></P>} />
         </Route>
+
+        {/* ── Customer-facing (public) ── */}
+        <Route path="/booking-request" element={<BookingRequestPage />} />
 
         {/* ── Utility ── */}
         <Route path="/unauthorized" element={<Unauthorized />} />

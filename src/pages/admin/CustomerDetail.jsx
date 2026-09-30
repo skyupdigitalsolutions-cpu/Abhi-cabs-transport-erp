@@ -18,6 +18,7 @@ import Select       from '../../components/ui/Select';
 import { useToast } from '../../hooks/useToast';
 import { useForm }  from '../../hooks/useForm';
 import { formatCurrency, formatDate, formatDateTime, titleCase, accountTypeLabel } from '../../utils/formatters';
+import { getTierForPoints, getNextTier } from '../../lib/loyaltyTiers';
 
 function addr(val) {
   if (!val) return '—';
@@ -42,6 +43,38 @@ function StatCard({ icon: Icon, label, value, tone = 'primary' }) {
       <div>
         <p className="text-xs font-medium" style={{ color: '#6B7280' }}>{label}</p>
         <p className="text-lg font-bold mt-0.5" style={{ color: '#1F2937' }}>{value}</p>
+      </div>
+    </Card>
+  );
+}
+
+function LoyaltyStatCard({ points }) {
+  const tier = getTierForPoints(points);
+  const next = getNextTier(points);
+  return (
+    <Card className="flex items-center gap-4">
+      <div className="h-11 w-11 rounded-xl grid place-items-center shrink-0"
+        style={{ backgroundColor: tier ? `${tier.color}22` : '#fffbeb' }}>
+        <Gift size={20} style={{ color: tier?.color || '#F59E0B' }} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <p className="text-xs font-medium" style={{ color: '#6B7280' }}>Loyalty</p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <p className="text-lg font-bold" style={{ color: '#1F2937' }}>{points} pts</p>
+          {tier && (
+            <span style={{
+              padding: '2px 10px', borderRadius: 7, fontSize: 11, fontWeight: 800,
+              color: '#fff', backgroundColor: tier.color,
+            }}>
+              {tier.name}
+            </span>
+          )}
+        </div>
+        {next && (
+          <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>
+            {next.pointsNeeded} more trip{next.pointsNeeded !== 1 ? 's' : ''} to {next.name}
+          </p>
+        )}
       </div>
     </Card>
   );
@@ -210,7 +243,7 @@ export default function CustomerDetail() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <StatCard icon={CalendarCheck} label="Total Bookings"  value={fullStats.status === 'loading' ? '…' : totalBookingsCount} tone="primary" />
         <StatCard icon={CalendarCheck} label="Completed"       value={fullStats.status === 'loading' ? '…' : completedCount}     tone="green" />
-        <StatCard icon={Gift}          label="Loyalty Points"  value={c.loyaltyPoints ?? 0}                                       tone="amber" />
+        <LoyaltyStatCard points={c.loyaltyPoints ?? 0} />
         <StatCard icon={Star}          label="Total Spend"     value={fullStats.status === 'loading' ? '…' : formatCurrency(totalSpend)} tone="purple" />
       </div>
 

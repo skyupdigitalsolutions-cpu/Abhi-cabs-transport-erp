@@ -15,6 +15,7 @@ import { formatDate, accountTypeLabel } from '../../utils/formatters';
 import { PERMISSIONS } from '../../constants';
 import { useAuth }   from '../../hooks/useAuth';
 import { startOfDayDate, endOfDayDate } from '../../utils/dateRange';
+import { getTierForPoints } from '../../lib/loyaltyTiers';
 
 /**
  * Customers / Clients — "All users / Registered / Guest Users" filter.
@@ -263,8 +264,25 @@ export default function Customers() {
       ),
     },
     {
-      key: 'loyaltyPoints', header: 'Loyalty Pts', sortable: true,
-      render: (r) => <span style={{ color: '#1F2937' }}>{r.loyaltyPoints ?? 0}</span>,
+      key: 'loyaltyPoints', header: 'Loyalty', sortable: true,
+      render: (r) => {
+        const pts = r.loyaltyPoints ?? 0;
+        const tier = getTierForPoints(pts);
+        return (
+          <div>
+            <span style={{ fontWeight: 600, color: '#1F2937' }}>{pts} pts</span>
+            {tier && (
+              <span style={{
+                display: 'inline-block', marginLeft: 6, padding: '2px 8px', borderRadius: 6,
+                fontSize: 10.5, fontWeight: 800, color: '#fff',
+                backgroundColor: tier.color || '#6B7280',
+              }}>
+                {tier.name}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'totalBookings', header: 'Total Bookings',
