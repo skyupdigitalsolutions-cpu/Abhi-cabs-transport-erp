@@ -1,40 +1,41 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AdminLayout    from '../components/layout/AdminLayout';
 import LoadingState   from '../components/ui/LoadingState';
 import { PERMISSIONS } from '../constants';
 import ProtectedRoute from '../components/layout/ProtectedRoute';
+import lazyRetry      from '../utils/lazyRetry';
 
 // ── Auth ──────────────────────────────────────────────────────────────────
-const AdminLogin     = lazy(() => import('../pages/auth/AdminLogin'));
-const ForgotPassword = lazy(() => import('../pages/auth/ForgotPassword'));
-const ResetPassword  = lazy(() => import('../pages/auth/ResetPassword'));
+const AdminLogin     = lazyRetry(() => import('../pages/auth/AdminLogin'));
+const ForgotPassword = lazyRetry(() => import('../pages/auth/ForgotPassword'));
+const ResetPassword  = lazyRetry(() => import('../pages/auth/ResetPassword'));
 
 // ── Admin pages ───────────────────────────────────────────────────────────
-const Dashboard      = lazy(() => import('../pages/admin/Dashboard'));
-const Clients        = lazy(() => import('../pages/admin/Clients'));
-const Customers      = lazy(() => import('../pages/admin/Customers'));
-const CustomerDetail = lazy(() => import('../pages/admin/CustomerDetail'));
-const Drivers        = lazy(() => import('../pages/admin/Drivers'));
-const Vehicles       = lazy(() => import('../pages/admin/Vehicles'));
-const Bookings       = lazy(() => import('../pages/admin/Bookings'));
-const BookingDetail  = lazy(() => import('../pages/admin/BookingDetail'));
-const Dispatch       = lazy(() => import('../pages/admin/Dispatch'));
-const Trips          = lazy(() => import('../pages/admin/Trips'));
-const LiveTracking   = lazy(() => import('../pages/admin/LiveTracking'));
-const Payments       = lazy(() => import('../pages/admin/Payments'));
-const Invoices       = lazy(() => import('../pages/admin/Invoices'));
-const Reports        = lazy(() => import('../pages/admin/Reports'));
-const Masters        = lazy(() => import('../pages/admin/Masters'));
-const Notifications  = lazy(() => import('../pages/admin/Notifications'));
-const Support        = lazy(() => import('../pages/admin/Support'));
-const BookingRequests = lazy(() => import('../pages/admin/BookingRequests'));
-const WhatsApp       = lazy(() => import('../pages/admin/WhatsApp'));
-const Discounts      = lazy(() => import('../pages/admin/Discounts'));
-const UsersRoles     = lazy(() => import('../pages/admin/UsersRoles'));
+const Dashboard      = lazyRetry(() => import('../pages/admin/Dashboard'));
+const Clients        = lazyRetry(() => import('../pages/admin/Clients'));
+const Customers      = lazyRetry(() => import('../pages/admin/Customers'));
+const CustomerDetail = lazyRetry(() => import('../pages/admin/CustomerDetail'));
+const Drivers        = lazyRetry(() => import('../pages/admin/Drivers'));
+const Vehicles       = lazyRetry(() => import('../pages/admin/Vehicles'));
+const Bookings       = lazyRetry(() => import('../pages/admin/Bookings'));
+const BookingDetail  = lazyRetry(() => import('../pages/admin/BookingDetail'));
+const Dispatch       = lazyRetry(() => import('../pages/admin/Dispatch'));
+const Trips          = lazyRetry(() => import('../pages/admin/Trips'));
+const LiveTracking   = lazyRetry(() => import('../pages/admin/LiveTracking'));
+const Payments       = lazyRetry(() => import('../pages/admin/Payments'));
+const Invoices       = lazyRetry(() => import('../pages/admin/Invoices'));
+const Reports        = lazyRetry(() => import('../pages/admin/Reports'));
+const Masters        = lazyRetry(() => import('../pages/admin/Masters'));
+const Notifications  = lazyRetry(() => import('../pages/admin/Notifications'));
+const Support        = lazyRetry(() => import('../pages/admin/Support'));
+const BookingRequests = lazyRetry(() => import('../pages/admin/BookingRequests'));
+const WhatsApp       = lazyRetry(() => import('../pages/admin/WhatsApp'));
+const Discounts      = lazyRetry(() => import('../pages/admin/Discounts'));
+const UsersRoles     = lazyRetry(() => import('../pages/admin/UsersRoles'));
 
-const NotFound       = lazy(() => import('../pages/NotFound'));
-const Unauthorized   = lazy(() => import('../pages/Unauthorized'));
+const NotFound       = lazyRetry(() => import('../pages/NotFound'));
+const Unauthorized   = lazyRetry(() => import('../pages/Unauthorized'));
 
 const P = ({ permission, children }) => (
   <ProtectedRoute permission={permission}>{children}</ProtectedRoute>
