@@ -6,7 +6,6 @@ import FilterBar     from '../../components/ui/FilterBar';
 import DataTable     from '../../components/ui/DataTable';
 import IconButton    from '../../components/ui/IconButton';
 import Badge         from '../../components/ui/Badge';
-import Button        from '../../components/ui/Button';
 import Input         from '../../components/ui/Input';
 import CustomerFormDrawer from '../../components/customer/CustomerFormDrawer';
 import { adminCustomersService, bookingService } from '../../services';
@@ -79,10 +78,27 @@ export default function Customers() {
   const [limit, setLimit]       = useState(10);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
-  const [appliedRange, setAppliedRange] = useState({ from: '', to: '' });
+
+  // The range applies as soon as a date is picked. "5 Sep to 1 Sep" can only mean 1 Sep to 5 Sep.
+  const appliedRange = useMemo(() => {
+    let f = dateFrom; let t = dateTo;
+    if (f && t && f > t) [f, t] = [t, f];
+    return { from: f, to: t };
+  }, [dateFrom, dateTo]);
+  const dateFiltering = !!(appliedRange.from || appliedRange.to);
   const [editing, setEditing]   = useState(null);
 
   const reload = useCallback(() => setReloadTick((t) => t + 1), []);
+
+  const clearAllFilters = useCallback(() => {
+    setSearch('');
+    setUserType('');
+    setAccountType('');
+    setDateFrom('');
+    setDateTo('');
+    setSortBy('createdAt');
+    setSortDir('desc');
+  }, []);
 
   // Load every page (up to the cap) for the current server-side params.
   useEffect(() => {
@@ -131,7 +147,6 @@ export default function Customers() {
     return { registeredRows: reg, guestRows: guest };
   }, [allRows]);
 
-  const dateFiltering = !!(appliedRange.from || appliedRange.to);
 
   const tabRows = useMemo(() => {
     const base = userType === 'guest' ? guestRows
@@ -310,6 +325,8 @@ export default function Customers() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name, email or phone…"
+        onClear={clearAllFilters}
+        extraActive={dateFiltering}
         filters={[
           {
             name: 'userType',
@@ -332,7 +349,9 @@ export default function Customers() {
             ],
           },
           {
+            // Sorting orders the list; it does not narrow it, so it never counts as a filter.
             name: 'sortBy',
+            ignoreActive: true,
             value: sortBy,
             onChange: (v) => setSortBy(v || 'createdAt'),
             placeholder: 'Sort by',
@@ -340,6 +359,7 @@ export default function Customers() {
           },
           {
             name: 'order',
+            ignoreActive: true,
             value: sortDir,
             onChange: (v) => setSortDir(v || 'desc'),
             placeholder: 'Order',
@@ -349,46 +369,24 @@ export default function Customers() {
             ],
           },
         ]}
+        extra={(
+          <>
+            <label className="flex items-center gap-2" style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>
+              Joined from
+              <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} style={{ width: 160 }} />
+            </label>
+            <label className="flex items-center gap-2" style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>
+              to
+              <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} style={{ width: 160 }} />
+            </label>
+            {truncated && (
+              <span className="text-xs text-gray-400">
+                Showing the first {PAGE_FETCH_LIMIT * MAX_PAGES} customers for this search — narrow the search to see others.
+              </span>
+            )}
+          </>
+        )}
       />
-
-      {/* Joined date range — applied to the loaded list */}
-      <div className="flex flex-wrap items-end gap-3 mb-4 bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex flex-col gap-1">
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined From</label>
-          <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>Joined To</label>
-          <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            // "5 Sep to 1 Sep" can only mean 1 Sep to 5 Sep.
-            let f = dateFrom; let t = dateTo;
-            if (f && t && f > t) [f, t] = [t, f];
-            setDateFrom(f); setDateTo(t);
-            setAppliedRange({ from: f, to: t });
-          }}
-          disabled={!dateFrom && !dateTo}
-        >
-          Search
-        </Button>
-        {dateFiltering && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => { setDateFrom(''); setDateTo(''); setAppliedRange({ from: '', to: '' }); }}
-          >
-            Clear
-          </Button>
-        )}
-        {truncated && (
-          <span className="text-xs text-gray-400">
-            Showing the first {PAGE_FETCH_LIMIT * MAX_PAGES} customers for this search — narrow the search to see others.
-          </span>
-        )}
-      </div>
 
       <DataTable
         columns={columns}

@@ -1,19 +1,36 @@
-import { SlidersHorizontal, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import SearchInput from './SearchInput';
 import Select from './Select';
 
 /**
  * FilterBar — search + a row of filter dropdowns inside an attractive,
  * card-like surface. Custom Select underneath means no native browser
- * <select> popups; the active-filter count badge and one-click "Clear"
- * make it obvious at a glance what's currently narrowing the list.
+ * <select> popups. A one-click "Clear" appears while anything is narrowing the
+ * list.
+ *
+ * Props:
+ *   filters[i].ignoreActive  true for controls that ORDER the list (sort by /
+ *                            order) rather than narrow it — they never count as
+ *                            "a filter is on", so they don't show Clear.
+ *   extraActive              true when something in `extra` (e.g. a date range)
+ *                            is narrowing the list.
+ *   onClear                  resets EVERYTHING the page owns (search, filters,
+ *                            extra controls, sort). Without it, Clear resets the
+ *                            filters and the search box.
  */
 export default function FilterBar({
   search, onSearchChange, searchPlaceholder,
-  filters = [], extra, className = '',
+  filters = [], extra, extraActive = false, onClear, className = '',
 }) {
-  const activeCount = filters.filter((f) => f.value && f.value !== '').length;
-  const clearAll = () => filters.forEach((f) => { if (f.value) f.onChange(''); });
+  // Only things that NARROW the list count — a default sort is not a filter.
+  const narrowing = filters.filter((f) => !f.ignoreActive && f.value && f.value !== '').length;
+  const hasSearch = typeof search === 'string' && search.trim() !== '';
+  const anyActive = narrowing > 0 || hasSearch || Boolean(extraActive);
+  const clearAll = () => {
+    if (onClear) { onClear(); return; }
+    filters.forEach((f) => { if (!f.ignoreActive && f.value) f.onChange(''); });
+    if (hasSearch) onSearchChange?.('');
+  };
 
   return (
     <div
@@ -25,25 +42,6 @@ export default function FilterBar({
       }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-        {filters.length > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 12, fontWeight: 700, color: '#5A5A5A', whiteSpace: 'nowrap',
-          }}>
-            <SlidersHorizontal size={14} style={{ color: '#9A9A9A' }} />
-            Filters
-            {activeCount > 0 && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                minWidth: 18, height: 18, borderRadius: 999, padding: '0 5px',
-                backgroundColor: '#FFC107', color: '#111111', fontSize: 10.5, fontWeight: 800,
-              }}>
-                {activeCount}
-              </span>
-            )}
-          </div>
-        )}
-
         {onSearchChange && (
           <SearchInput
             value={search}
@@ -64,7 +62,7 @@ export default function FilterBar({
           />
         ))}
 
-        {activeCount > 0 && (
+        {anyActive && (
           <button
             onClick={clearAll}
             style={{
