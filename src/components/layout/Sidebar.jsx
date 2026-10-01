@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import * as Icons from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 
 const SIDEBAR_W = 240;
 
@@ -17,7 +18,7 @@ const SIDEBAR_W = 240;
  * and mouseleave then set it to transparent — which is why the selected
  * page stopped looking selected the moment you moused over it to click.
  */
-function NavItem({ item, onCloseMobile }) {
+function NavItem({ item, badge, onCloseMobile }) {
   const [hovered, setHovered] = useState(false);
   const Icon = Icons[item.icon] || Icons.Circle;
 
@@ -41,14 +42,24 @@ function NavItem({ item, onCloseMobile }) {
       })}
     >
       <Icon size={15} strokeWidth={2} />
-      {item.label}
+      <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
+      {badge > 0 && (
+        <span aria-label={`${badge} new`} style={{
+          minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10,
+          backgroundColor: '#EF4444', color: '#fff', fontSize: 11.5, fontWeight: 800,
+          display: 'grid', placeItems: 'center', lineHeight: 1,
+        }}>{badge > 99 ? '99+' : badge}</span>
+      )}
     </NavLink>
   );
 }
 
 export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
   const { hasPermission } = useAuth();
+  const { newRequestCount } = useAdminRealtimeContext();
   const items = nav.filter((item) => hasPermission(item.permission));
+  // Live counts shown next to a nav item.
+  const badges = { '/admin/booking-requests': newRequestCount };
 
   const content = (
     <>
@@ -82,7 +93,7 @@ export default function Sidebar({ nav, mobileOpen, onCloseMobile }) {
       {/* Nav items */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {items.map((item) => (
-          <NavItem key={item.to} item={item} onCloseMobile={onCloseMobile} />
+          <NavItem key={item.to} item={item} badge={badges[item.to] || 0} onCloseMobile={onCloseMobile} />
         ))}
       </nav>
 

@@ -16,15 +16,25 @@
  *   trip:status        — a booking's status changed
  *   booking:allocated  — a driver/vehicle was assigned
  *   payment:received   — a payment came in
+ *
+ * Booking requests are NOT a socket event on the current backend (it emits
+ * booking_request.created internally but never forwards it to sockets), so
+ * new requests are detected by polling GET /admin/booking-requests — see
+ * pollRequests below.
  */
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useToast } from '../hooks/useToast';
 import { API_BASE_URL, USE_MOCK, apiClient } from '../services/apiClient';
 import { getToken } from '../services/authStorage';
 import { contactService } from '../services';
+import { useAuth } from '../hooks/useAuth';
+import { PERMISSIONS } from '../constants';
 import { playNotificationSound } from '../lib/notificationSound';
 
-const AdminRealtimeContext = createContext({ connected: false, feed: [], lastEventId: null });
+const AdminRealtimeContext = createContext({
+  connected: false, feed: [], lastEventId: null,
+  newRequestCount: 0, requestTick: 0, refreshRequestCount: () => {},
+});
 
 const MAX_FEED_ITEMS = 30;
 const FEED_STORAGE_KEY = 'abhi_realtime_feed';
@@ -47,6 +57,7 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
   const [connected, setConnected] = useState(false);
   const [feed, setFeed] = useState(loadPersistedFeed);
 
+
   // FIX: nothing in this app ever played a sound — every event only ever
   // produced a toast + a feed entry. pushFeedItem is the one place every
   // realtime event (booking created, attempted, allocated, trip status,
@@ -61,6 +72,71 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
     });
     playNotificationSound();
   }, []);
+
+  // ── Booking requests (polling) ────────────────────────────────────────
+  // The backend has no socket event for a new booking request, so this polls
+  // GET /admin/booking-requests?status=NEW (BOOKING_MANAGE) every 30 s:
+  //   • newRequestCount  — server total of NEW requests, for the sidebar badge
+  //   • a NEW id not seen before → toast + sound + feed entry (pushFeedItem)
+  //   • requestTick bumps so the Booking Requests page reloads its list
+  // The first poll only records what already exists, so nothing toasts on load.
+  // The backend lists the queue OLDEST first (max 100 per call), so the newest
+  // requests are read from the END of the list using skip.
+  const { hasPermission } = useAuth();
+  const canSeeRequests = hasPermission(PERMISSIONS.BOOKINGS_VIEW);
+  const [newRequestCount, setNewRequestCount] = useState(0);
+  const [requestTick, setRequestTick] = useState(0);
+  const seenRequestIdsRef = useRef(new Set());
+  const requestPollFirstRunRef = useRef(true);
+
+  const pollRequests = useCallback(async () => {
+    if (!canSeeRequests || USE_MOCK) return;
+    try {
+      const head = await apiClient.get('/admin/booking-requests', { params: { status: 'NEW', take: 1 } });
+      const total = Number(head?.total ?? 0);
+      setNewRequestCount(total);
+      if (total === 0) { requestPollFirstRunRef.current = false; return; }
+
+      const take = 50;
+      const page = await apiClient.get('/admin/booking-requests', {
+        params: { status: 'NEW', take, skip: Math.max(total - take, 0) },
+      });
+      const rows = page?.requests ?? [];
+
+      if (requestPollFirstRunRef.current) {
+        rows.forEach((r) => seenRequestIdsRef.current.add(r.id));
+        requestPollFirstRunRef.current = false;
+        return;
+      }
+      const fresh = rows.filter((r) => !seenRequestIdsRef.current.has(r.id));
+      fresh.forEach((r) => {
+        seenRequestIdsRef.current.add(r.id);
+        const pickup = r.pickupAddress ? String(r.pickupAddress).split(',')[0] : '';
+        const drop = r.dropAddress ? String(r.dropAddress).split(',')[0] : '';
+        const route = pickup && drop ? `${pickup} → ${drop}` : pickup;
+        const parts = [r.contactName, route, r.vehicleClass].filter(Boolean);
+        toast.info(`New booking request ${r.requestNumber || ''}${parts.length ? ` — ${parts.join(' · ')}` : ''}`, { duration: 8000 });
+        pushFeedItem({
+          kind: 'booking_request:created',
+          requestId: r.id, requestNumber: r.requestNumber, tripType: r.tripType,
+          vehicleClass: r.vehicleClass, pickupAddress: r.pickupAddress, dropAddress: r.dropAddress,
+          pickupAt: r.pickupAt, returnAt: r.returnAt, contactName: r.contactName, at: r.createdAt,
+        });
+      });
+      if (fresh.length) setRequestTick((t) => t + 1);
+    } catch { /* best-effort: the next poll retries */ }
+  }, [canSeeRequests, pushFeedItem, toast]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    pollRequests();
+    const interval = setInterval(pollRequests, 30000);
+    return () => clearInterval(interval);
+  }, [enabled, pollRequests]);
+
+  // Called after a status change on the Booking Requests page so the badge
+  // drops immediately instead of at the next poll.
+  const refreshRequestCount = pollRequests;
 
   // NEW: abandoned-checkout notifications, via polling — NOT a real-time
   // push. The customer website logs an abandoned checkout as a genuine
@@ -234,7 +310,7 @@ export function AdminRealtimeProvider({ children, enabled = true }) {
   const lastEventId = feed[0]?.id || null;
 
   return (
-    <AdminRealtimeContext.Provider value={{ connected, feed, lastEventId }}>
+    <AdminRealtimeContext.Provider value={{ connected, feed, lastEventId, newRequestCount, requestTick, refreshRequestCount }}>
       {children}
     </AdminRealtimeContext.Provider>
   );

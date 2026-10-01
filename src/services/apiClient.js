@@ -278,6 +278,10 @@ export const apiClient = {
   put: (path, body, opts) => request(path, { ...opts, method: 'PUT', body }),
   patch: (path, body, opts) => request(path, { ...opts, method: 'PATCH', body }),
   del: (path, opts) => request(path, { ...opts, method: 'DELETE' }),
+  // Alias. surgeService, discountService and the temporary-driver removal all
+  // call apiClient.delete(...); without this they threw "apiClient.delete is
+  // not a function" before any request was sent.
+  delete: (path, opts) => request(path, { ...opts, method: 'DELETE' }),
   // Real file upload — pass a FormData instance (append the file under
   // whatever field name the backend route expects, e.g. 'file', plus any
   // text fields like docType). See the isFormData branch in request() above

@@ -27,7 +27,7 @@ const FALLBACK_CLASSES = [
   'fortuner', 'mercedes-e', 'tempo-12', 'tempo-17',
   'urbania-13', 'urbania-16', 'urbania-maharaja',
   'benz-22', 'benz-28', 'benz-33',
-  'hatchback', 'suv', 'tempo', 'bus', 'luxury',
+  'hatchback', 'suv', 'tempo',
 ];
 
 function unwrap(res) {

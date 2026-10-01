@@ -7,7 +7,7 @@ import Button from '../ui/Button';
 import Alert from '../ui/Alert';
 import { useForm } from '../../hooks/useForm';
 import { required } from '../../utils/validators';
-import { adminCustomersService } from '../../services';
+import { adminCustomersService, vehicleCatalogService } from '../../services';
 import { VEHICLE_CLASSES, TRIP_TYPES } from '../../constants';
 
 /**
@@ -16,7 +16,12 @@ import { VEHICLE_CLASSES, TRIP_TYPES } from '../../constants';
  * BOOKING_MANAGE can book on behalf of any customer this way; see
  * booking.controller.js's exports.create). Fields:
  *   customerId, cityId, vehicleClass, tripType, pickup:{address},
- *   drop:{address}, pickupAt, scheduled, paymentMode.
+ *   drop:{address}, pickupAt, returnAt (ROUND_TRIP only), scheduled, paymentMode.
+ *
+ * ROUND TRIP HAS A RETURN DATE, NOT A RETURN TIME. The backend
+ * (lib/returnDate.js) accepts a bare YYYY-MM-DD and stores it as the end of
+ * that day; the fare counts calendar days, so a clock time never changed the
+ * price. It is REQUIRED for a round trip — without it the booking is refused.
  * There is no "cargo type" or "weight" on this backend — that was invented
  * in an earlier build for a freight-transport concept this business
  * doesn't have. The server always recalculates the fare itself; whatever
@@ -25,6 +30,19 @@ import { VEHICLE_CLASSES, TRIP_TYPES } from '../../constants';
 const DEFAULT_CITY_ID = 1; // only Bengaluru is seeded on this backend today
 // Shared with Masters.jsx and Vehicles.jsx via constants/index.js — these
 // were three separate hardcoded copies that could silently drift apart.
+const EMPTY = {
+  customerId: '', vehicleClass: '', tripType: 'ONE_WAY',
+  pickup: '', drop: '', date: '', time: '', returnDate: '', paymentMode: 'PARTIAL',
+};
+
+// Return date: required for a round trip, same day as pickup or later.
+const returnDateRule = (value, values) => {
+  if (values.tripType !== 'ROUND_TRIP') return null;
+  if (!value) return 'Return date is required for a round trip';
+  if (values.date && value < values.date) return 'Return date cannot be before the pickup date';
+  return null;
+};
+
 const PAYMENT_MODES = [
   { value: 'FULL',    label: 'Full payment now' },
   { value: 'PARTIAL', label: 'Partial advance' },
@@ -34,6 +52,20 @@ const PAYMENT_MODES = [
 export default function BookingFormDrawer({ open, onClose, onSubmit }) {
   const [customers, setCustomers] = useState([]);
   const [customerSearch, setCustomerSearch] = useState('');
+  // Live vehicle classes from the catalogue (retired ones like `sedan` are
+  // excluded); the constants list is only the offline fallback.
+  const [classOptions, setClassOptions] = useState(
+    VEHICLE_CLASSES.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+  );
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    vehicleCatalogService.classOptions().then((opts) => {
+      if (cancelled || !opts?.length) return;
+      setClassOptions(opts.filter((o) => o.isActive !== false).map((o) => ({ value: o.value, label: o.label })));
+    });
+    return () => { cancelled = true; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -43,16 +75,15 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
   }, [open, customerSearch]);
 
   const { values, errors, touched, submitting, submitError, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
-    initialValues: {
-      customerId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
-      pickup: '', drop: '', date: '', time: '', paymentMode: 'PARTIAL',
-    },
+    initialValues: EMPTY,
     schema: {
       customerId: [required('Customer')],
       pickup: [required('Pickup location')],
       drop: [required('Drop location')],
       date: [required('Pickup date')],
       time: [required('Pickup time')],
+      vehicleClass: [required('Vehicle class')],
+      returnDate: [returnDateRule],
     },
     onSubmit: async (vals) => {
       const pickupAt = new Date(`${vals.date}T${vals.time}:00`);
@@ -64,6 +95,8 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
         pickup: { address: vals.pickup },
         drop: { address: vals.drop },
         pickupAt: pickupAt.toISOString(),
+        // Date only — see the note at the top of this file.
+        ...(vals.tripType === 'ROUND_TRIP' && vals.returnDate && { returnAt: vals.returnDate }),
         scheduled: true,
         paymentMode: vals.paymentMode,
       });
@@ -73,7 +106,7 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
 
   useEffect(() => {
     if (!open) {
-      setValues({ customerId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY', pickup: '', drop: '', date: '', time: '', paymentMode: 'PARTIAL' });
+      setValues(EMPTY);
       setCustomerSearch('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,8 +147,8 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
         <FormField label="Trip type">
           <Select options={TRIP_TYPES} {...field('tripType')} />
         </FormField>
-        <FormField label="Vehicle class">
-          <Select options={VEHICLE_CLASSES.map((c) => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))} {...field('vehicleClass')} />
+        <FormField label="Vehicle class" required error={touched.vehicleClass && errors.vehicleClass}>
+          <Select options={classOptions} placeholder="Select vehicle" {...field('vehicleClass')} />
         </FormField>
         <FormField label="Pickup location" required error={touched.pickup && errors.pickup}>
           <Input placeholder="e.g. Koramangala, Bengaluru" {...field('pickup')} />
@@ -131,6 +164,12 @@ export default function BookingFormDrawer({ open, onClose, onSubmit }) {
             <Input type="time" {...field('time')} />
           </FormField>
         </div>
+        {values.tripType === 'ROUND_TRIP' && (
+          <FormField label="Return date" required error={touched.returnDate && errors.returnDate}
+            hint="Date only. The fare counts calendar days, so no return time is needed.">
+            <Input type="date" min={values.date || undefined} {...field('returnDate')} />
+          </FormField>
+        )}
         <FormField label="Payment mode" hint="The fare itself is always calculated by the server, never entered here.">
           <Select options={PAYMENT_MODES} {...field('paymentMode')} />
         </FormField>

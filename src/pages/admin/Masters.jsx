@@ -16,6 +16,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Alert from '../../components/ui/Alert';
 import Checkbox from '../../components/ui/Checkbox';
 import SearchInput from '../../components/ui/SearchInput';
+import Switch from '../../components/ui/Switch';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
 import { apiClient } from '../../services/apiClient';
@@ -41,10 +42,14 @@ const INDIAN_STATES = [
 ].sort();
 
 const EMPTY_RATE_CARD = {
-  _state: '', cityId: '', vehicleClass: 'sedan', tripType: 'ONE_WAY',
-  baseFare: '', perKm: '', minimumKm: '',
+  _state: '', cityId: '', vehicleClass: '', tripType: 'ONE_WAY',
+  perKm: '', minimumKm: '',
   perMinute: '', cancellationFee: '',
-  returnEmptyPct: '',
+  maxSurge: '',
+  // "Also price the other trip type" -- create only. A vehicle carries TWO
+  // per-km rates: one-way (all-in, the empty return is priced into the rate)
+  // and round trip (lower, both legs carry the passenger).
+  pairEnabled: false, pairPerKm: '', pairMinKmPerDay: '',
   minKmPerDay: '', waitingPerHour: '', freeWaitingMin: '',
   driverAllowance: '',
   nightAllowance: '', nightChargePct: '', nightStartHour: 21, nightStartMinute: 55, nightEndHour: 6, nightEndMinute: 0,
@@ -61,7 +66,7 @@ const ALL_CITIES = '__ALL_CITIES__';
 // fields (city + vehicleClass + tripType + baseFare/perKm/minimumKm, plus
 // optional outstation/round-trip/night/airport/hourly/surge fields).
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClose }) {
+function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubmit, onClose }) {
   const isEdit = !!initial;
   const toast = useToast();
   const [form, setForm] = useState(() => {
@@ -116,6 +121,9 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
     vehicleCatalogService.rateCardOptions().then(({ classes, tripTypes }) => {
       if (cancelled) return;
       setClassOptions(classes);
+      // No hardcoded default class (the old 'sedan' is retired): pick the
+      // first live class so a new card never posts an empty vehicleClass.
+      if (classes.length) setForm((f) => (f.vehicleClass ? f : { ...f, vehicleClass: classes[0].value }));
       // Keep the friendly labels from TRIP_TYPES where they exist, but let the
       // backend decide WHICH trip types are offered.
       setTripTypeOptions(tripTypes.map((t) => ({
@@ -127,6 +135,20 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
   }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // One-way and round trip are separate rate cards with independent per-km
+  // rates. When creating one, offer to create its counterpart in the same go.
+  const pairType = form.tripType === 'ONE_WAY' ? 'ROUND_TRIP' : form.tripType === 'ROUND_TRIP' ? 'ONE_WAY' : null;
+  const pairLabel = pairType === 'ROUND_TRIP' ? 'Round trip' : 'One way';
+  const existingPair = !isEdit && pairType && form.cityId && form.cityId !== ALL_CITIES && findCard
+    ? findCard(Number(form.cityId), form.vehicleClass, pairType)
+    : null;
+  const perKmHint = {
+    ONE_WAY: 'All-in one-way rate. The empty return is priced into this rate — a one-way is billed for the distance driven, once.',
+    ROUND_TRIP: 'Round-trip rate. The route is billed both ways (there + back) at this rate, so it is usually lower than the one-way rate.',
+    AIRPORT: 'Airport transfer rate per KM.',
+    HOURLY: 'Used only for distance beyond the hourly allowance.',
+  }[form.tripType];
 
   const submit = async () => {
     // City and per-KM are required; minimumKm is optional.
@@ -143,6 +165,10 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
       }
     }
     if (form.perKm === '') nextErrors.perKm = 'Per-KM rate is required.';
+    if (!isEdit && !form.vehicleClass) nextErrors.vehicleClass = 'Pick a vehicle class.';
+    if (!isEdit && pairType && form.pairEnabled && form.pairPerKm === '') {
+      nextErrors.pairPerKm = `Enter the ${pairLabel.toLowerCase()} per-KM rate, or untick the box.`;
+    }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       // A toast as well: the City field sits at the top of a scrolling form and
@@ -153,11 +179,11 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
 
     setLoading(true);
     try {
-      // baseFare: field removed from UI — always 0.
       // minimumKm: OPTIONAL. Left blank, it's simply not sent — the
       // database defaults it to 0, meaning no minimum distance is enforced.
+      // baseFare, minimumFare and returnEmptyPct are retired on the backend
+      // (Zod strips them), so they are no longer sent at all.
       const base = {
-        baseFare: Number(form.baseFare) || 0,
         perKm: Number(form.perKm),
         ...(form.minimumKm !== '' && { minimumKm: Number(form.minimumKm) }),
         // Driver allowance is optional and available in BOTH Simple and Advanced
@@ -167,7 +193,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
       const advanced = mode === 'advanced' ? {
         ...(form.perMinute !== ''        && { perMinute: Number(form.perMinute) }),
         ...(form.cancellationFee !== ''  && { cancellationFee: Number(form.cancellationFee) }),
-        ...(form.returnEmptyPct !== ''   && { returnEmptyPct: Number(form.returnEmptyPct) }),
+        ...(form.maxSurge !== ''         && { maxSurge: Number(form.maxSurge) }),
         ...(form.minKmPerDay !== ''      && { minKmPerDay: Number(form.minKmPerDay) }),
         ...(form.waitingPerHour !== ''   && { waitingPerHour: Number(form.waitingPerHour) }),
         ...(form.freeWaitingMin !== ''   && { freeWaitingMin: Number(form.freeWaitingMin) }),
@@ -196,6 +222,15 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
           tripType: form.tripType,
           ...base,
           ...advanced,
+          // The sibling card for the other trip type, created right after this
+          // one by the parent. Shares minimum KM and driver allowance.
+          ...(pairType && form.pairEnabled && form.pairPerKm !== '' && {
+            _pair: {
+              tripType: pairType,
+              perKm: Number(form.pairPerKm),
+              ...(pairType === 'ROUND_TRIP' && form.pairMinKmPerDay !== '' && { minKmPerDay: Number(form.pairMinKmPerDay) }),
+            },
+          }),
         });
       }
     } finally {
@@ -271,7 +306,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
             </FormField>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Vehicle class" required>
+            <FormField label="Vehicle class" required error={errors.vehicleClass}>
               {isEdit ? <Input disabled value={form.vehicleClass} /> : (
                 <Select value={form.vehicleClass} onChange={(e) => set('vehicleClass', e.target.value)}
                   options={classOptions} />
@@ -306,7 +341,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
             💰 Fare (required)
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Per KM (₹)" required error={errors.perKm}>
+            <FormField label={`${TRIP_TYPES.find((t) => t.value === form.tripType)?.label || ''} per KM (₹)`.trim()} required error={errors.perKm} hint={perKmHint}>
               <Input type="number" min="0" value={form.perKm} onChange={(e) => { set('perKm', e.target.value); setErrors((er) => ({ ...er, perKm: undefined })); }} placeholder="e.g. 14" />
             </FormField>
             <FormField label="Minimum KM" hint={isEdit ? 'Optional. Left blank on an edit, the existing minimum KM is kept unchanged.' : 'Optional. The minimum chargeable distance for this rate card. Left blank, no minimum is enforced.'}>
@@ -317,6 +352,42 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
             </FormField>
           </div>
         </div>
+
+        {/* The other trip type's per-km rate — create only */}
+        {!isEdit && pairType && (
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+            <Checkbox
+              checked={form.pairEnabled}
+              onChange={(e) => set('pairEnabled', e.target.checked)}
+              label={`Also set the ${pairLabel.toLowerCase()} rate for this vehicle`}
+            />
+            <p className="text-xs mt-1.5" style={{ color: '#166534', marginLeft: 30 }}>
+              A vehicle has two per-KM prices: one way (e.g. ₹19/km, billed once) and round trip
+              (e.g. ₹12/km, billed both ways). This creates the {pairLabel.toLowerCase()} rate card
+              alongside this one, with the same minimum KM and driver allowance.
+            </p>
+            {existingPair && (
+              <p className="text-xs mt-1.5 font-semibold" style={{ color: '#92400E', marginLeft: 30 }}>
+                This city already has a {pairLabel.toLowerCase()} card for this vehicle at ₹{existingPair.perKm}/km.
+                Ticking this creates a newer one that replaces it for new quotes.
+              </p>
+            )}
+            {form.pairEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <FormField label={`${pairLabel} per KM (₹)`} required error={errors.pairPerKm}>
+                  <Input type="number" min="0" value={form.pairPerKm}
+                    onChange={(e) => { set('pairPerKm', e.target.value); setErrors((er) => ({ ...er, pairPerKm: undefined })); }}
+                    placeholder={pairType === 'ROUND_TRIP' ? 'e.g. 12' : 'e.g. 19'} />
+                </FormField>
+                {pairType === 'ROUND_TRIP' && (
+                  <FormField label="Round trip min KM / day" hint="Optional. Guaranteed daily distance on multi-day round trips.">
+                    <Input type="number" min="0" value={form.pairMinKmPerDay} onChange={(e) => set('pairMinKmPerDay', e.target.value)} placeholder="e.g. 300 (optional)" />
+                  </FormField>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mode toggle */}
         <div className="flex items-center gap-2 rounded-xl border p-1 w-fit" style={{ borderColor: '#E5E7EB' }}>
@@ -343,8 +414,8 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], onSubmit, onClos
                 🛣️ Outstation &amp; round trip
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <FormField label="Return-empty % (one way)" hint="Outstation one-way only">
-                  <Input type="number" min="0" max="100" value={form.returnEmptyPct} onChange={(e) => set('returnEmptyPct', e.target.value)} />
+                <FormField label="Surge cap (×)" hint="Max metro surge on this card. 1 = never surge, 2 = legal max (default).">
+                  <Input type="number" min="1" max="2" step="0.05" value={form.maxSurge} onChange={(e) => set('maxSurge', e.target.value)} placeholder="2" />
                 </FormField>
                 <FormField label="Min KM / day" hint="Round trip only">
                   <Input type="number" min="0" value={form.minKmPerDay} onChange={(e) => set('minKmPerDay', e.target.value)} />
@@ -443,15 +514,19 @@ function money(v) {
   return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : '—';
 }
 
-function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
+function VehicleRateCard({ rate, cityName, pairRate, onEdit, onDelete, onToggle }) {
   const [expanded, setExpanded] = useState(false);
   const [catBg, catColor] = CLASS_COLORS[rate.vehicleClass] || ['#F7F8FC', '#6B7280'];
   const tripLabel = TRIP_TYPES.find((t) => t.value === rate.tripType)?.label || rate.tripType;
+  // One-way and round trip are the two per-km prices of the same vehicle;
+  // show the counterpart side by side so both can be checked at a glance.
+  const pairable = rate.tripType === 'ONE_WAY' || rate.tripType === 'ROUND_TRIP';
+  const pairTripLabel = rate.tripType === 'ONE_WAY' ? 'Round Trip' : 'One Way';
 
   const advancedTags = [
     Number(rate.driverAllowance) > 0 && 'Driver allowance',
     (Number(rate.nightAllowance) > 0 || Number(rate.nightChargePct) > 0) && 'Night charge',
-    Number(rate.returnEmptyPct) > 0 && 'Return-empty %',
+    rate.maxSurge != null && Number(rate.maxSurge) < 2 && (Number(rate.maxSurge) <= 1 ? 'No surge' : `Surge cap ${Number(rate.maxSurge)}×`),
     Number(rate.minKmPerDay) > 0 && 'Min km/day',
     Number(rate.airportSurcharge) > 0 && 'Airport surcharge',
     Number(rate.hourlyRate) > 0 && 'Hourly rate',
@@ -492,11 +567,20 @@ function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-0" style={{ borderTop: '1px solid #F7F8FC' }}>
+      <div className={`grid ${pairable ? 'grid-cols-3' : 'grid-cols-2'} gap-0`} style={{ borderTop: '1px solid #F7F8FC' }}>
         <div className="p-3" style={{ borderRight: '1px solid #F7F8FC' }}>
-          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#F59E0B' }}>Per KM</p>
+          <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#F59E0B' }}>{tripLabel} / KM</p>
           <p className="text-base font-black" style={{ color: '#1F2937' }}>{money(rate.perKm)}</p>
+          {rate.tripType === 'ONE_WAY' && <p className="text-[11px]" style={{ color: '#6B7280' }}>Billed once, no return charge</p>}
+          {rate.tripType === 'ROUND_TRIP' && <p className="text-[11px]" style={{ color: '#6B7280' }}>Billed both ways</p>}
         </div>
+        {pairable && (
+          <div className="p-3" style={{ borderRight: '1px solid #F7F8FC' }}>
+            <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#0f766e' }}>{pairTripLabel} / KM</p>
+            <p className="text-base font-black" style={{ color: pairRate ? '#1F2937' : '#9CA3AF' }}>{pairRate ? money(pairRate.perKm) : 'Not set'}</p>
+            <p className="text-[11px]" style={{ color: '#6B7280' }}>{pairRate ? 'Same vehicle & city' : `Add a ${pairTripLabel.toLowerCase()} card`}</p>
+          </div>
+        )}
         <div className="p-3">
           <p className="text-[11.5px] font-bold uppercase tracking-wider mb-1" style={{ color: '#7c3aed' }}>Min KM</p>
           <p className="text-base font-black" style={{ color: '#1F2937' }}>{Number(rate.minimumKm) > 0 ? `${rate.minimumKm} km` : '—'}</p>
@@ -519,7 +603,7 @@ function VehicleRateCard({ rate, cityName, onEdit, onDelete, onToggle }) {
                 <RateRow icon="🌙" label={`Night (${String(rate.nightStartHour).padStart(2, '0')}:${String(rate.nightStartMinute).padStart(2, '0')}–${String(rate.nightEndHour).padStart(2, '0')}:${String(rate.nightEndMinute).padStart(2, '0')})`}
                   value={`${money(rate.nightAllowance)}${Number(rate.nightChargePct) > 0 ? ` + ${rate.nightChargePct}%` : ''}`} />
               )}
-              {Number(rate.returnEmptyPct) > 0 && <RateRow icon="↩" label="Return-empty %" value={`${rate.returnEmptyPct}%`} />}
+              {rate.maxSurge != null && Number(rate.maxSurge) < 2 && <RateRow icon="⚡" label="Surge cap" value={Number(rate.maxSurge) <= 1 ? 'Surge off for this card' : `${Number(rate.maxSurge)}× max`} />}
               {Number(rate.minKmPerDay) > 0 && <RateRow icon="🗓" label="Min km/day" value={`${rate.minKmPerDay} km`} />}
               {Number(rate.airportSurcharge) > 0 && <RateRow icon="✈️" label="Airport surcharge" value={money(rate.airportSurcharge)} />}
               {Number(rate.hourlyRate) > 0 && <RateRow icon="⏱" label="Hourly rate" value={`${money(rate.hourlyRate)}/hr · ${rate.hourlyKmPerHour} km/hr included`} />}
@@ -607,9 +691,47 @@ function VehicleRatesTab() {
 
   const cityLabel = (id) => cityName(id) || `city #${id}`;
 
+  // The live card for a city + class + trip type: the newest active one whose
+  // effectiveFrom has passed — the same rule the quote engine uses.
+  const findCard = useCallback((cityId, vehicleClass, tripType) => {
+    const now = Date.now();
+    let best = null;
+    for (const r of rates) {
+      if (!r.isActive || r.cityId !== cityId || r.vehicleClass !== vehicleClass || r.tripType !== tripType) continue;
+      const t = new Date(r.effectiveFrom).getTime();
+      if (t > now) continue;
+      if (!best || t > new Date(best.effectiveFrom).getTime()) best = r;
+    }
+    return best;
+  }, [rates]);
+
+  const pairOf = (rate) => {
+    if (rate.tripType !== 'ONE_WAY' && rate.tripType !== 'ROUND_TRIP') return null;
+    return findCard(rate.cityId, rate.vehicleClass, rate.tripType === 'ONE_WAY' ? 'ROUND_TRIP' : 'ONE_WAY');
+  };
+
+  // Creates the counterpart trip-type card after the main one succeeded.
+  // Returns a short summary for the toast; never throws.
+  const createPair = async (body, pair, cityIds) => {
+    const pairBody = { ...body, ...pair };
+    const pairName = pair.tripType === 'ROUND_TRIP' ? 'round-trip' : 'one-way';
+    try {
+      if (cityIds) {
+        const res = await fareConfigService.createForCities(pairBody, cityIds);
+        if (res.failed.length) toast.error(`The ${pairName} rate failed for ${res.failed.map((f) => cityLabel(f.cityId)).join(', ')}. Add it from "Add Rate Card".`);
+        return res.created.length ? ` + ${pairName} rate ₹${pair.perKm}/km` : '';
+      }
+      await fareConfigService.create(pairBody);
+      return ` + ${pairName} rate ₹${pair.perKm}/km`;
+    } catch (e) {
+      toast.error(`Main rate saved, but the ${pairName} rate was not: ${e.message || 'unknown error'}. Add it from "Add Rate Card".`);
+      return '';
+    }
+  };
+
   const handleSubmit = async (values) => {
     // _cityIds / _stateName / _alsoUpdateIds are instructions from the form, not fields the API accepts.
-    const { _cityIds, _stateName, _alsoUpdateIds, ...body } = values;
+    const { _cityIds, _stateName, _alsoUpdateIds, _pair, ...body } = values;
     try {
       if (editing) {
         await fareConfigService.update(editing.id, body);
@@ -631,9 +753,10 @@ function VehicleRatesTab() {
         // "All cities in <State>": one identical card per city.
         const res = await fareConfigService.createForCities(body, _cityIds);
         const noun = (n) => `${n} cit${n === 1 ? 'y' : 'ies'}`;
+        const pairNote = _pair && res.created.length > 0 ? await createPair(body, _pair, res.created) : '';
         if (res.created.length > 0 || res.skipped.length > 0) {
           const parts = [];
-          if (res.created.length > 0) parts.push(`created for ${noun(res.created.length)} in ${_stateName}`);
+          if (res.created.length > 0) parts.push(`created for ${noun(res.created.length)} in ${_stateName}${pairNote}`);
           if (res.skipped.length > 0) parts.push(`${noun(res.skipped.length)} already had this rate card (${res.skipped.map(cityLabel).join(', ')}) \u2014 left unchanged`);
           toast.success(`Rate card ${parts.join('; ')}`);
         }
@@ -644,7 +767,8 @@ function VehicleRatesTab() {
         }
       } else {
         await fareConfigService.create(body);
-        toast.success('Rate card created \u2014 new quotes use this immediately');
+        const pairNote = _pair ? await createPair(body, _pair) : '';
+        toast.success(`Rate card created${pairNote} \u2014 new quotes use this immediately`);
       }
       setEditing(null); setFormOpen(false); reload();
     } catch (e) {
@@ -826,6 +950,7 @@ function VehicleRatesTab() {
           {filtered.map(rate => (
             <VehicleRateCard
               key={rate.id} rate={rate} cityName={cityName(rate.cityId)}
+              pairRate={pairOf(rate)}
               onEdit={r => { setEditing(r); setFormOpen(true); }}
               onDelete={r => setDeleting(r)}
               onToggle={handleToggle}
@@ -846,6 +971,7 @@ function VehicleRatesTab() {
           initial={editing}
           cities={cities}
           stateSiblings={stateSiblings}
+          findCard={findCard}
           onSubmit={handleSubmit}
           onClose={() => { setFormOpen(false); setEditing(null); }}
         />
@@ -867,46 +993,119 @@ function VehicleRatesTab() {
 // ── Surge Pricing Tab ─────────────────────────────────────────────────────
 const TIERS = ['METRO', 'TALUKA', 'VILLAGE'];
 const TIER_META = {
-  METRO:   { icon: '🏙️', label: 'Metro', desc: 'City / urban', bg: '#EFF6FF', color: '#1D4ED8', tone: 'blue' },
-  TALUKA:  { icon: '🏘️', label: 'District / Taluka', desc: 'District / semi-urban', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
-  VILLAGE: { icon: '🌾', label: 'Village', desc: 'Rural area', bg: '#F0FDF4', color: '#15803D', tone: 'green' },
+  METRO:   { icon: '🏙️', label: 'Metro', desc: 'City / urban (surge applies)', bg: '#EFF6FF', color: '#1D4ED8', tone: 'blue' },
+  TALUKA:  { icon: '🏘️', label: 'District / Taluka', desc: 'District / semi-urban (no surge)', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
+  VILLAGE: { icon: '🌾', label: 'Village', desc: 'Rural area (no surge)', bg: '#F0FDF4', color: '#15803D', tone: 'green' },
 };
 const TIER_OPTIONS = TIERS.map((t) => ({ value: t, label: `${TIER_META[t].icon} ${TIER_META[t].label} — ${TIER_META[t].desc}` }));
 
+/*
+ * Surge is charged INSIDE METRO AREAS ONLY (backend surge.service
+ * SURGEABLE_TIERS). Taluka and village pickups are never surged, whatever their
+ * rule rows say, so they are shown read-only here rather than as inputs that
+ * would look like they do something. Writes go to PATCH /admin/surge/rules/METRO,
+ * which needs FARE_EDIT — an admin-only permission.
+ *
+ * Effective premium = rule % (from here), then clamped per rate card by its
+ * "Surge cap" (maxSurge, 2× by default). Changes apply to NEW quotes only.
+ */
 function SurgeFeeSetup({ rules, onSave }) {
-  const [form, setForm] = useState({});
-  const [saving, setSaving] = useState(null);
-  const [dirty, setDirty] = useState({});
+  const metro = rules.find((r) => r.tier === 'METRO');
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
-    const f = {};
-    rules.forEach((r) => { f[r.tier] = { immediatePct: String(r.immediatePct), standardPct: String(r.standardPct), immediateWithinMinutes: String(r.immediateWithinMinutes) }; });
-    setForm(f); setDirty({});
-  }, [rules]);
-  const set = (tier, key, val) => { setForm((f) => ({ ...f, [tier]: { ...f[tier], [key]: val } })); setDirty((d) => ({ ...d, [tier]: true })); };
-  const save = async (tier) => {
-    setSaving(tier);
-    try { await onSave(tier, { immediatePct: Number(form[tier].immediatePct) || 0, standardPct: Number(form[tier].standardPct) || 0, immediateWithinMinutes: Number(form[tier].immediateWithinMinutes) || 60 }); setDirty((d) => ({ ...d, [tier]: false })); }
-    finally { setSaving(null); }
+    if (!metro) return;
+    setForm({
+      immediatePct: String(metro.immediatePct ?? 0),
+      standardPct: String(metro.standardPct ?? 0),
+      immediateWithinMinutes: String(metro.immediateWithinMinutes ?? 60),
+      isActive: metro.isActive !== false,
+    });
+    setDirty(false);
+  }, [metro?.immediatePct, metro?.standardPct, metro?.immediateWithinMinutes, metro?.isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setDirty(true); };
+  const pctErr = (v) => (v === '' || Number(v) < 0 || Number(v) > 100 ? '0–100' : null);
+  const winErr = (v) => (v === '' || Number(v) < 1 || Number(v) > 1440 ? '1–1440' : null);
+  const invalid = form && (pctErr(form.immediatePct) || pctErr(form.standardPct) || winErr(form.immediateWithinMinutes));
+
+  const save = async (patch) => {
+    setSaving(true);
+    try {
+      await onSave('METRO', patch ?? {
+        immediatePct: Number(form.immediatePct),
+        standardPct: Number(form.standardPct),
+        immediateWithinMinutes: Number(form.immediateWithinMinutes),
+        isActive: form.isActive,
+      });
+      setDirty(false);
+    } finally { setSaving(false); }
   };
-  if (rules.length === 0) return <Alert type="info">No surge rules found. Seed METRO, TALUKA, VILLAGE rules in the database.</Alert>;
+
+  if (!metro) {
+    return <Alert type="warning">No METRO surge rule found. Run the backend migration 20261006090000_min_km_oneway_rates_metro_surge — it creates the METRO rule at 0%.</Alert>;
+  }
+  if (!form) return null;
+
+  const on = form.isActive;
+  const liveNow = metro.isActive !== false && (Number(metro.standardPct) > 0 || Number(metro.immediatePct) > 0);
+  const m = TIER_META.METRO;
+  const pctInput = (key, label, icon) => (
+    <div style={{ flex: 1, minWidth: 110 }}>
+      <label style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}>{icon}{label}</label>
+      <Input type="number" min="0" max="100" value={form[key]} disabled={!on} onChange={(e) => set(key, e.target.value)} style={{ textAlign: 'center' }} />
+      {pctErr(form[key]) && <p style={{ fontSize: 11, color: '#DC2626', marginTop: 2 }}>Enter {pctErr(form[key])}%</p>}
+    </div>
+  );
+
   return (
     <div style={{ borderRadius: 16, border: '1.5px solid #E8E8E4', backgroundColor: '#fff', overflow: 'hidden' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1.5px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #FFFBEA 0%, #FFF8E1 100%)' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1.5px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'linear-gradient(135deg, #FFFBEA 0%, #FFF8E1 100%)' }}>
         <div style={{ width: 34, height: 34, borderRadius: 9, background: '#FFC107', display: 'grid', placeItems: 'center', boxShadow: '0 3px 10px rgba(255,193,7,0.3)' }}><Zap size={16} color="#111" /></div>
-        <div><p style={{ fontWeight: 800, fontSize: 14.5, color: '#111' }}>Surge Rules by Tier</p><p style={{ fontSize: 12, color: '#92400E', fontWeight: 500 }}>Changes apply to new quotes only.</p></div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <p style={{ fontWeight: 800, fontSize: 14.5, color: '#111' }}>Metro surge fee</p>
+          <p style={{ fontSize: 12, color: '#92400E', fontWeight: 500 }}>Charged only when the pickup is inside a Metro area. Admin only. Applies to new quotes, not bookings already made.</p>
+        </div>
+        <Badge tone={liveNow ? 'amber' : 'slate'}>{liveNow ? `Live: ${Number(metro.standardPct)}% scheduled / ${Number(metro.immediatePct)}% urgent` : 'Not charging'}</Badge>
       </div>
-      {rules.map((rule, i) => { const tier = rule.tier; const m = TIER_META[tier] || TIER_META.METRO; const f = form[tier]; if (!f) return null; return (
-        <div key={tier} style={{ padding: '14px 18px', borderBottom: i < rules.length - 1 ? '1px solid #F0F0EC' : 'none', display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 140 }}><div style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ fontSize: 20 }}>{m.icon}</span><div><p style={{ fontWeight: 800, fontSize: 13.5, color: m.color }}>{m.label}</p><p style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>{m.desc}</p></div></div></div>
-          <div style={{ display: 'flex', gap: 8, flex: 1, alignItems: 'flex-end', flexWrap: 'wrap', minWidth: 280 }}>
-            <div style={{ flex: 1, minWidth: 80 }}><label style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}><Clock size={10} className="inline -mt-0.5 mr-0.5" />Immediate %</label><Input type="number" min="0" max="100" value={f.immediatePct} onChange={(e) => set(tier, 'immediatePct', e.target.value)} style={{ textAlign: 'center' }} /></div>
-            <div style={{ flex: 1, minWidth: 80 }}><label style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}><Zap size={10} className="inline -mt-0.5 mr-0.5" />Scheduled %</label><Input type="number" min="0" max="100" value={f.standardPct} onChange={(e) => set(tier, 'standardPct', e.target.value)} style={{ textAlign: 'center' }} /></div>
-            <div style={{ flex: 1, minWidth: 90 }}><label style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}>Window (min)</label><Input type="number" min="1" max="1440" value={f.immediateWithinMinutes} onChange={(e) => set(tier, 'immediateWithinMinutes', e.target.value)} style={{ textAlign: 'center' }} /></div>
-            <Button size="sm" icon={Save} onClick={() => save(tier)} loading={saving === tier} disabled={!dirty[tier]} style={!dirty[tier] ? {} : { backgroundColor: '#22A65A', boxShadow: '0 3px 8px rgba(34,166,90,0.25)' }}>Save</Button>
+
+      <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 20 }}>{m.icon}</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 800, fontSize: 13.5, color: m.color }}>{m.label}</p>
+            <p style={{ fontSize: 11.5, color: '#6B7280' }}>Pickups inside any active Metro area below. A pickup outside every area is also treated as Metro.</p>
           </div>
-        </div>); })}
-      <div style={{ padding: '10px 18px', backgroundColor: '#FAFAFA', borderTop: '1px solid #F0F0EC', fontSize: 11.5, color: '#6B7280' }}>
-        <strong>Immediate %</strong> applies when booking is within the window. <strong>Scheduled %</strong> applies to all. The higher is used.
+          <Switch id="metro-surge-active" checked={on} disabled={saving} onChange={(v) => set('isActive', v)} label={on ? 'Surge on' : 'Surge off'} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', opacity: on ? 1 : 0.5 }}>
+          {pctInput('standardPct', 'Scheduled %', <Zap size={10} className="inline -mt-0.5 mr-0.5" />)}
+          {pctInput('immediatePct', 'Urgent %', <Clock size={10} className="inline -mt-0.5 mr-0.5" />)}
+          <div style={{ flex: 1, minWidth: 110 }}>
+            <label style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}>Urgent window (min)</label>
+            <Input type="number" min="1" max="1440" value={form.immediateWithinMinutes} disabled={!on} onChange={(e) => set('immediateWithinMinutes', e.target.value)} style={{ textAlign: 'center' }} />
+            {winErr(form.immediateWithinMinutes) && <p style={{ fontSize: 11, color: '#DC2626', marginTop: 2 }}>Enter {winErr(form.immediateWithinMinutes)}</p>}
+          </div>
+          <div style={{ alignSelf: 'flex-end' }}>
+            <Button size="sm" icon={Save} onClick={() => save()} loading={saving} disabled={!dirty || !!invalid}
+              style={!dirty || invalid ? {} : { backgroundColor: '#22A65A', boxShadow: '0 3px 8px rgba(34,166,90,0.25)' }}>Save</Button>
+          </div>
+        </div>
+
+        <p style={{ fontSize: 12, color: '#374151', backgroundColor: '#F9FAFB', borderRadius: 10, padding: '8px 12px' }}>
+          Example: at {Number(form.standardPct) || 0}% scheduled, a ₹1,900 metro fare becomes ₹{Math.round(1900 * (1 + (Number(form.standardPct) || 0) / 100)).toLocaleString('en-IN')}.
+          {' '}<strong>Urgent %</strong> is used instead when pickup is within {form.immediateWithinMinutes || 60} minutes of booking. Each rate card's <strong>Surge cap</strong> (Advanced pricing, default 2×) limits the final premium.
+        </p>
+      </div>
+
+      <div style={{ padding: '10px 18px', backgroundColor: '#FAFAFA', borderTop: '1px solid #F0F0EC', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {['TALUKA', 'VILLAGE'].map((t) => (
+          <span key={t} style={{ fontSize: 11.5, color: '#6B7280' }}>
+            {TIER_META[t].icon} <strong>{TIER_META[t].label}</strong>: no surge (not charged outside metros)
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -1054,7 +1253,16 @@ function SurgePricingTab() {
     catch (e) { toast.error(e.message || 'Failed to load'); setStatus('error'); }
   }, [toast]);
   useEffect(() => { load(); }, [load]);
-  const handleSaveRule = async (tier, body) => { await surgeService.updateRule(tier, body); toast.success(`${tier} updated`); load(); };
+  const handleSaveRule = async (tier, body) => {
+    try {
+      await surgeService.updateRule(tier, body);
+      toast.success(body.isActive === false ? 'Metro surge switched off — new quotes carry no surge' : 'Metro surge saved — applies to new quotes only');
+      load();
+    } catch (e) {
+      toast.error(e.status === 403 ? 'Only an admin can change the surge fee.' : (e.message || 'Could not save surge'));
+      throw e;
+    }
+  };
   const handleCreateArea = async (body) => { await surgeService.createArea(body); toast.success(`${body.name} added`); load(); };
   const handleUpdateArea = async (body) => { await surgeService.updateArea(editingArea.id, body); toast.success('Updated'); setEditingArea(null); load(); };
   const handleDeactivateArea = async (area) => { if (!confirm(`Retire "${area.name}"?`)) return; await surgeService.deactivateArea(area.id); toast.success(`${area.name} retired`); load(); };

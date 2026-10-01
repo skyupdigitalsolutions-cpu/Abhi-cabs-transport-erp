@@ -131,6 +131,12 @@ export const vehicleService = createCrudService({
   idPrefix:     'VEH',
 });
 
+// PERMANENT delete — DELETE /admin/vehicles/:id/permanent (ADMIN only).
+// The backend refuses with VEHICLE_IN_USE while the car is assigned / on a
+// trip, and with VEHICLE_HAS_HISTORY once it has ever been dispatched (its
+// trip records must survive). Soft delete stays on vehicleService.remove().
+vehicleService.destroy = async (id) => apiClient.del(`/admin/vehicles/${id}/permanent`);
+
 // EVERY vehicle in the fleet. The API returns at most 100 per page, so read all
 // pages (capped at 20 = 2,000 vehicles). Used where a screen must pick from, or
 // look up, the whole fleet rather than one page of it.

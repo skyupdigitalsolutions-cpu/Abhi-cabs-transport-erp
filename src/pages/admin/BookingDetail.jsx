@@ -21,7 +21,7 @@ import FormField from '../../components/ui/FormField';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
 import { PERMISSIONS, BOOKING_TRANSITIONS, BOOKING_STATUS } from '../../constants';
-import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatDateTime, titleCase } from '../../utils/formatters';
 
 // Helper: backend returns pickupAddress/dropAddress as { address: "..." } objects
 function addr(val) {
@@ -431,6 +431,11 @@ export default function BookingDetail() {
     { icon: Package, label: 'Vehicle Class', value: `${booking.vehicleClass} · ${booking.tripType}` },
     { icon: IndianRupee, label: 'Fare', value: formatCurrency(fare) },
     { icon: Calendar, label: 'Pickup Time', value: formatDateTime(booking.pickupAt) },
+    // Round trips carry a return DATE only. The backend stores it as the end of
+    // that day in IST, so it is formatted in IST and never shown with a time.
+    ...(booking.tripType === 'ROUND_TRIP' && booking.returnAt
+      ? [{ icon: Calendar, label: 'Return Date', value: formatDate(booking.returnAt, { timeZone: 'Asia/Kolkata' }) }]
+      : []),
     ...(customerPhone ? [{ icon: Phone, label: 'Customer Phone', value: customerPhone }] : []),
   ];
 

@@ -14,7 +14,7 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CheckCheck, Trash2, Car, CreditCard, AlertTriangle, Info, Radio, Settings, ChevronRight } from 'lucide-react';
+import { Bell, CheckCheck, Trash2, Car, CreditCard, AlertTriangle, Info, Radio, Settings, ChevronRight, Inbox } from 'lucide-react';
 import PageHeader   from '../../components/ui/PageHeader';
 import Card         from '../../components/ui/Card';
 import Button       from '../../components/ui/Button';
@@ -35,6 +35,7 @@ const KIND_CONFIG = {
   'payment:received':  { label: 'Payment Received',  tone: 'green', Icon: CreditCard },
   // NEW — polled, not pushed live. See AdminRealtimeContext.jsx for why.
   'booking:abandoned': { label: 'Abandoned Booking',  tone: 'amber', Icon: AlertTriangle },
+  'booking_request:created': { label: 'Booking Request', tone: 'amber', Icon: Inbox },
 };
 
 function kindConfig(kind) {
@@ -87,6 +88,7 @@ function notificationLink(item) {
   if (item.kind === 'payment:received' && item.bookingId) return `/admin/bookings/${item.bookingId}`;
   if (item.bookingId) return `/admin/bookings/${item.bookingId}`;
   if (item.kind === 'booking:abandoned') return '/admin/bookings';
+  if (item.kind === 'booking_request:created') return '/admin/booking-requests';
   if (item.customerId) return `/admin/customers/${item.customerId}`;
   if (item.kind === 'trip:status' && item.tripId) return `/admin/trips`;
   return null;
@@ -102,6 +104,9 @@ function NotificationRow({ item, isNew, onClick }) {
     summary = `${item.count} bookings: ${item.bookingNumbers.join(', ')}`;
   } else if (item.kind === 'booking:abandoned') {
     summary = `${item.name} (${item.mobile})`;
+  } else if (item.kind === 'booking_request:created') {
+    const route = [item.pickupAddress, item.dropAddress].filter(Boolean).map((a) => String(a).split(',')[0]).join(' → ');
+    summary = [item.requestNumber, item.contactName, route, item.vehicleClass].filter(Boolean).join(' · ') || label;
   } else {
     if (item.bookingNumber) summary += `Booking ${item.bookingNumber}`;
     if (item.vehicleClass)  summary += summary ? ` · ${item.vehicleClass}` : item.vehicleClass;

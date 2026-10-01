@@ -11,7 +11,7 @@
  *
  * Backend: GET/PATCH /admin/booking-requests (permission BOOKING_MANAGE)
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Phone, Mail, RefreshCw, MapPin, Eye } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import FilterBar  from '../../components/ui/FilterBar';
@@ -25,7 +25,8 @@ import Textarea   from '../../components/ui/Textarea';
 import { useResourceList } from '../../hooks/useResourceList';
 import { useToast } from '../../hooks/useToast';
 import { bookingRequestService } from '../../services';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDate, formatDateTime, titleCase } from '../../utils/formatters';
+import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 
 const STATUS_TONE = {
   NEW: 'amber', REVIEWING: 'blue', QUOTED: 'purple',
@@ -39,6 +40,14 @@ const TRIP_LABEL = { ONE_WAY: 'One way', ROUND_TRIP: 'Round trip', AIRPORT: 'Air
 // Website guest checkouts get a generated address (guest-<uuid>@guest.invalid)
 // that can never receive mail — never show it as the customer's email.
 const realEmail = (e) => (e && !/@(guest\.invalid|placeholder\.local)$/i.test(e) ? e : '');
+
+// A round trip's return is a DATE (stored as end of that day, IST) — never
+// shown with a time, because none was asked for.
+const returnDateOf = (r) => (r?.tripType === 'ROUND_TRIP' && r?.returnAt
+  ? formatDate(r.returnAt, { timeZone: 'Asia/Kolkata' })
+  : null);
+
+const vehicleName = (v) => (v ? titleCase(String(v).replace(/-/g, ' ')) : null);
 
 const contactOf = (r) => ({
   name:  r.contactName  || r.customer?.name  || '—',
@@ -59,6 +68,16 @@ export default function BookingRequests() {
   const [note, setNote] = useState('');
   const [bookingId, setBookingId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Reload when a new request arrives over the socket (AdminRealtimeContext),
+  // so the queue is current without pressing Refresh. Skips the first render.
+  const { requestTick, refreshRequestCount } = useAdminRealtimeContext();
+  const firstTick = useRef(true);
+  useEffect(() => {
+    if (firstTick.current) { firstTick.current = false; return; }
+    list.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestTick]);
 
   const open = (r) => { setSelected(r); setNote(r.adminNote || ''); setBookingId(r.convertedBookingId || ''); };
   const close = () => { setSelected(null); setNote(''); setBookingId(''); };
@@ -83,6 +102,8 @@ export default function BookingRequests() {
       toast.success(status ? `Marked ${status.toLowerCase()}` : 'Note saved');
       setSelected({ ...selected, ...updated });
       list.reload();
+      // Moving a request out of NEW should clear it from the sidebar badge.
+      if (status) refreshRequestCount();
     } catch (e) {
       toast.error(e.message || 'Could not update the request');
     } finally {
@@ -100,6 +121,7 @@ export default function BookingRequests() {
         <div>
           <p className="font-bold text-xs" style={{ color: '#111111' }}>{r.requestNumber}</p>
           <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>{TRIP_LABEL[r.tripType] || r.tripType}</p>
+          {r.vehicleClass && <p className="text-[11.5px] font-semibold" style={{ color: '#374151' }}>{vehicleName(r.vehicleClass)}</p>}
         </div>
       ),
     },
@@ -128,7 +150,12 @@ export default function BookingRequests() {
     },
     {
       key: 'pickupAt', header: 'Pickup',
-      render: (r) => <span className="text-xs" style={{ color: '#374151' }}>{formatDateTime(r.pickupAt)}</span>,
+      render: (r) => (
+        <div>
+          <span className="text-xs" style={{ color: '#374151' }}>{formatDateTime(r.pickupAt)}</span>
+          {returnDateOf(r) && <p className="text-[11.5px]" style={{ color: '#9A9A9A' }}>Return {returnDateOf(r)}</p>}
+        </div>
+      ),
     },
     {
       key: 'status', header: 'Status',
@@ -240,9 +267,10 @@ export default function BookingRequests() {
                 <p className="flex gap-2"><MapPin size={14} className="mt-1 shrink-0" />
                   <span><b>To:</b> {selected.dropAddress}{selected.dropState ? ` (${selected.dropState})` : ''}</span></p>
                 <p><b>Type:</b> {TRIP_LABEL[selected.tripType] || selected.tripType}
-                  {selected.vehicleClass ? ` · ${selected.vehicleClass}` : ''}
                   {selected.passengers ? ` · ${selected.passengers} passengers` : ''}</p>
+                <p><b>Vehicle:</b> {vehicleName(selected.vehicleClass) || 'Not chosen'}</p>
                 <p><b>Pickup:</b> {formatDateTime(selected.pickupAt)}</p>
+                {returnDateOf(selected) && <p><b>Return date:</b> {returnDateOf(selected)}</p>}
                 {selected.note && <p><b>Customer note:</b> {selected.note}</p>}
               </div>
             </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield, XCircle, Eye, FileText, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield, XCircle, Eye, FileText, RotateCcw, PowerOff } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import Button        from '../../components/ui/Button';
 import IconButton    from '../../components/ui/IconButton';
@@ -204,7 +204,7 @@ function PendingVehicleModal({ vehicle, onClose, onSetOperationalStatus, actionL
 }
 
 // ── Fleet tab ─────────────────────────────────────────────────────────────────
-function FleetTab({ canManage }) {
+function FleetTab({ canManage, canDelete }) {
   const toast = useToast();
   // Server-side filters: status, vehicleClass, search, sortBy, order
   const list  = useResourceList(vehicleService, {
@@ -218,6 +218,8 @@ function FleetTab({ canManage }) {
   const [deleting,      setDeleting]      = useState(null);
   const [docView,       setDocView]       = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [purging,       setPurging]       = useState(null);  // vehicle pending PERMANENT delete
+  const [purgeLoading,  setPurgeLoading]  = useState(false);
   const [detailLoading, setDetailLoading] = useState(null); // vehicle id currently being fetched
 
   // FIX: the vehicles LIST endpoint doesn't include the `documents` field at
@@ -265,7 +267,8 @@ function FleetTab({ canManage }) {
     { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
     ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} /><IconButton icon={Pencil} label="Edit" onClick={() => openEdit(r)} disabled={detailLoading === r.id} />{r.isActive === false || r.status === 'INACTIVE'
             ? <IconButton icon={RotateCcw} label="Activate" onClick={() => handleActivate(r)} />
-            : <IconButton icon={Trash2} label="Deactivate" variant="danger" onClick={() => setDeleting(r)} />}</div>) }] : []),
+            : <IconButton icon={PowerOff} label="Deactivate" onClick={() => setDeleting(r)} />}
+            {canDelete && <IconButton icon={Trash2} label="Delete permanently" variant="danger" onClick={() => setPurging(r)} />}</div>) }] : []),
   ];
 
   const handleSubmit = async (values) => {
@@ -316,6 +319,32 @@ function FleetTab({ canManage }) {
     }
   };
 
+  // PERMANENT delete (ADMIN only). The backend refuses while the vehicle is on
+  // a job, and refuses for good once it has ever been dispatched, because its
+  // trip records must stay readable. Both cases point the admin at Deactivate.
+  const handlePurge = async () => {
+    const v = purging;
+    setPurgeLoading(true);
+    try {
+      await vehicleService.destroy(v.id);
+      toast.success(`${v.registrationNumber} permanently deleted`);
+      list.reload();
+    } catch (e) {
+      if (e?.code === 'VEHICLE_IN_USE') {
+        toast.error(`${v.registrationNumber} is on a job right now. Finish the trip or unassign the driver first.`);
+      } else if (e?.code === 'VEHICLE_HAS_HISTORY') {
+        toast.error(`${v.registrationNumber} has trip history, so it can't be erased. Deactivate it instead — that removes it from dispatch and keeps the records.`);
+      } else if (e?.status === 403) {
+        toast.error('Only an admin can permanently delete a vehicle.');
+      } else {
+        toast.error(e?.message || 'Could not delete the vehicle');
+      }
+    } finally {
+      setPurgeLoading(false);
+      setPurging(null);
+    }
+  };
+
   // Bring a deactivated vehicle back into the fleet (same call the Inactive tab uses).
   const handleActivate = async (vehicle) => {
     try {
@@ -349,6 +378,9 @@ function FleetTab({ canManage }) {
       <VehicleFormDrawer open={formOpen} onClose={() => { setFormOpen(false); setEditing(null); list.reload(); }} initial={editing} onSubmit={handleSubmit} />
       <DocDetailModal open={!!docView} vehicle={docView} onClose={() => setDocView(null)} />
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={handleDelete} loading={deleteLoading} danger title="Deactivate vehicle?" confirmLabel="Deactivate" description={`${deleting?.registrationNumber} will be deactivated.`} />
+      <ConfirmDialog open={!!purging} onClose={() => setPurging(null)} onConfirm={handlePurge} loading={purgeLoading} danger
+        title="Delete vehicle permanently?" confirmLabel="Delete permanently"
+        description={`${purging?.registrationNumber || 'This vehicle'} will be removed from the system for good and can't be restored. This only works for a vehicle that has never been dispatched on a trip; otherwise use Deactivate.`} />
     </div>
   );
 }
@@ -414,8 +446,11 @@ function PendingTab() {
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function Vehicles() {
   const [tab, setTab] = useState('fleet');
-  const { hasPermission } = useAuth();
+  const { hasPermission, isAdmin } = useAuth();
   const canManage = hasPermission(PERMISSIONS.VEHICLES_MANAGE);
+  // Permanent delete is ADMIN-only on the backend (requireRole('ADMIN')),
+  // stricter than VEHICLE_MANAGE, which FLEET staff also hold.
+  const canDelete = canManage && isAdmin;
   const { data: pendingData } = useApi(() => apiClient.get('/admin/vehicles', { params: { status: 'INACTIVE', isActive: 'false', limit: 1, page: 1 } }), []);
   const pendingCount = pendingData?.meta?.total ?? pendingData?.pagination?.total ?? 0;
 
@@ -437,7 +472,7 @@ export default function Vehicles() {
           </button>
         ))}
       </div>
-      {tab === 'fleet'   && <FleetTab canManage={canManage} />}
+      {tab === 'fleet'   && <FleetTab canManage={canManage} canDelete={canDelete} />}
       {tab === 'pending' && <PendingTab />}
     </div>
   );

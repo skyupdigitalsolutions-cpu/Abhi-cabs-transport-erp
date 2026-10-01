@@ -159,11 +159,11 @@ export const VEHICLE_CLASSES = [
   'fortuner', 'mercedes-e', 'tempo-12', 'tempo-17',
   'urbania-13', 'urbania-16', 'urbania-maharaja',
   'benz-22', 'benz-28', 'benz-33',
-  // Generic size classes, kept ACTIVE on purpose: they are the only classes
-  // with ROUND_TRIP and AIRPORT fare cards, so retiring them before per-model
-  // rates exist for those trip types would remove airport and round-trip
-  // booking entirely.
-  'hatchback', 'suv', 'tempo', 'bus', 'luxury',
+  // Generic size classes still active on the backend. `bus` and `luxury`
+  // were retired by 20260930110000_retire_bus_luxury_and_price_luxury_cars.
+  // Screens should prefer vehicleCatalogService (live list); this is only
+  // the offline fallback.
+  'hatchback', 'suv', 'tempo',
 ];
 
 export const TRIP_TYPES = [
