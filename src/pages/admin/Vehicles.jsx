@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle, Clock, Shield,
 import PageHeader    from '../../components/ui/PageHeader';
 import Button        from '../../components/ui/Button';
 import IconButton    from '../../components/ui/IconButton';
+import PageTabs      from '../../components/ui/PageTabs';
 import StatusBadge   from '../../components/ui/StatusBadge';
 import Badge         from '../../components/ui/Badge';
 import Alert         from '../../components/ui/Alert';
@@ -456,22 +457,13 @@ export default function Vehicles() {
 
   const tabs = [
     { key: 'fleet',   label: 'Fleet Vehicles' },
-    { key: 'pending', label: `Inactive Vehicles${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+    { key: 'pending', label: 'Inactive Vehicles', badge: pendingCount },
   ];
 
   return (
     <div>
       <PageHeader title="Vehicles" description="Manage your fleet and review driver-submitted vehicle applications." />
-      <div className="flex gap-1 mb-5 border-b" style={{ borderColor: '#E5E7EB' }}>
-        {tabs.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring"
-            style={{ borderColor: tab === t.key ? '#3B65DB' : 'transparent', color: tab === t.key ? '#3B65DB' : '#6B7280' }}>
-            {t.label}
-            {t.key === 'pending' && pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[11.5px] font-bold" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>{pendingCount}</span>}
-          </button>
-        ))}
-      </div>
+      <PageTabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'fleet'   && <FleetTab canManage={canManage} canDelete={canDelete} />}
       {tab === 'pending' && <PendingTab />}
     </div>

@@ -1,4 +1,7 @@
-import Card from '../ui/Card';
+/** KpiCard — MUI <Card> stat tile with an icon avatar and trend chip. */
+import MuiCard from '@mui/material/Card';
+import Avatar from '@mui/material/Avatar';
+import Chip from '@mui/material/Chip';
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 
 const TONES = {
@@ -12,35 +15,29 @@ const TONES = {
 };
 
 export default function KpiCard({ label, value, sub, delta, icon: Icon, tone = 'primary' }) {
-  const positive   = delta >= 0;
-  const iconStyle  = TONES[tone] || TONES.primary;
-
+  const positive = delta >= 0;
+  const t = TONES[tone] || TONES.primary;
   return (
-    <Card className="flex items-start justify-between gap-4">
-      <div className="min-w-0 flex-1">
-        <p className="text-[11.5px] font-bold uppercase tracking-widest truncate" style={{ color: '#9A9A9A' }}>
-          {label}
-        </p>
-        <p className="text-2xl font-extrabold mt-1 tracking-tight leading-none" style={{ color: '#111111', letterSpacing: '-0.5px' }}>
-          {value}
-        </p>
-        {sub && (
-          <p className="text-[11.5px] mt-1 font-medium" style={{ color: '#9A9A9A' }}>{sub}</p>
-        )}
+    <MuiCard sx={{ p: 2.5, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2,
+      '&:hover': { boxShadow: '0 10px 28px rgba(17,17,17,.08)', transform: 'translateY(-2px)' } }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#8A8A85', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</p>
+        <p style={{ fontSize: 26, fontWeight: 900, marginTop: 6, color: '#111', letterSpacing: '-0.5px', lineHeight: 1 }}>{value}</p>
+        {sub && <p style={{ fontSize: 11.5, marginTop: 6, fontWeight: 500, color: '#9A9A9A' }}>{sub}</p>}
         {delta !== undefined && (
-          <p className="flex items-center gap-0.5 text-[11.5px] mt-1.5 font-bold"
-            style={{ color: positive ? '#22A65A' : '#DC2626' }}>
-            {positive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-            {Math.abs(delta)}% vs last week
-          </p>
+          <Chip
+            size="small"
+            icon={positive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+            label={`${Math.abs(delta)}% vs last week`}
+            sx={{ mt: 1, bgcolor: positive ? '#f0fdf4' : '#fef2f2', color: positive ? '#15803d' : '#DC2626', '& .MuiChip-icon': { color: 'inherit' } }}
+          />
         )}
       </div>
       {Icon && (
-        <div className="h-10 w-10 rounded-xl grid place-items-center shrink-0"
-          style={{ backgroundColor: iconStyle.bg }}>
-          <Icon size={18} style={{ color: iconStyle.color }} strokeWidth={2.5} />
-        </div>
+        <Avatar variant="rounded" sx={{ width: 44, height: 44, borderRadius: 3, bgcolor: t.bg, color: t.color }}>
+          <Icon size={19} strokeWidth={2.5} />
+        </Avatar>
       )}
-    </Card>
+    </MuiCard>
   );
 }

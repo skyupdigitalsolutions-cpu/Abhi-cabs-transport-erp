@@ -1,5 +1,26 @@
-import { useState, useRef, useEffect } from 'react';
-import { Menu, Bell, ChevronDown, LogOut, Calendar, AlertTriangle, Truck, CreditCard, MessageSquareWarning, Car } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Bell, Calendar, AlertTriangle, Truck, CreditCard, MessageSquareWarning, Car, Inbox } from 'lucide-react';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Typography from '@mui/material/Typography';
+import MuiIconButton from '@mui/material/IconButton';
+import MuiButton from '@mui/material/Button';
+import MuiBadge from '@mui/material/Badge';
+import Avatar from '@mui/material/Avatar';
+import Chip from '@mui/material/Chip';
+import Tooltip from '@mui/material/Tooltip';
+import Popover from '@mui/material/Popover';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
+import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import PhoneInTalkRoundedIcon from '@mui/icons-material/PhoneInTalkRounded';
 import { useAuth }    from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useToast }   from '../../hooks/useToast';
@@ -7,13 +28,14 @@ import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 import { onForegroundMessage }     from '../../lib/firebase';
 import { timeAgo } from '../../utils/formatters';
 
+/** Top bar — MUI AppBar with notification popover and user menu. */
 export default function Navbar({ onMenuClick, title, liveConnected, followUpsDue = 0 }) {
   const { user, logout, isDriver } = useAuth();
   const [open, setOpen]           = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const ref = useRef(null);
-  const notifRef = useRef(null);
+  const [userAnchor, setUserAnchor]   = useState(null);
+  const [notifAnchor, setNotifAnchor] = useState(null);
   const navigate = useNavigate();
   const toast    = useToast();
 
@@ -37,14 +59,6 @@ export default function Navbar({ onMenuClick, title, liveConnected, followUpsDue
   }, []);
 
   // Close dropdowns on outside click
-  useEffect(() => {
-    const onClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
 
   // FIX: the bell previously did nothing but navigate straight to
   // /admin/notifications (a mock page, disconnected from the real feed —
@@ -55,14 +69,18 @@ export default function Navbar({ onMenuClick, title, liveConnected, followUpsDue
   // takes you to Support. An attempt with no bookingId yet (it may have
   // failed before a booking ever existed) is shown but not clickable —
   // sending it somewhere fake would be worse than not linking it at all.
-  const handleBellClick = () => {
-    setNotifOpen((o) => !o);
+  const handleBellClick = (e) => {
+    setNotifAnchor(e.currentTarget);
+    setNotifOpen(true);
     setUnreadCount(0);
   };
+  const closeNotif = () => { setNotifOpen(false); setNotifAnchor(null); };
 
   const goToNotification = (item) => {
-    setNotifOpen(false);
-    if (item.bookingId) {
+    closeNotif();
+    if (item.kind === 'booking_request:created') {
+      navigate('/admin/booking-requests');
+    } else if (item.bookingId) {
       navigate(`/admin/bookings`);
     } else if (item.contactId) {
       navigate('/admin/support');
@@ -78,130 +96,106 @@ export default function Navbar({ onMenuClick, title, liveConnected, followUpsDue
   const email = user?.email || '';
 
   return (
-    <header className="h-16 border-b flex items-center px-4 sm:px-6 gap-4"
-      style={{ backgroundColor: '#fff', borderColor: '#E5E7EB', zIndex: 30, position: 'sticky', top: 0 }}>
+    <AppBar position="sticky" elevation={0} color="inherit"
+      sx={{ top: 0, zIndex: 30, bgcolor: 'rgba(255,255,255,0.86)', backdropFilter: 'saturate(180%) blur(12px)', borderBottom: '1px solid #ECECE8' }}>
+      <Toolbar sx={{ minHeight: '64px !important', gap: 1.5, px: { xs: 2, sm: 3 } }}>
+        {/* Mobile menu toggle */}
+        <MuiIconButton onClick={onMenuClick} aria-label="Open menu" className="lg:hidden" sx={{ bgcolor: '#F7F8FC' }}>
+          <MenuRoundedIcon fontSize="small" />
+        </MuiIconButton>
 
-      {/* Mobile menu toggle */}
-      <button onClick={onMenuClick}
-        className="lg:hidden h-9 w-9 grid place-items-center rounded-lg"
-        style={{ backgroundColor: '#F7F8FC' }}>
-        <Menu size={18} style={{ color: '#6B7280' }} />
-      </button>
-
-      {/* Page title */}
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-sm truncate" style={{ color: '#1F2937' }}>{title}</p>
-        {typeof liveConnected === 'boolean' && (
-          <p className="text-[11.5px] font-medium" style={{ color: liveConnected ? '#38B763' : '#9CA3AF' }}>
-            {liveConnected ? '● Live updates on' : '○ Live updates offline'}
-          </p>
-        )}
-      </div>
-
-      {/* Follow-up due badge */}
-      {followUpsDue > 0 && (
-        <button
-          onClick={() => navigate('/admin/bookings')}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-          style={{
-            backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA',
-            cursor: 'pointer', animation: 'followup-pulse 2s ease-in-out infinite',
-          }}
-          title={`${followUpsDue} follow-up${followUpsDue > 1 ? 's' : ''} overdue — click to view bookings`}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-          </svg>
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#DC2626' }}>
-            {followUpsDue} due
-          </span>
-          <style>{`@keyframes followup-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }`}</style>
-        </button>
-      )}
-
-      {/* Bell + notification dropdown */}
-      <div className="relative" ref={notifRef}>
-        <button onClick={handleBellClick}
-          className="relative h-9 w-9 grid place-items-center rounded-lg"
-          style={{ backgroundColor: '#F7F8FC' }}>
-          <Bell size={17} style={{ color: '#6B7280' }} />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 grid place-items-center rounded-full text-[11.5px] font-bold text-white"
-              style={{ backgroundColor: '#EF4444' }}>
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
+        {/* Page title + live status */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Typography noWrap sx={{ fontWeight: 800, fontSize: 15, color: '#111' }}>{title}</Typography>
+          {typeof liveConnected === 'boolean' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: liveConnected ? '#22A65A' : '#9CA3AF', boxShadow: liveConnected ? '0 0 0 3px rgba(34,166,90,.18)' : 'none' }} />
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: liveConnected ? '#22A65A' : '#9CA3AF' }}>
+                {liveConnected ? 'Live updates on' : 'Live updates offline'}
+              </span>
+            </div>
           )}
-        </button>
+        </div>
 
-        {notifOpen && (
-          <div className="absolute right-0 top-full mt-1.5 w-80 max-w-[90vw] rounded-xl border shadow-lg overflow-hidden z-50"
-            style={{ backgroundColor: '#fff', borderColor: '#E5E7EB' }}>
-            <div className="px-4 py-2.5 border-b flex items-center justify-between" style={{ borderColor: '#F7F8FC' }}>
-              <p className="text-xs font-bold" style={{ color: '#1F2937' }}>Notifications</p>
-              <button onClick={() => { setNotifOpen(false); navigate('/admin/notifications'); }}
-                className="text-[11.5px] font-semibold" style={{ color: '#3B65DB' }}>
-                View all
-              </button>
-            </div>
-            <div className="max-h-96 overflow-y-auto">
-              {feed.length === 0 ? (
-                <p className="text-center text-xs py-8" style={{ color: '#9CA3AF' }}>Nothing yet — new bookings, payments and trip updates will show up here live.</p>
-              ) : (
-                feed.slice(0, 20).map((item) => <NotificationItem key={item.id} item={item} onClick={() => goToNotification(item)} />)
-              )}
-            </div>
-          </div>
+        {/* Follow-up due chip */}
+        {followUpsDue > 0 && (
+          <Tooltip title={`${followUpsDue} follow-up${followUpsDue > 1 ? 's' : ''} overdue — click to view bookings`}>
+            <Chip
+              icon={<PhoneInTalkRoundedIcon sx={{ fontSize: 16 }} />}
+              label={`${followUpsDue} due`}
+              onClick={() => navigate('/admin/bookings')}
+              sx={{ bgcolor: '#FEF2F2', color: '#DC2626', border: '1.5px solid #FECACA', '& .MuiChip-icon': { color: '#DC2626' }, animation: 'followup-pulse 2s ease-in-out infinite',
+                '@keyframes followup-pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.7 } } }}
+            />
+          </Tooltip>
         )}
-      </div>
 
-      {/* User menu */}
-      <div className="relative" ref={ref}>
-        <button onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-lg px-2 py-1.5"
-          style={{ backgroundColor: open ? '#F7F8FC' : 'transparent' }}>
-          <div className="h-8 w-8 rounded-full grid place-items-center text-sm font-bold text-white shrink-0"
-            style={{ backgroundColor: '#3B65DB' }}>
+        {/* Bell + notifications */}
+        <Tooltip title="Notifications">
+          <MuiIconButton onClick={handleBellClick} aria-label="Notifications" sx={{ bgcolor: '#F7F8FC' }}>
+            <MuiBadge badgeContent={unreadCount} max={9} color="error">
+              <NotificationsRoundedIcon fontSize="small" sx={{ color: '#5A5A5A' }} />
+            </MuiBadge>
+          </MuiIconButton>
+        </Tooltip>
+        <Popover
+          open={notifOpen && !!notifAnchor}
+          anchorEl={notifAnchor}
+          onClose={closeNotif}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          slotProps={{ paper: { sx: { width: 340, maxWidth: '92vw', mt: 1, borderRadius: 4, border: '1px solid #ECECE8', boxShadow: '0 16px 40px rgba(17,17,17,.14)' } } }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #F2F2EE' }}>
+            <Typography sx={{ fontWeight: 800, fontSize: 13.5 }}>Notifications</Typography>
+            <MuiButton size="small" onClick={() => { closeNotif(); navigate('/admin/notifications'); }} sx={{ height: 28, fontSize: 12.5, color: '#2563EB' }}>View all</MuiButton>
+          </div>
+          <List dense disablePadding sx={{ maxHeight: 384, overflowY: 'auto' }}>
+            {feed.length === 0 ? (
+              <p style={{ textAlign: 'center', fontSize: 12.5, padding: '32px 16px', color: '#9CA3AF' }}>Nothing yet — new bookings, payments and trip updates will show up here live.</p>
+            ) : (
+              feed.slice(0, 20).map((item) => <NotificationItem key={item.id} item={item} onClick={() => goToNotification(item)} />)
+            )}
+          </List>
+        </Popover>
+
+        {/* User menu */}
+        <MuiButton
+          onClick={(e) => { setUserAnchor(e.currentTarget); setOpen(true); }}
+          color="inherit"
+          endIcon={<KeyboardArrowDownRoundedIcon sx={{ transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none', color: '#6B7280' }} />}
+          sx={{ height: 44, px: 1, borderRadius: 3, '&:hover': { bgcolor: '#F7F8FC', transform: 'none' } }}
+        >
+          <Avatar sx={{ width: 32, height: 32, bgcolor: '#111', color: '#FFC107', fontSize: 14, fontWeight: 800, mr: { xs: 0, sm: 1 } }}>
             {name.slice(0, 1).toUpperCase()}
+          </Avatar>
+          <span className="hidden sm:block" style={{ textAlign: 'left' }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, lineHeight: 1.1, color: '#111' }}>{name}</span>
+            <span style={{ display: 'block', fontSize: 11.5, fontWeight: 500, color: '#6B7280', marginTop: 2 }}>{role}</span>
+          </span>
+        </MuiButton>
+        <Menu
+          open={open && !!userAnchor}
+          anchorEl={userAnchor}
+          onClose={() => { setOpen(false); setUserAnchor(null); }}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          slotProps={{ paper: { sx: { width: 220 } } }}
+        >
+          <div style={{ padding: '8px 12px 10px', borderBottom: '1px solid #F2F2EE', marginBottom: 4 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#111' }}>{name}</p>
+            <p style={{ fontSize: 11.5, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</p>
           </div>
-          <div className="hidden sm:block text-left">
-            <p className="text-xs font-bold leading-none" style={{ color: '#1F2937' }}>{name}</p>
-            <p className="text-[11.5px] mt-0.5" style={{ color: '#6B7280' }}>{role}</p>
-          </div>
-          <ChevronDown size={14} style={{ color: '#6B7280' }}
-            className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-
-        {open && (
-          <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border shadow-lg overflow-hidden z-50"
-            style={{ backgroundColor: '#fff', borderColor: '#E5E7EB' }}>
-            <div className="px-4 py-3 border-b" style={{ borderColor: '#F7F8FC' }}>
-              <p className="text-xs font-bold" style={{ color: '#1F2937' }}>{name}</p>
-              <p className="text-[11.5px] mt-0.5 truncate" style={{ color: '#6B7280' }}>{email}</p>
-            </div>
-            <div className="py-1">
-              <MenuItem icon={LogOut}    label="Log out"  danger onClick={() => { setOpen(false); logout(); navigate('/admin/login'); }} />
-            </div>
-          </div>
-        )}
-      </div>
-    </header>
+          <MenuItem onClick={() => { setOpen(false); setUserAnchor(null); logout(); navigate('/admin/login'); }} sx={{ color: '#DC2626' }}>
+            <ListItemIcon sx={{ color: '#DC2626', minWidth: 30 }}><LogoutRoundedIcon fontSize="small" /></ListItemIcon>
+            Log out
+          </MenuItem>
+        </Menu>
+      </Toolbar>
+    </AppBar>
   );
 }
 
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button onClick={onClick}
-      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-left hover:bg-gray-50"
-      style={{ color: danger ? '#EF4444' : '#374151' }}>
-      <Icon size={15} style={{ color: danger ? '#EF4444' : '#6B7280' }} />
-      {label}
-    </button>
-  );
-}
-
-// One entry per kind, matching exactly what AdminRealtimeContext.jsx actually
-// pushes (confirmed against bridge.js on the backend for field names) —
-// icon, a short human label, and whether it's safe to link somewhere real.
 const NOTIF_META = {
   'booking:created':   { icon: Calendar,  label: (i) => `New booking ${i.bookingNumber || ''}`.trim(), clickable: true },
   'booking:attempted': {
@@ -226,36 +220,23 @@ const NOTIF_META = {
   'trip:status':       { icon: Truck,     label: (i) => `${i.bookingNumber || 'Booking'} → ${(i.status || '').replace(/_/g, ' ')}`, clickable: true },
   'booking:allocated': { icon: Truck,     label: (i) => `Vehicle assigned${i.bookingNumber ? ` to ${i.bookingNumber}` : ''}`, clickable: true },
   'payment:received':  { icon: CreditCard, label: (i) => `Payment received${i.amount ? ` — ₹${Number(i.amount).toLocaleString('en-IN')}` : ''}`, clickable: true },
+  'booking_request:created': { icon: Inbox, label: (i) => `Booking request ${i.requestNumber || ''}${i.contactName ? ` — ${i.contactName}` : ''}`.trim(), clickable: true },
   'booking:abandoned': { icon: MessageSquareWarning, label: (i) => `Abandoned — ${i.name || i.pickupAddress?.split(',')[0] || 'unknown customer'}`, clickable: true },
 };
 
 function NotificationItem({ item, onClick }) {
   const meta = NOTIF_META[item.kind] || { icon: Bell, label: () => item.kind, clickable: true };
   const Icon = meta.icon;
-
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => { if (e.key === 'Enter') onClick?.(); }}
-      className="w-full flex items-start gap-2.5 px-4 py-3 text-left border-b last:border-b-0"
-      style={{
-        borderColor: '#F7F8FC',
-        cursor: 'pointer',
-        backgroundColor: 'transparent',
-        transition: 'background-color 0.12s',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F9FAFB'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-    >
-      <div className="h-7 w-7 rounded-lg grid place-items-center shrink-0 mt-0.5" style={{ backgroundColor: '#F7F8FC' }}>
-        <Icon size={13} style={{ color: '#6B7280' }} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium leading-snug" style={{ color: '#1F2937' }}>{meta.label(item)}</p>
-        <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>{timeAgo(item.at)}</p>
-      </div>
-    </div>
+    <ListItemButton onClick={onClick} sx={{ alignItems: 'flex-start', gap: 1.25, px: 2, py: 1.25, borderRadius: 0, borderBottom: '1px solid #F7F8FC' }}>
+      <Avatar variant="rounded" sx={{ width: 30, height: 30, bgcolor: '#FFF8E1', color: '#B45309', mt: 0.25 }}>
+        <Icon size={14} />
+      </Avatar>
+      <ListItemText
+        primary={meta.label(item)}
+        secondary={timeAgo(item.at)}
+        slotProps={{ primary: { sx: { fontSize: 12.5, fontWeight: 600, color: '#1F2937', lineHeight: 1.35 } }, secondary: { sx: { fontSize: 11, color: '#9CA3AF', mt: 0.25 } } }}
+      />
+    </ListItemButton>
   );
 }

@@ -1,4 +1,6 @@
 import { X } from 'lucide-react';
+import Paper from '@mui/material/Paper';
+import Button from './Button';
 import SearchInput from './SearchInput';
 import Select from './Select';
 
@@ -33,13 +35,10 @@ export default function FilterBar({
   };
 
   return (
-    <div
+    <Paper
+      variant="outlined"
       className={className}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16,
-        padding: 12, borderRadius: 14,
-        backgroundColor: '#FAFAF8', border: '1px solid #EEEEE9',
-      }}
+      sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mb: 2, p: 1.5, borderRadius: 4, bgcolor: '#FFFFFF' }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {onSearchChange && (
@@ -63,22 +62,9 @@ export default function FilterBar({
         ))}
 
         {anyActive && (
-          <button
-            onClick={clearAll}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 12.5, fontWeight: 700, padding: '9px 12px', borderRadius: 10,
-              color: '#DC2626', backgroundColor: '#fef2f2',
-              border: '1.5px solid #fecaca', cursor: 'pointer',
-              height: 38, whiteSpace: 'nowrap',
-              transition: 'background-color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.borderColor = '#DC2626'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#fef2f2'; e.currentTarget.style.borderColor = '#fecaca'; }}
-          >
-            <X size={13} strokeWidth={3} />
+          <Button variant="dangerOutline" size="sm" icon={X} onClick={clearAll} style={{ height: 38 }}>
             Clear
-          </button>
+          </Button>
         )}
       </div>
 
@@ -87,6 +73,6 @@ export default function FilterBar({
           {extra}
         </div>
       )}
-    </div>
+    </Paper>
   );
 }

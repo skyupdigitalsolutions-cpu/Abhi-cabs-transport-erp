@@ -1,17 +1,10 @@
-import { cn } from '../../utils/cn';
+/** Card — MUI <Card> (Ionic-style soft rounded panel). Same props: padded, className, children. */
+import MuiCard from '@mui/material/Card';
 
-export default function Card({ className, children, padded = true, ...props }) {
+export default function Card({ className, children, padded = true, style, sx, ...props }) {
   return (
-    <div
-      className={cn('rounded-xl border', padded && 'p-5', className)}
-      style={{
-        backgroundColor: '#ffffff',
-        borderColor: '#E8E8E4',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-      }}
-      {...props}
-    >
+    <MuiCard className={className} style={style} sx={[{ p: padded ? 2.5 : 0 }, ...(Array.isArray(sx) ? sx : [sx || {}])]} {...props}>
       {children}
-    </div>
+    </MuiCard>
   );
 }

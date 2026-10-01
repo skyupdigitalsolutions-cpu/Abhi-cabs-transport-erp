@@ -1,32 +1,49 @@
-import { forwardRef, useState } from 'react';
-import { cn } from '../../utils/cn';
+/**
+ * Input — MUI <OutlinedInput>. Drop-in for the old native <input>:
+ * accepts every native input attribute (type, min, max, step, maxLength,
+ * pattern, inputMode…), `error`, `className`, `style`, and a forwarded ref
+ * that points at the real <input> element.
+ */
+import { forwardRef } from 'react';
+import OutlinedInput from '@mui/material/OutlinedInput';
 
-const Input = forwardRef(function Input({ className, error, style: externalStyle, onFocus, onBlur, ...rest }, ref) {
-  const [focused, setFocused] = useState(false);
+// Props OutlinedInput understands itself; everything else goes to the <input>.
+const ROOT = new Set([
+  'value', 'defaultValue', 'onChange', 'onFocus', 'onBlur', 'onKeyDown', 'onKeyUp',
+  'onClick', 'type', 'placeholder', 'disabled', 'name', 'id', 'autoFocus', 'readOnly',
+  'required', 'autoComplete', 'startAdornment', 'endAdornment', 'multiline', 'rows',
+  'minRows', 'maxRows', 'fullWidth', 'size', 'sx',
+]);
+
+const Input = forwardRef(function Input({ className, error, style, ...rest }, ref) {
+  const rootProps = {};
+  const htmlInput = {};
+  for (const [k, v] of Object.entries(rest)) (ROOT.has(k) ? rootProps : htmlInput)[k] = v;
+
+  // Text alignment / padding set by a page belong on the <input> itself.
+  const { textAlign, paddingRight, paddingLeft, ...rootStyle } = style || {};
   const isDateOrTime = ['date', 'time', 'datetime-local', 'month', 'week'].includes(rest.type);
 
   return (
-    <input
-      ref={ref}
-      className={cn('w-full transition-all duration-200', className)}
-      onFocus={(e) => { setFocused(true); onFocus?.(e); }}
-      onBlur={(e) => { setFocused(false); onBlur?.(e); }}
-      style={{
-        borderRadius: 10,
-        border: `1.5px solid ${error ? '#DC2626' : focused ? '#FFC107' : '#E8E8E4'}`,
-        padding: '9px 12px',
-        fontSize: 13.5,
-        fontWeight: 500,
-        backgroundColor: rest.disabled ? '#F5F5F3' : '#ffffff',
-        color: rest.disabled ? '#9A9A9A' : '#111111',
-        cursor: rest.disabled ? 'not-allowed' : isDateOrTime ? 'pointer' : undefined,
-        outline: 'none',
-        boxShadow: focused ? '0 0 0 3px rgba(255,193,7,0.15)' : 'none',
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-        ...(isDateOrTime ? { colorScheme: 'light' } : {}),
-        ...externalStyle,
+    <OutlinedInput
+      fullWidth
+      size="small"
+      error={!!error}
+      className={className}
+      style={rootStyle}
+      inputRef={ref}
+      {...rootProps}
+      slotProps={{
+        input: {
+          ...htmlInput,
+          style: {
+            ...(textAlign ? { textAlign } : {}),
+            ...(paddingRight != null ? { paddingRight } : {}),
+            ...(paddingLeft != null ? { paddingLeft } : {}),
+            ...(isDateOrTime ? { colorScheme: 'light', cursor: 'pointer' } : {}),
+          },
+        },
       }}
-      {...rest}
     />
   );
 });

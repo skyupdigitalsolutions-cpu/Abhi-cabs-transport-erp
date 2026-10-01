@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Banknote, CreditCard, Landmark, Wallet, Smartphone, Search, RotateCcw } from 'lucide-react';
 import PageHeader  from '../../components/ui/PageHeader';
+import PageTabs from '../../components/ui/PageTabs';
 import FilterBar   from '../../components/ui/FilterBar';
 import DataTable   from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
@@ -571,15 +572,7 @@ export default function Payments() {
         description="All payment records, driver cash-handover reconciliation, and refunds."
       />
 
-      <div className="flex gap-1 mb-5 border-b overflow-x-auto" style={{ borderColor: '#E5E7EB' }}>
-        {TABS.map((t) => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring whitespace-nowrap"
-            style={{ borderColor: activeTab === t.key ? '#3B65DB' : 'transparent', color: activeTab === t.key ? '#3B65DB' : '#6B7280' }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PageTabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'payments'       && <PaymentsTab />}
       {activeTab === 'cash-handovers' && <CashHandoversTab />}

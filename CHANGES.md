@@ -36,3 +36,31 @@ The backend does not send a live socket event for booking requests, so the dashb
 - Deleted the unused `src/pages/admin/SurgePricing.jsx` (it was not routed; the Surge tab lives in Masters).
 
 `src/pages/customer/BookingRequestPage.jsx` is unchanged, since it is not needed in the admin dashboard.
+
+---
+
+# UI redesign: Material UI across the whole dashboard
+
+All new packages are free, open-source licences: `@mui/material`, `@mui/icons-material`, `@emotion/react` and `@emotion/styled` (all MIT). No paid MUI X Pro/Premium components are used. The look also borrows the Ionic style (rounded inset cards, iOS toggles) and the Uiverse style (inputs with a growing focus ring, buttons that lift on hover). Neither Ionic nor any Uiverse code is included; their styles were recreated in the MUI theme.
+
+## How it's built
+- `src/theme/muiTheme.js`: one theme with brand colours (yellow #FFC107 on black), radii, shadows and every component override. Re-skin the whole app here.
+- `src/main.jsx`: `ThemeProvider` plus `StyledEngineProvider enableCssLayer`. CSS layer order is `theme, base, mui, components, utilities`, so the Tailwind classes pages already use still apply and inline `style` props still win.
+- `src/index.css`: global element rules moved into `@layer base`. Before this, they overrode MUI and squashed inputs.
+
+## Shared components (same props as before, so pages needed no changes)
+Button, IconButton (with tooltip), Input, Textarea, PasswordInput, SearchInput, Select (MUI Select, or a searchable Autocomplete for more than 6 options), Checkbox, Switch (iOS toggle), Card, Badge and StatusBadge (MUI Chip), Alert, Modal (Dialog), Drawer, ConfirmDialog, DataTable (MUI Table with sort labels), Pagination, Skeleton, LoadingState, EmptyState, ErrorState, Breadcrumb, PageHeader, FilterBar, toasts (MUI Alert with slide-in), and the dashboard KPI cards.
+
+New: `src/components/ui/PageTabs.jsx` adds MUI Tabs on Rate Cards, Vehicles, Drivers, Payments, Reports and Settings.
+
+## Layout
+- **Sidebar:** MUI List with Material Rounded icons, and a slide-in MUI Drawer on mobile.
+- **Top bar:** frosted MUI AppBar, notification Popover with badge, and a user Menu.
+
+## Not changed
+- Icons that pages pass into buttons and cards are still lucide (ISC licence, free).
+- Page-specific panels keep their layout, but now contain MUI controls.
+
+## Tests
+    npm run test:ui
+The first script server-renders every shared component, the layout and all 27 pages (78 checks). The second clicks and types through the interactive components in jsdom (23 checks).

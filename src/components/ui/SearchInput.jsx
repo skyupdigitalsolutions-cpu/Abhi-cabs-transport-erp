@@ -1,57 +1,29 @@
-import { useState } from 'react';
+/** SearchInput — MUI input with a search icon and a clear button. onChange(value). */
+import InputAdornment from '@mui/material/InputAdornment';
+import MuiIconButton from '@mui/material/IconButton';
 import { Search, X } from 'lucide-react';
-import { cn } from '../../utils/cn';
+import Input from './Input';
 
-/**
- * Polished SearchInput — branded focus ring, smooth icon transitions.
- * API unchanged: { value, onChange, placeholder, className }
- */
-export default function SearchInput({ value, onChange, placeholder = 'Search…', className, style: externalStyle }) {
-  const [focused, setFocused] = useState(false);
-
+export default function SearchInput({ value, onChange, placeholder = 'Search...', className, style }) {
   return (
-    <div className={cn('relative', className)} style={externalStyle}>
-      <Search
-        size={15}
-        className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-        style={{
-          color: focused ? '#FFC107' : '#9A9A9A',
-          transition: 'color 0.2s',
-        }}
-      />
-      <input
+    <div className={className} style={style}>
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         placeholder={placeholder}
-        style={{
-          width: '100%', borderRadius: 10,
-          border: `1.5px solid ${focused ? '#FFC107' : '#E8E8E4'}`,
-          padding: '9px 32px 9px 36px',
-          fontSize: 13.5, fontWeight: 500,
-          backgroundColor: '#ffffff', color: '#111111',
-          outline: 'none',
-          boxShadow: focused ? '0 0 0 3px rgba(255,193,7,0.15)' : 'none',
-          transition: 'border-color 0.2s, box-shadow 0.2s',
-        }}
+        startAdornment={(
+          <InputAdornment position="start" sx={{ color: '#9A9A9A', '.Mui-focused &': { color: '#E6AC00' } }}>
+            <Search size={15} />
+          </InputAdornment>
+        )}
+        endAdornment={value ? (
+          <InputAdornment position="end">
+            <MuiIconButton size="small" edge="end" aria-label="Clear search" onClick={() => onChange('')} sx={{ color: '#9A9A9A', '&:hover': { color: '#111' } }}>
+              <X size={14} />
+            </MuiIconButton>
+          </InputAdornment>
+        ) : null}
       />
-      {value && (
-        <button
-          onClick={() => onChange('')}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md"
-          aria-label="Clear search"
-          style={{
-            color: '#9A9A9A', padding: 2,
-            display: 'grid', placeItems: 'center',
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = '#111'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = '#9A9A9A'; }}
-        >
-          <X size={14} />
-        </button>
-      )}
     </div>
   );
 }

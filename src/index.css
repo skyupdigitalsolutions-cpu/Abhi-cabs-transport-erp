@@ -1,3 +1,5 @@
+/* Cascade order: Tailwind theme/base, then MUI, then Tailwind utilities (see main.jsx). */
+@layer theme, base, mui, components, utilities;
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap');
 @import "tailwindcss";
 
@@ -55,6 +57,10 @@
   --text-2xl--line-height: 1.3;
 }
 
+/* Global element rules live in the `base` layer so MUI components (layer
+   `mui`, declared after `base`) can style their own inputs and buttons.
+   Unlayered, these beat every MUI style and squashed MUI inputs. */
+@layer base {
 html, body, #root { height: 100%; }
 
 body {
@@ -190,3 +196,5 @@ table { max-width: 100%; }
 @media (hover: none) and (pointer: coarse) {
   button, a[role="button"] { min-height: 40px; }
 }
+
+} /* end @layer base */

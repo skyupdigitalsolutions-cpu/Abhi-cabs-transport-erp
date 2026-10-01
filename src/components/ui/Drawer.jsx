@@ -1,56 +1,31 @@
-import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
+/** Drawer — MUI right-side <Drawer>. Same props: open, onClose, title, children, footer. */
+import MuiDrawer from '@mui/material/Drawer';
+import MuiIconButton from '@mui/material/IconButton';
 import { X } from 'lucide-react';
 
 export default function Drawer({ open, onClose, title, children, footer }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="drawer-title"
-        className="relative h-full w-full max-w-md flex flex-col shadow-2xl"
-        style={{ backgroundColor: '#ffffff' }}
-      >
-        <div
-          className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: '1px solid #E5E7EB' }}
-        >
-          <h2 id="drawer-title" className="text-base font-bold" style={{ color: '#1F2937' }}>{title}</h2>
-          <button
-            onClick={onClose}
-            aria-label="Close panel"
-            className="focus-ring rounded-lg p-1"
-            style={{ color: '#6B7280' }}
-          >
+  return (
+    <MuiDrawer
+      anchor="right"
+      open={!!open}
+      onClose={onClose}
+      transitionDuration={{ enter: 260, exit: 140 }}
+      slotProps={{ paper: { sx: { width: '100%', maxWidth: 448, display: 'flex', flexDirection: 'column', borderTopLeftRadius: 20, borderBottomLeftRadius: 20 } } }}
+    >
+      <div role="dialog" aria-labelledby="drawer-title" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
+          <h2 id="drawer-title" style={{ fontSize: 16, fontWeight: 800, color: '#111' }}>{title}</h2>
+          <MuiIconButton aria-label="Close panel" size="small" onClick={onClose} sx={{ color: '#6B7280' }}>
             <X size={18} />
-          </button>
+          </MuiIconButton>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && (
-          <div
-            className="flex items-center justify-end gap-2 px-5 py-3.5"
-            style={{ borderTop: '1px solid #E5E7EB' }}
-          >
+        <div className="flex-1 overflow-y-auto px-5 py-4">{open ? children : null}</div>
+        {footer && open && (
+          <div className="flex items-center justify-end gap-2 px-5 py-3.5" style={{ borderTop: '1px solid #E5E7EB' }}>
             {footer}
           </div>
         )}
       </div>
-    </div>,
-    document.body
+    </MuiDrawer>
   );
 }

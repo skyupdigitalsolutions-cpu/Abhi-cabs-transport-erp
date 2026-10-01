@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Download, TrendingUp, Truck, Users, CalendarCheck, Filter, X } from 'lucide-react';
 import PageHeader  from '../../components/ui/PageHeader';
+import PageTabs from '../../components/ui/PageTabs';
 import Card        from '../../components/ui/Card';
 import Select      from '../../components/ui/Select';
 import Input       from '../../components/ui/Input';
@@ -1240,15 +1241,7 @@ export default function Reports() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b overflow-x-auto" style={{ borderColor: '#E5E7EB' }}>
-        {REPORT_TABS.map((t) => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring whitespace-nowrap"
-            style={{ borderColor: activeTab === t.key ? '#3B65DB' : 'transparent', color: activeTab === t.key ? '#3B65DB' : '#6B7280' }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PageTabs tabs={REPORT_TABS} value={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'overview'  && <OverviewTab  executive={executive} fleet={fleetApi} trend={trend} bookings={bookings} rangeLabel={rangeLabel} />}
       {activeTab === 'financial' && <FinancialTab executive={executive} bookings={bookings} payments={payments} />}

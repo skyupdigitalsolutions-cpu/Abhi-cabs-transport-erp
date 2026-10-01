@@ -1,41 +1,32 @@
-import { cn } from '../../utils/cn';
+/**
+ * IconButton — MUI <IconButton> with a tooltip showing `label`.
+ * Same props as before: icon (lucide), label, variant (ghost|danger|primary), size (sm|md|lg|number).
+ */
+import MuiIconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 const SIZE_MAP = { sm: 28, md: 36, lg: 44 };
+const TONES = {
+  ghost:   { color: '#6B7280', hover: '#F3F4F6', hoverColor: '#111' },
+  danger:  { color: '#EF4444', hover: '#fef2f2', hoverColor: '#DC2626' },
+  primary: { color: '#B8860B', hover: '#FFFBEB', hoverColor: '#111' },
+};
 
-export default function IconButton({ icon: Icon, label, className, variant = 'ghost', size = 'md', ...props }) {
+export default function IconButton({ icon: Icon, label, className, variant = 'ghost', size = 'md', disabled, sx, ...props }) {
   const px = typeof size === 'number' ? size : (SIZE_MAP[size] || SIZE_MAP.md);
-  const styles = {
-    ghost:   { color: '#6B7280', hoverBg: '#F3F4F6', hoverColor: '#111' },
-    danger:  { color: '#EF4444', hoverBg: '#fef2f2', hoverColor: '#DC2626' },
-    primary: { color: '#B8860B', hoverBg: '#FFFBEB', hoverColor: '#111' },
-  };
-  const s = styles[variant] || styles.ghost;
-
-  return (
-    <button
-      type="button"
+  const t = TONES[variant] || TONES.ghost;
+  const button = (
+    <MuiIconButton
       aria-label={label}
-      title={label}
-      className={cn('inline-flex items-center justify-center rounded-[10px] focus-ring', className)}
-      style={{
-        height: px, width: px, color: s.color, flexShrink: 0,
-        transition: 'background-color 0.18s, color 0.18s, transform 0.15s',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = s.hoverBg;
-        e.currentTarget.style.color = s.hoverColor;
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = '';
-        e.currentTarget.style.color = s.color;
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
-      onMouseUp={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      className={className}
+      disabled={disabled}
+      sx={[{ width: px, height: px, color: t.color, flexShrink: 0, '&:hover': { bgcolor: t.hover, color: t.hoverColor } }, ...(Array.isArray(sx) ? sx : [sx || {}])]}
       {...props}
     >
-      <Icon size={Math.round(px * 0.44)} />
-    </button>
+      <Icon size={Math.round(px * 0.46)} />
+    </MuiIconButton>
   );
+  if (!label) return button;
+  // A disabled button fires no pointer events, so the tooltip needs a wrapper.
+  return <Tooltip title={label}>{disabled ? <span style={{ display: 'inline-flex' }}>{button}</span> : button}</Tooltip>;
 }

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Star, PlusCircle, UserPlus, Phone, Mail, IdCard, CheckCircle, XCircle, Eye, FileText, Image, X, AlertTriangle } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
+import PageTabs from '../../components/ui/PageTabs';
 import Card          from '../../components/ui/Card';
 import Select        from '../../components/ui/Select';
 import Button        from '../../components/ui/Button';
@@ -488,23 +489,14 @@ export default function Drivers() {
 
   const tabs = [
     { key: 'roster',      label: 'Roster' },
-    { key: 'kyc',         label: `KYC Applications${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+    { key: 'kyc',         label: 'KYC Applications', badge: pendingCount },
     { key: 'performance', label: 'Performance' },
   ];
 
   return (
     <div>
       <PageHeader title="Drivers" description="Manage your driver roster, review KYC applications, and track performance." />
-      <div className="flex gap-1 mb-5 border-b" style={{ borderColor: '#E5E7EB' }}>
-        {tabs.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px focus-ring"
-            style={{ borderColor: tab === t.key ? '#3B65DB' : 'transparent', color: tab === t.key ? '#3B65DB' : '#6B7280' }}>
-            {t.label}
-            {t.key === 'kyc' && pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[11.5px] font-bold" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>{pendingCount}</span>}
-          </button>
-        ))}
-      </div>
+      <PageTabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'roster'      && <RosterTab />}
       {tab === 'kyc'         && <KycTab />}
       {tab === 'performance' && <PerformanceTab />}

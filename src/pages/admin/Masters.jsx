@@ -17,6 +17,7 @@ import Alert from '../../components/ui/Alert';
 import Checkbox from '../../components/ui/Checkbox';
 import SearchInput from '../../components/ui/SearchInput';
 import Switch from '../../components/ui/Switch';
+import PageTabs from '../../components/ui/PageTabs';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
 import { apiClient } from '../../services/apiClient';
@@ -1312,21 +1313,7 @@ export default function Masters() {
   return (
     <div>
       <PageHeader title="Rate Cards" />
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1.5px solid #E8E8E4' }}>
-        {TABS.map((t) => {
-          const active = tab === t.key;
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '10px 18px', fontSize: 13.5, fontWeight: 700,
-              color: active ? '#111' : '#6B7280',
-              background: 'none', border: 'none', cursor: 'pointer',
-              borderBottom: `2.5px solid ${active ? '#FFC107' : 'transparent'}`,
-              marginBottom: -1.5, transition: 'color 0.15s, border-color 0.15s',
-            }}><t.icon size={14} />{t.label}</button>
-          );
-        })}
-      </div>
+      <PageTabs tabs={TABS} value={tab} onChange={setTab} />
       {tab === 'rates' && <VehicleRatesTab />}
       {tab === 'surge' && <SurgePricingTab />}
     </div>

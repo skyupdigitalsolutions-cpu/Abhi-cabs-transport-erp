@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Save, Eye, EyeOff, Key, Bell, Building2, Shield, Trophy, Plus, Trash2 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
+import PageTabs from '../../components/ui/PageTabs';
 import Card       from '../../components/ui/Card';
 import FormField  from '../../components/ui/FormField';
 import Input      from '../../components/ui/Input';
@@ -89,15 +90,7 @@ export default function Settings() {
       <PageHeader title="Settings" description="Company profile, notifications and security preferences." />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8E8E4' }}>
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors"
-            style={{ borderColor: tab === key ? '#FFC107' : 'transparent', color: tab === key ? '#111111' : '#9A9A9A' }}>
-            <Icon size={13} />{label}
-          </button>
-        ))}
-      </div>
+      <PageTabs tabs={TABS} value={tab} onChange={setTab} />
 
       {/* Company */}
       {tab === 'company' && (

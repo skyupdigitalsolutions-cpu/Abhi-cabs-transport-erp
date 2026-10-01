@@ -1,16 +1,18 @@
-import { cn } from '../../utils/cn';
+/** Skeletons — MUI <Skeleton> (wave animation). */
+import MuiSkeleton from '@mui/material/Skeleton';
+import Card from './Card';
 
 export function Skeleton({ className }) {
-  return <div className={cn('animate-pulse rounded-lg', className)} style={{ backgroundColor: '#E5E7EB' }} />;
+  return <MuiSkeleton variant="rounded" animation="wave" className={className} sx={{ height: 'auto', minHeight: 12 }} />;
 }
 
 export function TableSkeleton({ rows = 6, cols = 5 }) {
   return (
     <div className="w-full">
       {Array.from({ length: rows }).map((_, r) => (
-        <div key={r} className="flex items-center gap-4 px-4 py-3.5" style={{ borderBottom: '1px solid #F7F8FC' }}>
+        <div key={r} className="flex items-center gap-4 px-4 py-3.5" style={{ borderBottom: '1px solid #F2F2EE' }}>
           {Array.from({ length: cols }).map((__, c) => (
-            <Skeleton key={c} className={c === 0 ? 'h-4 w-8' : 'h-4 flex-1'} />
+            <MuiSkeleton key={c} variant="rounded" animation="wave" height={16} sx={{ flex: c === 0 ? '0 0 32px' : 1 }} />
           ))}
         </div>
       ))}
@@ -20,10 +22,10 @@ export function TableSkeleton({ rows = 6, cols = 5 }) {
 
 export function CardSkeleton() {
   return (
-    <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: '#E5E7EB', backgroundColor: '#ffffff' }}>
-      <Skeleton className="h-4 w-1/3" />
-      <Skeleton className="h-8 w-1/2" />
-      <Skeleton className="h-3 w-2/3" />
-    </div>
+    <Card>
+      <MuiSkeleton animation="wave" width="33%" height={18} />
+      <MuiSkeleton animation="wave" width="50%" height={34} />
+      <MuiSkeleton animation="wave" width="66%" height={14} />
+    </Card>
   );
 }
