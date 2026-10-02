@@ -7,8 +7,19 @@ import { ADMIN_NAV } from '../../constants';
 import { AdminRealtimeProvider, useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 import useFollowUpAlerts from '../../hooks/useFollowUpAlerts';
 
+const SIDEBAR_COLLAPSED_KEY = 'terp_sidebar_collapsed';
+
 function AdminLayoutInner() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Desktop sidebar collapse preference — persisted so it survives reloads.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); } catch { /* storage unavailable */ }
+    return next;
+  });
   const location = useLocation();
   const current  = ADMIN_NAV.find((n) => location.pathname.startsWith(n.to));
   const { connected } = useAdminRealtimeContext();
@@ -23,9 +34,11 @@ function AdminLayoutInner() {
         nav={ADMIN_NAV}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
       />
 
-      <div className="lg:ml-60">
+      <div className={`terp-content${collapsed ? ' is-collapsed' : ''}`}>
         <Navbar
           onMenuClick={() => setMobileOpen(true)}
           title={current?.label || 'ABHI CABS ERP'}

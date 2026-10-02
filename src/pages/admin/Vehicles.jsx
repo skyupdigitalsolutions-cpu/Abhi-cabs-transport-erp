@@ -265,11 +265,19 @@ function FleetTab({ canManage, canDelete }) {
     { key: 'insuranceExpiry', header: 'Insurance', render: (r) => <ExpiryChip dateStr={r.insuranceExpiry} /> },
     { key: 'pucExpiry', header: 'PUC', render: (r) => <ExpiryChip dateStr={r.pucExpiry} /> },
     { key: 'status', header: 'Operational Status', render: (r) => <StatusBadge status={r.status} /> },
-    { key: 'verification', header: 'Verification', render: () => <Badge tone="slate">Not available</Badge> },
+    // NOTE: the always-"Not available" Verification column was removed from the
+    // fleet list — the backend exposes no verification field here, so it only
+    // ever showed a dead placeholder while widening the table enough to push the
+    // row actions (including Delete) off-screen behind horizontal scroll.
     ...(canManage ? [{ key: 'actions', header: '', className: 'text-right', render: (r) => (<div className="flex justify-end gap-1"><IconButton icon={Shield} label="Docs" onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} /><IconButton icon={Pencil} label="Edit" onClick={() => openEdit(r)} disabled={detailLoading === r.id} />{r.isActive === false || r.status === 'INACTIVE'
             ? <IconButton icon={RotateCcw} label="Activate" onClick={() => handleActivate(r)} />
             : <IconButton icon={PowerOff} label="Deactivate" onClick={() => setDeleting(r)} />}
-            {canDelete && <IconButton icon={Trash2} label="Delete permanently" variant="danger" onClick={() => setPurging(r)} />}</div>) }] : []),
+            {/* Delete is now visible to every fleet manager, not just admins.
+                Permanent erase is an ADMIN-only backend capability, so admins get
+                the real permanent-delete dialog; anyone else gets deactivate
+                (remove from fleet, records kept) — the strongest removal their
+                role is allowed to perform. */}
+            <IconButton icon={Trash2} label={canDelete ? 'Delete permanently' : 'Delete (remove from fleet)'} variant="danger" onClick={() => (canDelete ? setPurging(r) : setDeleting(r))} /></div>) }] : []),
   ];
 
   const handleSubmit = async (values) => {

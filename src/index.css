@@ -198,3 +198,35 @@ table { max-width: 100%; }
 }
 
 } /* end @layer base */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Admin layout — collapsible sidebar (authored CSS, NOT Tailwind utilities)
+   The desktop rail's show/hide (below lg), its width, and the matching content
+   margin are all layout-critical, so they live here as real CSS with a media
+   query instead of depending on Tailwind JIT class generation. Collapse state
+   is toggled by adding `.is-collapsed` (see AdminLayout / Sidebar).
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --terp-sidebar-w: 252px;            /* expanded rail width  */
+  --terp-sidebar-w-collapsed: 76px;   /* collapsed icon rail  */
+}
+
+/* Desktop rail: hidden below the lg breakpoint, shown as a flex column at lg+. */
+.terp-sidebar-desktop {
+  display: none;
+  width: var(--terp-sidebar-w);
+  transition: width .22s ease;
+}
+.terp-sidebar-desktop.is-collapsed { width: var(--terp-sidebar-w-collapsed); }
+
+/* Main content clears the fixed rail; margin tracks the rail width. */
+.terp-content {
+  margin-left: 0;
+  transition: margin-left .22s ease;
+}
+
+@media (min-width: 1024px) {
+  .terp-sidebar-desktop { display: flex; }
+  .terp-content { margin-left: var(--terp-sidebar-w); }
+  .terp-content.is-collapsed { margin-left: var(--terp-sidebar-w-collapsed); }
+}
