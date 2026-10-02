@@ -38,7 +38,7 @@ export default function FilterBar({
     <Paper
       variant="outlined"
       className={className}
-      sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mb: 2, p: 1.5, borderRadius: 4, bgcolor: '#FFFFFF' }}
+      sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mb: 2, p: 1.5, borderRadius: 0, bgcolor: '#FFFFFF' }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {onSearchChange && (

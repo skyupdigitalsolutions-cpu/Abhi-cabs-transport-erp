@@ -26,7 +26,7 @@ export default function DataTable({
   page, limit, total, totalPages, onPageChange, onLimitChange,
   emptyTitle = 'No records found', emptyDescription,
 }) {
-  const shell = (content) => <Paper variant="outlined" sx={{ borderRadius: 4, overflow: 'hidden' }}>{content}</Paper>;
+  const shell = (content) => <Paper variant="outlined" sx={{ borderRadius: 0, overflow: 'hidden' }}>{content}</Paper>;
 
   if (status === 'loading') return shell(<TableSkeleton cols={columns.length} />);
   if (status === 'error') return shell(<ErrorState message={error?.message} onRetry={onRetry} />);
