@@ -558,6 +558,14 @@ function VehicleRateCard({ rate, cityName, pairRate, onEdit, onDelete, onToggle 
   const pairable = rate.tripType === 'ONE_WAY' || rate.tripType === 'ROUND_TRIP';
   const pairTripLabel = rate.tripType === 'ONE_WAY' ? 'Round Trip' : 'One Way';
 
+  // When the card was created — the same field the list is ordered by, so the
+  // date on screen explains why the newest card sits on top. Shown only when
+  // the backend actually returns it (never "Invalid Date").
+  const createdAt = rate.createdAt ? new Date(rate.createdAt) : null;
+  const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
+    ? createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+
   const advancedTags = [
     Number(rate.driverAllowance) > 0 && 'Driver allowance',
     (Number(rate.nightAllowance) > 0 || Number(rate.nightChargePct) > 0) && 'Night charge',
@@ -586,6 +594,11 @@ function VehicleRateCard({ rate, cityName, pairRate, onEdit, onDelete, onToggle 
               <MapPin size={10} className="inline -mt-0.5 mr-0.5" />{cityName ? `${cityName}, ${rate.city?.state || ''}`.replace(/, $/, '') : (rate.cityId ? `City #${rate.cityId}` : 'All India')}
             </span>
             {!rate.isActive && <Badge tone="slate">Inactive</Badge>}
+            {createdLabel && (
+              <span className="text-[11.5px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>
+                <Clock size={10} className="inline -mt-0.5 mr-0.5" />Added {createdLabel}
+              </span>
+            )}
             {advancedTags.map((tag) => (
               <span key={tag} className="text-[11.5px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F7F8FC', color: '#6B7280' }}>{tag}</span>
             ))}
@@ -701,6 +714,14 @@ function VehicleRatesTab() {
     const matchState  = !stateFilter || (r.city?.state || '') === stateFilter;
     const matchActive = activeFilter === 'all' || (activeFilter === 'active' ? r.isActive : !r.isActive);
     return matchSearch && matchClass && matchTrip && matchState && matchActive;
+  }).sort((a, b) => {
+    // Latest added always first — newest createdAt on top, falling back to the
+    // auto-increment id when a timestamp is missing or two match exactly.
+    // (.filter returns a new array, so this doesn't mutate `rates`.)
+    const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (bt !== at) return bt - at;
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
   }), [rates, cities, search, classFilter, tripFilter, stateFilter, activeFilter]);
 
   // Other cities in the same state whose CURRENT card for this class + trip type
