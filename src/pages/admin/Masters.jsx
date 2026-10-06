@@ -20,7 +20,7 @@ import Switch from '../../components/ui/Switch';
 import PageTabs from '../../components/ui/PageTabs';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
-import { apiClient } from '../../services/apiClient';
+import { cityService } from '../../services/cityService';
 import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
 import { vehicleCatalogService } from '../../services';
@@ -67,7 +67,7 @@ const ALL_CITIES = '__ALL_CITIES__';
 // fields (city + vehicleClass + tripType + baseFare/perKm/minimumKm, plus
 // optional outstation/round-trip/night/airport/hourly/surge fields).
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubmit, onClose }) {
+function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubmit, onClose, onCityAdded }) {
   const isEdit = !!initial;
   const toast = useToast();
   const [form, setForm] = useState(() => {
@@ -87,23 +87,57 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
     ? cities.filter((c) => c.state === form._state && Number(c.id) < 1000000)
     : [];
 
+  /**
+   * Add a city.
+   *
+   * This used to POST to /admin/fare-configs/cities, which is a GET-only
+   * lookup. Express answers 404 for a path that exists but not for that
+   * method, so it was indistinguishable from an unimplemented route — hence
+   * the old "this server can't add new cities yet" toast. The real endpoint is
+   * POST /admin/cities.
+   *
+   * Only the name and state are sent. The backend geocodes the name and
+   * derives a service radius wide enough to cover any airport outside the
+   * city's administrative boundary, so the admin never has to find a centroid.
+   */
   const handleAddCity = async () => {
     if (!newCityName.trim() || !form._state) return;
     const stateName = form._state;
     try {
-      const res = await apiClient.post('/admin/fare-configs/cities', {
-        name: newCityName.trim(), state: stateName, country: 'India',
+      const { city, resolved, warning } = await cityService.create({
+        name: newCityName.trim(),
+        state: stateName,
       });
-      const newCity = res?.data?.city || res?.city || { id: Date.now(), name: newCityName.trim(), state: stateName };
-      cities.push(newCity);
-      set('cityId', String(newCity.id));
-      toast.success(`${newCityName.trim()}, ${stateName} added`);
+
+      // Hand the real, server-saved city back to the parent so it refreshes
+      // the list from the server (and picks up the row's _count) instead of
+      // this form mutating a prop array in place. The selection below is held
+      // in form state, so it sticks regardless of when the refresh resolves.
+      onCityAdded?.(city);
+      set('cityId', String(city.id));
+
+      // Say what was chosen on the admin's behalf. A radius that appeared from
+      // nowhere is one they either trust blindly or override arbitrarily.
+      toast.success(
+        resolved
+          ? `${city.name}, ${city.state} added — ${resolved.explanation}`
+          : `${city.name}, ${city.state} added`,
+      );
+
+      /*
+       * A city in a state that is not on the service-state allowlist is fully
+       * configured and still refuses every pickup with OUTSIDE_SERVICE_STATES.
+       * Shown as a separate warning because it is not a failure of this action
+       * and it is not fixed on this screen.
+       */
+      if (warning) toast.error(warning, { duration: 10000 });
     } catch (e) {
-      // No pretend city: if the server can't save it, a rate card can never be
-      // saved against it either (that is what produced "Invalid request data").
+      // No pretend city. The old fallback minted one with `id: Date.now()`,
+      // and a rate card can never be saved against an id the server has never
+      // seen — that is what produced "Invalid request data" one step later.
       toast.error(
-        e.status === 404 || e.code === 'ENDPOINT_NOT_IMPLEMENTED'
-          ? `This server can't add new cities yet. Ask your developer to add the city in the database, or pick "All cities in ${stateName}" to price the whole state.`
+        e.status === 403
+          ? 'Adding a city needs the SETTINGS_MANAGE permission. Ask an admin to add it, or pick an existing city.'
           : `Couldn't add the city: ${e.message || 'unknown error'}`,
       );
       return; // keep the box open
@@ -975,6 +1009,12 @@ function VehicleRatesTab() {
           findCard={findCard}
           onSubmit={handleSubmit}
           onClose={() => { setFormOpen(false); setEditing(null); }}
+          onCityAdded={(city) => {
+            // Show it immediately, then refetch so the canonical row (with
+            // _count) replaces the optimistic one. No prop-array mutation.
+            if (city) setCities((prev) => (prev.some((c) => String(c.id) === String(city.id)) ? prev : [...prev, city]));
+            reload();
+          }}
         />
       </Modal>
 

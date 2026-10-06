@@ -230,3 +230,20 @@ table { max-width: 100%; }
   .terp-content { margin-left: var(--terp-sidebar-w); }
   .terp-content.is-collapsed { margin-left: var(--terp-sidebar-w-collapsed); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   New-booking alerts — centre popup (NewBookingPopup) + corner stack
+   (BookingAlertStack). Plain keyframes so they don't depend on Tailwind JIT.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes abhiFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes abhiPopIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes abhiSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

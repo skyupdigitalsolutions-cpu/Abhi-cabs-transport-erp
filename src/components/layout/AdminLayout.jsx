@@ -6,6 +6,8 @@ import ErrorBoundary from './ErrorBoundary';
 import { ADMIN_NAV } from '../../constants';
 import { AdminRealtimeProvider, useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 import useFollowUpAlerts from '../../hooks/useFollowUpAlerts';
+import NewBookingPopup from '../booking/NewBookingPopup';
+import BookingAlertStack from '../booking/BookingAlertStack';
 
 const SIDEBAR_COLLAPSED_KEY = 'terp_sidebar_collapsed';
 
@@ -51,6 +53,12 @@ function AdminLayoutInner() {
           </ErrorBoundary>
         </main>
       </div>
+
+      {/* New-booking confirm/dismiss popup + persistent corner stack.
+          Live across the whole admin area so a booking is never missed,
+          whichever page the admin is on. */}
+      <NewBookingPopup />
+      <BookingAlertStack />
     </div>
   );
 }
