@@ -1,45 +1,42 @@
-import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { Car, Phone, MapPin, Clock, CheckCircle } from 'lucide-react';
 import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
-import { useToast } from '../../hooks/useToast';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
 
 /**
  * NewBookingPopup — the centre-screen dialog that appears the instant a new
  * booking arrives (socket `booking:created`). Two actions only:
- *   • Confirm  → confirms the booking (PATCH /admin/bookings/:id/confirm)
- *   • Dismiss  → closes the popup, but the booking drops into the corner
- *                notification stack (BookingAlertStack) and keeps nagging
- *                there until it is confirmed.
+ *   • Confirm  → routes to the real call-and-confirm flow (ConfirmBookingModal
+ *                on the Bookings page) so the admin calls the customer and
+ *                leaves a remark before confirming. The booking is moved to the
+ *                corner stack on the way, so it stays visible until the
+ *                confirmation actually goes through (a cancelled confirm leaves
+ *                it pending in the stack).
+ *   • Dismiss  → closes the popup, dropping the booking into the corner
+ *                notification stack (BookingAlertStack) where it keeps nagging
+ *                until it is confirmed.
  * Clicking the backdrop or pressing Escape behaves like Dismiss, so a booking
  * is never silently lost. When several bookings are waiting, they are shown one
  * at a time (the top of the undismissed queue).
  */
 export default function NewBookingPopup() {
-  const { bookingAlerts, confirmBookingAlert, dismissBookingAlert } = useAdminRealtimeContext();
-  const toast = useToast();
-  const [loading, setLoading] = useState(false);
+  const { bookingAlerts, dismissBookingAlert } = useAdminRealtimeContext();
+  const navigate = useNavigate();
 
   const queue = bookingAlerts.filter((a) => !a.dismissed);
   const active = queue[0] || null;
 
   if (!active) return null;
 
-  const handleConfirm = async () => {
-    setLoading(true);
-    try {
-      await confirmBookingAlert(active.id);
-      toast.success(`Booking ${active.bookingNumber || ''} confirmed`.trim());
-    } catch (err) {
-      toast.error(err?.message || 'Failed to confirm booking');
-    } finally {
-      setLoading(false);
-    }
+  const handleConfirm = () => {
+    // Move it to the stack so this popup closes (and doesn't overlay the modal),
+    // then open the call-and-confirm flow for this booking.
+    dismissBookingAlert(active.id);
+    navigate(`/admin/bookings?confirm=${active.id}`);
   };
 
   const handleDismiss = () => {
-    if (loading) return;
     dismissBookingAlert(active.id);
   };
 
@@ -117,12 +114,12 @@ export default function NewBookingPopup() {
         )}
 
         <div style={S.actions}>
-          <button type="button" style={S.dismissBtn} onClick={handleDismiss} disabled={loading}>
+          <button type="button" style={S.dismissBtn} onClick={handleDismiss}>
             Dismiss
           </button>
-          <button type="button" style={{ ...S.confirmBtn, opacity: loading ? 0.75 : 1 }} onClick={handleConfirm} disabled={loading}>
+          <button type="button" style={S.confirmBtn} onClick={handleConfirm}>
             <CheckCircle size={17} />
-            {loading ? 'Confirming…' : 'Confirm'}
+            Confirm
           </button>
         </div>
       </div>

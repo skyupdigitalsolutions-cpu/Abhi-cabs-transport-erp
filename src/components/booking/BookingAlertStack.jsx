@@ -1,28 +1,21 @@
-import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Car } from 'lucide-react';
 import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
-import { useToast } from '../../hooks/useToast';
 
 /**
  * BookingAlertStack — the corner notification cards (iOS-style) that hold every
- * new booking the admin DISMISSED from the popup. They keep showing until each
- * booking is confirmed. Each card offers Confirm (one tap) and View (open the
- * booking detail for the full call-and-confirm flow).
+ * new booking the admin DISMISSED from the popup. They keep showing until the
+ * booking is actually confirmed.
+ *
+ * Confirm does NOT confirm in place — it routes to the real call-and-confirm
+ * flow (the ConfirmBookingModal on the Bookings page) so the admin calls the
+ * customer and leaves a remark before confirming. The card stays in the stack
+ * until that confirmation goes through (the Bookings page clears it), so a
+ * cancelled confirm leaves the still-pending booking visible here. View opens
+ * the full booking detail.
  */
 function AlertCard({ alert, onConfirm, onView }) {
-  const [loading, setLoading] = useState(false);
-
-  const handleConfirm = async () => {
-    setLoading(true);
-    try {
-      await onConfirm(alert.id);
-    } catch {
-      setLoading(false); // keep the card on failure so it can be retried
-    }
-  };
-
   const route = [alert.pickupAddress, alert.dropAddress]
     .map((a) => (a ? String(a).split(',')[0] : ''))
     .filter(Boolean)
@@ -42,11 +35,11 @@ function AlertCard({ alert, onConfirm, onView }) {
         </div>
       </div>
       <div style={C.actions}>
-        <button type="button" style={{ ...C.actionBtn, ...C.confirm, opacity: loading ? 0.6 : 1 }} onClick={handleConfirm} disabled={loading}>
-          {loading ? '…' : 'Confirm'}
+        <button type="button" style={{ ...C.actionBtn, ...C.confirm }} onClick={() => onConfirm(alert)}>
+          Confirm
         </button>
         <div style={C.divider} />
-        <button type="button" style={{ ...C.actionBtn, ...C.view }} onClick={() => onView(alert)} disabled={loading}>
+        <button type="button" style={{ ...C.actionBtn, ...C.view }} onClick={() => onView(alert)}>
           View
         </button>
       </div>
@@ -55,22 +48,11 @@ function AlertCard({ alert, onConfirm, onView }) {
 }
 
 export default function BookingAlertStack() {
-  const { bookingAlerts, confirmBookingAlert } = useAdminRealtimeContext();
-  const toast = useToast();
+  const { bookingAlerts } = useAdminRealtimeContext();
   const navigate = useNavigate();
 
   const dismissed = bookingAlerts.filter((a) => a.dismissed);
   if (!dismissed.length) return null;
-
-  const handleConfirm = async (id) => {
-    try {
-      await confirmBookingAlert(id);
-      toast.success('Booking confirmed');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to confirm booking');
-      throw err;
-    }
-  };
 
   return createPortal(
     <div style={C.container}>
@@ -82,7 +64,8 @@ export default function BookingAlertStack() {
           <AlertCard
             key={a.id}
             alert={a}
-            onConfirm={handleConfirm}
+            // Route into the call-and-confirm flow rather than confirming here.
+            onConfirm={(al) => navigate(`/admin/bookings?confirm=${al.id}`)}
             onView={(al) => navigate(`/admin/bookings/${al.id}`)}
           />
         ))}

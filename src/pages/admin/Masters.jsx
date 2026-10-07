@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Car, MapPin, ChevronDown, ChevronUp, Zap, Database, Save, Clock, Search, Globe,
+  Car, MapPin, ChevronDown, ChevronUp, Zap, Database, Save, Clock, Search,
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
@@ -23,10 +23,8 @@ import { fareConfigService } from '../../services';
 import { cityService } from '../../services/cityService';
 import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
-import { STATE_CITIES, cityKey } from '../../constants/stateCities';
 import { vehicleCatalogService } from '../../services';
 import { surgeService } from '../../services/surgeService';
-import ServiceStatesTab from './ServiceStatesTab';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -63,9 +61,6 @@ const EMPTY_RATE_CARD = {
 // City dropdown value meaning "every city in the chosen state" -- the backend keeps
 // one rate card per city, so this expands to one identical card per city.
 const ALL_CITIES = '__ALL_CITIES__';
-// City dropdown value prefix for a city from the built-in list that is not saved
-// on the server yet. It is created when the rate card is saved.
-const NEW_CITY = '__NEW__:';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vehicle Rate Card Form — Simple / Advanced, matching the REAL FareConfig
@@ -85,34 +80,38 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
   const [errors, setErrors] = useState({});
   const [addingCity, setAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
-  // Existing city whose rate cards + rental packages seed the new one. Without
-  // it a new city is created with NO pricing and cannot quote anything.
-  const [copyFromCityId, setCopyFromCityId] = useState('');
   const [applyToState, setApplyToState] = useState(false);
+  // When a state is picked, auto-fetch that state's cities from the server so
+  // the dropdown is always fresh and complete — not limited to the preloaded
+  // feed, and including any city added since this screen opened. Falls back
+  // silently to the preloaded `cities` while the fetch is in flight or if it
+  // fails, so the field is never empty.
+  const [fetchedCities, setFetchedCities] = useState([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+
+  useEffect(() => {
+    const stateName = form._state;
+    if (!stateName) { setFetchedCities([]); return undefined; }
+    let cancelled = false;
+    setCitiesLoading(true);
+    cityService.list({ state: stateName })
+      .then((list) => { if (!cancelled) setFetchedCities(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setFetchedCities([]); }) // keep the preloaded fallback
+      .finally(() => { if (!cancelled) setCitiesLoading(false); });
+    return () => { cancelled = true; };
+  }, [form._state]);
+
+  // The working set of cities for this form: the freshly fetched state list
+  // when we have one, otherwise the preloaded list filtered to the state.
+  const cityPool = form._state
+    ? (fetchedCities.length ? fetchedCities : cities.filter((c) => c.state === form._state))
+    : cities;
+
   // Real cities (saved on the server) in the chosen state: what "All cities in
   // <State>" expands to. Cities that only exist on this screen are left out.
   const stateCityList = form._state
-    ? cities.filter((c) => c.state === form._state && Number(c.id) < 1000000)
+    ? cityPool.filter((c) => c.state === form._state && Number(c.id) < 1000000)
     : [];
-
-  // A city picked from the built-in list that is not saved yet.
-  const isNewPick = typeof form.cityId === 'string' && form.cityId.startsWith(NEW_CITY);
-  const newPickName = isNewPick ? form.cityId.slice(NEW_CITY.length) : '';
-
-  // Everything selectable once a state is chosen: the cities already saved on
-  // the server, plus every other city we know for that state. The latter are
-  // created on save, so no separate "add city" step is needed.
-  const cityOptions = (() => {
-    const saved = cities
-      .filter((c) => !form._state || c.state === form._state)
-      .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}`, sort: c.name }));
-    if (!form._state) return saved.sort((a, b) => a.sort.localeCompare(b.sort));
-    const have = new Set(cities.filter((c) => c.state === form._state).map((c) => cityKey(c.name)));
-    const fromList = (STATE_CITIES[form._state] || [])
-      .filter((name) => !have.has(cityKey(name)))
-      .map((name) => ({ value: `${NEW_CITY}${name}`, label: `${name}, ${form._state} — new`, sort: name }));
-    return [...saved, ...fromList].sort((a, b) => a.sort.localeCompare(b.sort));
-  })();
 
   /**
    * Add a city.
@@ -127,58 +126,52 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
    * derives a service radius wide enough to cover any airport outside the
    * city's administrative boundary, so the admin never has to find a centroid.
    */
-  // Creates the city on the server and returns the saved row, or null on
-  // failure (after telling the admin why). Shared by the "pick from the list"
-  // path, which runs it when the rate card is saved, and the manual fallback.
-  const createCity = async (rawName) => {
-    const name = String(rawName || '').trim();
+  const handleAddCity = async () => {
+    if (!newCityName.trim() || !form._state) return;
     const stateName = form._state;
-    if (!name || !stateName) return null;
     try {
-      const { city, resolved, warning, copied } = await cityService.create({
-        name,
+      const { city, resolved, warning } = await cityService.create({
+        name: newCityName.trim(),
         state: stateName,
-        ...(copyFromCityId ? { copyFromCityId: Number(copyFromCityId) } : {}),
       });
 
       // Hand the real, server-saved city back to the parent so it refreshes
-      // the list from the server (and picks up the row's _count).
+      // the list from the server (and picks up the row's _count) instead of
+      // this form mutating a prop array in place. The selection below is held
+      // in form state, so it sticks regardless of when the refresh resolves.
       onCityAdded?.(city);
+      // Reflect the new city in this form's state-scoped list right away too,
+      // so it's selectable without waiting for the state re-fetch.
+      setFetchedCities((prev) => (prev.some((c) => String(c.id) === String(city.id)) ? prev : [...prev, city]));
       set('cityId', String(city.id));
 
+      // Say what was chosen on the admin's behalf. A radius that appeared from
+      // nowhere is one they either trust blindly or override arbitrarily.
       toast.success(
         resolved
           ? `${city.name}, ${city.state} added — ${resolved.explanation}`
           : `${city.name}, ${city.state} added`,
       );
 
-      // A city in a state that is not on the service-state allowlist is fully
-      // configured and still refuses every pickup with OUTSIDE_SERVICE_STATES.
-      if (warning) {
-        toast.error(`${warning} Open the "Service States" tab to allow ${stateName}.`, { duration: 12000 });
-      }
-      if (!copyFromCityId && !copied) {
-        toast.error(`${city.name} has no rental packages yet — local rentals there need them. Copy from an existing city, or add them separately.`, { duration: 8000 });
-      }
-      return city;
+      /*
+       * A city in a state that is not on the service-state allowlist is fully
+       * configured and still refuses every pickup with OUTSIDE_SERVICE_STATES.
+       * Shown as a separate warning because it is not a failure of this action
+       * and it is not fixed on this screen.
+       */
+      if (warning) toast.error(warning, { duration: 10000 });
     } catch (e) {
-      // No pretend city: a rate card can never be saved against an id the
-      // server has never seen.
+      // No pretend city. The old fallback minted one with `id: Date.now()`,
+      // and a rate card can never be saved against an id the server has never
+      // seen — that is what produced "Invalid request data" one step later.
       toast.error(
         e.status === 403
           ? 'Adding a city needs the SETTINGS_MANAGE permission. Ask an admin to add it, or pick an existing city.'
-          : `Couldn't add ${name}: ${e.message || 'unknown error'}`,
+          : `Couldn't add the city: ${e.message || 'unknown error'}`,
       );
-      return null;
+      return; // keep the box open
     }
-  };
-
-  // Manual fallback for a place that is not in the list.
-  const handleAddCity = async () => {
-    if (!newCityName.trim() || !form._state) return;
-    const city = await createCity(newCityName);
-    if (!city) return; // keep the box open
-    setAddingCity(false); setNewCityName(''); setCopyFromCityId('');
+    setAddingCity(false); setNewCityName('');
   };
 
   // Vehicle classes come from the backend's vehicle_catalog, never a
@@ -211,7 +204,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
   // rates. When creating one, offer to create its counterpart in the same go.
   const pairType = form.tripType === 'ONE_WAY' ? 'ROUND_TRIP' : form.tripType === 'ROUND_TRIP' ? 'ONE_WAY' : null;
   const pairLabel = pairType === 'ROUND_TRIP' ? 'Round trip' : 'One way';
-  const existingPair = !isEdit && pairType && form.cityId && form.cityId !== ALL_CITIES && !isNewPick && findCard
+  const existingPair = !isEdit && pairType && form.cityId && form.cityId !== ALL_CITIES && findCard
     ? findCard(Number(form.cityId), form.vehicleClass, pairType)
     : null;
   const perKmHint = {
@@ -250,15 +243,6 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
 
     setLoading(true);
     try {
-      // A city picked from the list that isn't saved yet: create it now, so the
-      // rate card below is written against a real id.
-      let resolvedCityId = form.cityId;
-      if (!isEdit && isNewPick) {
-        const created = await createCity(newPickName);
-        if (!created) return;
-        resolvedCityId = String(created.id);
-      }
-
       // minimumKm: OPTIONAL. Left blank, it's simply not sent — the
       // database defaults it to 0, meaning no minimum distance is enforced.
       // baseFare, minimumFare and returnEmptyPct are retired on the backend
@@ -297,7 +281,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
           // "All cities in <State>": the parent creates one identical card per city.
           ...(form.cityId === ALL_CITIES && { _cityIds: stateCityList.map((c) => c.id), _stateName: form._state }),
           // Only send cityId if it's a real DB id (small int), not a temp local timestamp
-          ...(resolvedCityId && resolvedCityId !== ALL_CITIES && Number(resolvedCityId) < 1000000 && { cityId: Number(resolvedCityId) }),
+          ...(form.cityId && form.cityId !== ALL_CITIES && Number(form.cityId) < 1000000 && { cityId: Number(form.cityId) }),
           vehicleClass: form.vehicleClass,
           tripType: form.tripType,
           ...base,
@@ -345,30 +329,19 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
                 ]}
               />
             </FormField>
-            <FormField label="City" required={!isEdit} error={errors.cityId} hint={addingCity ? 'Type new city name' : isNewPick ? `${newPickName} isn't set up yet — it will be created when you save this rate card.` : form.cityId === ALL_CITIES ? `Creates one identical rate card for each of the ${stateCityList.length} cities already set up in ${form._state}.` : form._state ? `Every city in ${form._state} is listed. Cities marked "new" are created automatically when you save.` : 'Pick a state first to price a whole state at once.'}>
+            <FormField label="City" required={!isEdit} error={errors.cityId} hint={addingCity ? 'Type new city name' : form.cityId === ALL_CITIES ? `Creates one identical rate card for each of the ${stateCityList.length} cities in ${form._state}.` : form._state ? `Pick one city, or "All cities in ${form._state}" to price the whole state.` : 'Pick a state first to price a whole state at once.'}>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || 'All cities'} />
               ) : addingCity ? (
                 <div className="space-y-2">
                   <Input value={newCityName} onChange={(e) => setNewCityName(e.target.value)}
                     placeholder="e.g. Mysuru" autoFocus />
-                  <Select
-                    value={copyFromCityId}
-                    onChange={(e) => setCopyFromCityId(e.target.value)}
-                    placeholder="Copy rate cards & rental packages from…"
-                    options={[
-                      { value: '', label: 'Start with no pricing' },
-                      ...cities
-                        .filter((c) => Number(c.id) < 1000000)
-                        .map((c) => ({ value: c.id, label: `Copy from ${c.name}, ${c.state}` })),
-                    ]}
-                  />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleAddCity}
                       disabled={!newCityName.trim() || !(form._state)}>
                       Add City
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => { setAddingCity(false); setCopyFromCityId(''); }}>Cancel</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setAddingCity(false)}>Cancel</Button>
                   </div>
                   {!form._state && <p style={{ fontSize: 11, color: '#EF4444' }}>Select a state first</p>}
                 </div>
@@ -377,40 +350,21 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
                   <Select
                     value={form.cityId}
                     onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
-                    placeholder="Select a city"
+                    placeholder={citiesLoading ? 'Loading cities…' : 'Select a city'}
                     searchable
                     options={[
                       ...(stateCityList.length > 0
-                        ? [{ value: ALL_CITIES, label: `All cities set up in ${form._state} (${stateCityList.length})` }]
+                        ? [{ value: ALL_CITIES, label: `All cities in ${form._state} (${stateCityList.length})` }]
                         : []),
-                      ...cityOptions.map(({ value, label }) => ({ value, label })),
+                      ...cityPool
+                        .filter((c) => !form._state || c.state === form._state)
+                        .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
                     ]}
                   />
-                  {isNewPick && (
-                    <div style={{ marginTop: 8 }}>
-                      <Select
-                        value={copyFromCityId}
-                        onChange={(e) => setCopyFromCityId(e.target.value)}
-                        placeholder="Also copy rental packages & other rate cards from…"
-                        options={[
-                          { value: '', label: 'Start with no other pricing' },
-                          ...cities
-                            .filter((c) => Number(c.id) < 1000000)
-                            .map((c) => ({ value: c.id, label: `Copy from ${c.name}, ${c.state}` })),
-                        ]}
-                      />
-                      <p style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>
-                        Optional. Local rentals need rental packages in the city. The rate card you are saving
-                        now takes priority over any copied card for the same vehicle and trip type.
-                      </p>
-                    </div>
-                  )}
-                  {form._state && (
-                    <button onClick={() => setAddingCity(true)}
-                      style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                      City not listed? Add it manually
-                    </button>
-                  )}
+                  <button onClick={() => setAddingCity(true)}
+                    style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                    + Add new city
+                  </button>
                 </div>
               )}
             </FormField>
@@ -1402,8 +1356,15 @@ function SurgePricingTab() {
   };
   const handleCreateArea = async (body) => { await surgeService.createArea(body); toast.success(`${body.name} added`); load(); };
   const handleUpdateArea = async (body) => { await surgeService.updateArea(editingArea.id, body); toast.success('Updated'); setEditingArea(null); load(); };
-  const handleDeactivateArea = async (area) => { if (!confirm(`Retire "${area.name}"?`)) return; await surgeService.deactivateArea(area.id); toast.success(`${area.name} retired`); load(); };
-  const handleReactivateArea = async (area) => { await surgeService.updateArea(area.id, { isActive: true }); toast.success(`${area.name} reactivated`); load(); };
+  const handleDeactivateArea = async (area) => {
+    if (!confirm(`Retire "${area.name}"?`)) return;
+    try { await surgeService.deactivateArea(area.id); toast.success(`${area.name} retired`); load(); }
+    catch (e) { toast.error(e.status === 403 ? 'Only an admin can retire a surge area.' : (e.message || 'Could not retire the area')); }
+  };
+  const handleReactivateArea = async (area) => {
+    try { await surgeService.updateArea(area.id, { isActive: true }); toast.success(`${area.name} reactivated`); load(); }
+    catch (e) { toast.error(e.status === 403 ? 'Only an admin can reactivate a surge area.' : (e.message || 'Could not reactivate the area')); }
+  };
   const q = search.toLowerCase();
   const filteredAreas = areas.filter((a) => !q || a.name.toLowerCase().includes(q) || a.tier.toLowerCase().includes(q));
   if (status === 'loading') return <LoadingState label="Loading surge pricing…" />;
@@ -1426,7 +1387,7 @@ function SurgePricingTab() {
           <div className="space-y-2">{filteredAreas.map((area) => { const am = TIER_META[area.tier] || TIER_META.METRO; return (
             <div key={area.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E8E8E4', backgroundColor: '#fff', opacity: area.isActive ? 1 : 0.5 }}>
               <span style={{ fontSize: 18 }}>{am.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}><p style={{ fontWeight: 700, fontSize: 13.5, color: '#111' }}>{area.name}{!area.isActive && <Badge tone="slate" className="ml-2">Retired</Badge>}</p><p style={{ fontSize: 11.5, color: '#6B7280', marginTop: 1 }}><Badge tone={am.tone} className="mr-1.5">{area.tier}</Badge>{area.centreLat.toFixed(4)}, {area.centreLng.toFixed(4)} · {area.radiusKm} km{area.note && <span style={{ color: '#9A9A9A' }}> — {area.note}</span>}</p></div>
+              <div style={{ flex: 1, minWidth: 0 }}><p style={{ fontWeight: 700, fontSize: 13.5, color: '#111' }}>{area.name}{!area.isActive && <Badge tone="slate" className="ml-2">Retired</Badge>}</p><p style={{ fontSize: 11.5, color: '#6B7280', marginTop: 1 }}><Badge tone={am.tone} className="mr-1.5">{area.tier}</Badge>{Number(area.centreLat).toFixed(4)}, {Number(area.centreLng).toFixed(4)} · {area.radiusKm} km{area.note && <span style={{ color: '#9A9A9A' }}> — {area.note}</span>}</p></div>
               <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                 <IconButton icon={Pencil} size="sm" label="Edit" onClick={() => { setEditingArea(area); setFormOpen(true); }} />
                 {area.isActive ? <IconButton icon={Trash2} size="sm" label="Retire" variant="danger" onClick={() => handleDeactivateArea(area)} /> : <IconButton icon={ToggleRight} size="sm" label="Reactivate" onClick={() => handleReactivateArea(area)} />}
@@ -1445,7 +1406,6 @@ export default function Masters() {
   const TABS = [
     { key: 'rates', label: 'Rate Cards', icon: Database },
     { key: 'surge', label: 'Surge Pricing', icon: Zap },
-    { key: 'states', label: 'Service States', icon: Globe },
   ];
   return (
     <div>
@@ -1453,7 +1413,6 @@ export default function Masters() {
       <PageTabs tabs={TABS} value={tab} onChange={setTab} />
       {tab === 'rates' && <VehicleRatesTab />}
       {tab === 'surge' && <SurgePricingTab />}
-      {tab === 'states' && <ServiceStatesTab />}
     </div>
   );
 }

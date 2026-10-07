@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, PhoneCall } from 'lucide-react';
 import PageHeader    from '../../components/ui/PageHeader';
 import FilterBar     from '../../components/ui/FilterBar';
@@ -15,6 +15,7 @@ import { bookingOpsService } from '../../services/bookingOpsService';
 import { useToast }        from '../../hooks/useToast';
 import { PERMISSIONS }     from '../../constants';
 import { useAuth }         from '../../hooks/useAuth';
+import { useAdminRealtimeContext } from '../../context/AdminRealtimeContext';
 import { formatCurrency, formatDateTime, titleCase } from '../../utils/formatters';
 import { dateFilterProps } from '../../utils/dateRange';
 
@@ -47,15 +48,48 @@ export default function Bookings() {
   });
   const dates = dateFilterProps(list);
 
+  const { removeBookingAlert } = useAdminRealtimeContext();
+
   const [formOpen, setFormOpen] = useState(false);
   const [confirmingBooking, setConfirmingBooking] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+
+  // Deep link from the new-booking alert (popup / corner stack): a Confirm there
+  // lands on /admin/bookings?confirm=<id> and opens the call-and-confirm modal
+  // for that booking. We fetch the booking directly so it works even when the
+  // row isn't on the current page or passes the active filter, then strip the
+  // param so a refresh or closing the modal doesn't reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const confirmId = searchParams.get('confirm');
+  const deepLinkHandled = useRef(false);
+
+  useEffect(() => {
+    if (!confirmId || deepLinkHandled.current) return undefined;
+    deepLinkHandled.current = true;
+    let cancelled = false;
+    bookingService.get(confirmId)
+      .then((b) => { if (!cancelled && b) setConfirmingBooking(b); })
+      .catch(() => { if (!cancelled) toast.error('Could not open that booking to confirm'); })
+      .finally(() => {
+        if (cancelled) return;
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('confirm');
+          return next;
+        }, { replace: true });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmId]);
 
   const handleConfirmBooking = async (bookingId, confirmationNote) => {
     setConfirmLoading(true);
     try {
       await bookingOpsService.confirm(bookingId, { confirmationNote });
       toast.success('Booking confirmed — customer notified');
+      // Clear this booking from the new-booking alert stack now that it's
+      // actually confirmed (it was kept there through the redirect).
+      removeBookingAlert?.(bookingId);
       setConfirmingBooking(null);
       list.reload();
     } catch (err) {
