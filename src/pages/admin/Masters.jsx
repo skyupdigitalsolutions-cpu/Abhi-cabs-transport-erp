@@ -1102,49 +1102,52 @@ function VehicleRatesTab() {
 // Page root
 //
 // ── Surge Pricing Tab ─────────────────────────────────────────────────────
-const TIERS = ['METRO', 'TALUKA', 'VILLAGE'];
+// Four tiers, most-served to least — must match the backend AreaTier enum
+// (METRO, DISTRICT, TALUKA, VILLAGE). Every tier with an active rule row
+// charges; there is no metro-only restriction any more.
+const TIERS = ['METRO', 'DISTRICT', 'TALUKA', 'VILLAGE'];
 const TIER_META = {
-  METRO:   { icon: '🏙️', label: 'Metro', desc: 'City / urban (surge applies)', bg: '#EFF6FF', color: '#1D4ED8', tone: 'blue' },
-  TALUKA:  { icon: '🏘️', label: 'District / Taluka', desc: 'District / semi-urban (no surge)', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
-  VILLAGE: { icon: '🌾', label: 'Village', desc: 'Rural area (no surge)', bg: '#F0FDF4', color: '#15803D', tone: 'green' },
+  METRO:    { icon: '🏙️', label: 'Metro', desc: 'City / urban pickups', bg: '#EFF6FF', color: '#1D4ED8', tone: 'blue' },
+  DISTRICT: { icon: '🏢', label: 'District', desc: 'District HQ with fleet presence', bg: '#F5F3FF', color: '#6D28D9', tone: 'purple' },
+  TALUKA:   { icon: '🏘️', label: 'Taluka', desc: 'Town served from further out', bg: '#FFF7ED', color: '#C2410C', tone: 'amber' },
+  VILLAGE:  { icon: '🌾', label: 'Village', desc: 'Rural area, thin supply', bg: '#F0FDF4', color: '#15803D', tone: 'green' },
 };
 const TIER_OPTIONS = TIERS.map((t) => ({ value: t, label: `${TIER_META[t].icon} ${TIER_META[t].label} — ${TIER_META[t].desc}` }));
 
 /*
- * Surge is charged INSIDE METRO AREAS ONLY (backend surge.service
- * SURGEABLE_TIERS). Taluka and village pickups are never surged, whatever their
- * rule rows say, so they are shown read-only here rather than as inputs that
- * would look like they do something. Writes go to PATCH /admin/surge/rules/METRO,
- * which needs FARE_EDIT — an admin-only permission.
+ * Surge is configured PER TIER, driven by whatever rule rows the backend returns
+ * from GET /admin/surge/rules — so an editable card appears for each tier that
+ * exists (Metro, District/Taluka, Village). Writes go to
+ * PATCH /admin/surge/rules/:tier (FARE_EDIT / admin). Effective premium = the
+ * tier's % here, clamped per rate card by its "Surge cap" (maxSurge, 2× default).
+ * Changes apply to NEW quotes only.
  *
- * Effective premium = rule % (from here), then clamped per rate card by its
- * "Surge cap" (maxSurge, 2× by default). Changes apply to NEW quotes only.
+ * NOTE: whether a tier's % is actually applied to a live quote is decided by the
+ * backend quote engine (its surgeable-tiers set). Saving always stores the rule;
+ * if a tier's value doesn't move quotes, that gate is in the backend, not here.
  */
-function SurgeFeeSetup({ rules, onSave }) {
-  const metro = rules.find((r) => r.tier === 'METRO');
-  const [form, setForm] = useState(null);
+function TierSurgeCard({ tier, rule, onSave }) {
+  const meta = TIER_META[tier] || TIER_META.METRO;
+  const build = () => ({
+    immediatePct: String(rule.immediatePct ?? 0),
+    standardPct: String(rule.standardPct ?? 0),
+    immediateWithinMinutes: String(rule.immediateWithinMinutes ?? 240),
+    isActive: rule.isActive !== false,
+  });
+  const [form, setForm] = useState(build);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    if (!metro) return;
-    setForm({
-      immediatePct: String(metro.immediatePct ?? 0),
-      standardPct: String(metro.standardPct ?? 0),
-      immediateWithinMinutes: String(metro.immediateWithinMinutes ?? 60),
-      isActive: metro.isActive !== false,
-    });
-    setDirty(false);
-  }, [metro?.immediatePct, metro?.standardPct, metro?.immediateWithinMinutes, metro?.isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setForm(build()); setDirty(false); }, [rule.immediatePct, rule.standardPct, rule.immediateWithinMinutes, rule.isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setDirty(true); };
   const pctErr = (v) => (v === '' || Number(v) < 0 || Number(v) > 100 ? '0–100' : null);
   const winErr = (v) => (v === '' || Number(v) < 1 || Number(v) > 1440 ? '1–1440' : null);
-  const invalid = form && (pctErr(form.immediatePct) || pctErr(form.standardPct) || winErr(form.immediateWithinMinutes));
+  const invalid = pctErr(form.immediatePct) || pctErr(form.standardPct) || winErr(form.immediateWithinMinutes);
 
-  const save = async (patch) => {
+  const save = async () => {
     setSaving(true);
     try {
-      await onSave('METRO', patch ?? {
+      await onSave(tier, {
         immediatePct: Number(form.immediatePct),
         standardPct: Number(form.standardPct),
         immediateWithinMinutes: Number(form.immediateWithinMinutes),
@@ -1154,14 +1157,8 @@ function SurgeFeeSetup({ rules, onSave }) {
     } finally { setSaving(false); }
   };
 
-  if (!metro) {
-    return <Alert type="warning">No METRO surge rule found. Run the backend migration 20261006090000_min_km_oneway_rates_metro_surge — it creates the METRO rule at 0%.</Alert>;
-  }
-  if (!form) return null;
-
   const on = form.isActive;
-  const liveNow = metro.isActive !== false && (Number(metro.standardPct) > 0 || Number(metro.immediatePct) > 0);
-  const m = TIER_META.METRO;
+  const liveNow = rule.isActive !== false && (Number(rule.standardPct) > 0 || Number(rule.immediatePct) > 0);
   const pctInput = (key, label, icon) => (
     <div style={{ flex: 1, minWidth: 110 }}>
       <label style={{ fontSize: 11.5, fontWeight: 700, color: '#6B7280', display: 'block', marginBottom: 3 }}>{icon}{label}</label>
@@ -1172,23 +1169,23 @@ function SurgeFeeSetup({ rules, onSave }) {
 
   return (
     <div style={{ borderRadius: 16, border: '1.5px solid #E8E8E4', backgroundColor: '#fff', overflow: 'hidden' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1.5px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'linear-gradient(135deg, #FFFBEA 0%, #FFF8E1 100%)' }}>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: '#FFC107', display: 'grid', placeItems: 'center', boxShadow: '0 3px 10px rgba(255,193,7,0.3)' }}><Zap size={16} color="#111" /></div>
+      <div style={{ padding: '14px 18px', borderBottom: '1.5px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: `linear-gradient(135deg, ${meta.bg} 0%, #ffffff 100%)` }}>
+        <div style={{ width: 34, height: 34, borderRadius: 9, background: meta.bg, display: 'grid', placeItems: 'center' }}><span style={{ fontSize: 18 }}>{meta.icon}</span></div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <p style={{ fontWeight: 800, fontSize: 14.5, color: '#111' }}>Metro surge fee</p>
-          <p style={{ fontSize: 12, color: '#92400E', fontWeight: 500 }}>Charged only when the pickup is inside a Metro area. Admin only. Applies to new quotes, not bookings already made.</p>
+          <p style={{ fontWeight: 800, fontSize: 14.5, color: '#111' }}>{meta.label} surge fee</p>
+          <p style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>{meta.desc}. Admin only. Applies to new quotes, not bookings already made.</p>
         </div>
-        <Badge tone={liveNow ? 'amber' : 'slate'}>{liveNow ? `Live: ${Number(metro.standardPct)}% scheduled / ${Number(metro.immediatePct)}% urgent` : 'Not charging'}</Badge>
+        <Badge tone={liveNow ? meta.tone : 'slate'}>{liveNow ? `Live: ${Number(rule.standardPct)}% scheduled / ${Number(rule.immediatePct)}% urgent` : 'Not charging'}</Badge>
       </div>
 
       <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 20 }}>{m.icon}</span>
+          <span style={{ fontSize: 20 }}>{meta.icon}</span>
           <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 800, fontSize: 13.5, color: m.color }}>{m.label}</p>
-            <p style={{ fontSize: 11.5, color: '#6B7280' }}>Pickups inside any active Metro area below. A pickup outside every area is also treated as Metro.</p>
+            <p style={{ fontWeight: 800, fontSize: 13.5, color: meta.color }}>{meta.label}</p>
+            <p style={{ fontSize: 11.5, color: '#6B7280' }}>Pickups classified as {meta.label.toLowerCase()} by the service areas below.</p>
           </div>
-          <Switch id="metro-surge-active" checked={on} disabled={saving} onChange={(v) => set('isActive', v)} label={on ? 'Surge on' : 'Surge off'} />
+          <Switch id={`surge-active-${tier}`} checked={on} disabled={saving} onChange={(v) => set('isActive', v)} label={on ? 'Surge on' : 'Surge off'} />
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', opacity: on ? 1 : 0.5 }}>
@@ -1200,24 +1197,36 @@ function SurgeFeeSetup({ rules, onSave }) {
             {winErr(form.immediateWithinMinutes) && <p style={{ fontSize: 11, color: '#DC2626', marginTop: 2 }}>Enter {winErr(form.immediateWithinMinutes)}</p>}
           </div>
           <div style={{ alignSelf: 'flex-end' }}>
-            <Button size="sm" icon={Save} onClick={() => save()} loading={saving} disabled={!dirty || !!invalid}
+            <Button size="sm" icon={Save} onClick={save} loading={saving} disabled={!dirty || !!invalid}
               style={!dirty || invalid ? {} : { backgroundColor: '#22A65A', boxShadow: '0 3px 8px rgba(34,166,90,0.25)' }}>Save</Button>
           </div>
         </div>
 
         <p style={{ fontSize: 12, color: '#374151', backgroundColor: '#F9FAFB', borderRadius: 10, padding: '8px 12px' }}>
-          Example: at {Number(form.standardPct) || 0}% scheduled, a ₹1,900 metro fare becomes ₹{Math.round(1900 * (1 + (Number(form.standardPct) || 0) / 100)).toLocaleString('en-IN')}.
+          Example: at {Number(form.standardPct) || 0}% scheduled, a ₹1,900 fare becomes ₹{Math.round(1900 * (1 + (Number(form.standardPct) || 0) / 100)).toLocaleString('en-IN')}.
           {' '}<strong>Urgent %</strong> is used instead when pickup is within {form.immediateWithinMinutes || 60} minutes of booking. Each rate card's <strong>Surge cap</strong> (Advanced pricing, default 2×) limits the final premium.
         </p>
       </div>
+    </div>
+  );
+}
 
-      <div style={{ padding: '10px 18px', backgroundColor: '#FAFAFA', borderTop: '1px solid #F0F0EC', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        {['TALUKA', 'VILLAGE'].map((t) => (
-          <span key={t} style={{ fontSize: 11.5, color: '#6B7280' }}>
-            {TIER_META[t].icon} <strong>{TIER_META[t].label}</strong>: no surge (not charged outside metros)
-          </span>
-        ))}
-      </div>
+function SurgeFeeSetup({ rules, onSave }) {
+  if (!rules.length) {
+    return <Alert type="warning">No surge rules found on the backend. Run the surge migration/seed so a rule row exists per tier, then reload.</Alert>;
+  }
+  const present = TIERS.filter((t) => rules.some((r) => r.tier === t));
+  const missing = TIERS.filter((t) => !rules.some((r) => r.tier === t));
+  return (
+    <div className="space-y-3">
+      {present.map((t) => (
+        <TierSurgeCard key={t} tier={t} rule={rules.find((r) => r.tier === t)} onSave={onSave} />
+      ))}
+      {missing.length > 0 && (
+        <p style={{ fontSize: 11.5, color: '#9A9A9A', paddingLeft: 2 }}>
+          {missing.map((t) => TIER_META[t].label).join(', ')}: no surge rule row on the backend yet — it has to exist server-side before it can be configured here.
+        </p>
+      )}
     </div>
   );
 }
@@ -1365,9 +1374,10 @@ function SurgePricingTab() {
   }, [toast]);
   useEffect(() => { load(); }, [load]);
   const handleSaveRule = async (tier, body) => {
+    const label = TIER_META[tier]?.label || tier;
     try {
       await surgeService.updateRule(tier, body);
-      toast.success(body.isActive === false ? 'Metro surge switched off — new quotes carry no surge' : 'Metro surge saved — applies to new quotes only');
+      toast.success(body.isActive === false ? `${label} surge switched off — new quotes carry no surge` : `${label} surge saved — applies to new quotes only`);
       load();
     } catch (e) {
       toast.error(e.status === 403 ? 'Only an admin can change the surge fee.' : (e.message || 'Could not save surge'));
