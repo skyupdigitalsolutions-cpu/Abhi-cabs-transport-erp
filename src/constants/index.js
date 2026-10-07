@@ -1,338 +1,98 @@
-// ============================================================
-// ABHI CABS Transport ERP — Constants
-// Roles: ADMIN (full ERP access) | DRIVER (mobile/field app)
-// ============================================================
-
-export const APP_NAME = 'ABHI CABS';
-export const APP_TAGLINE = 'Transport ERP';
-
-export const ROLES = {
-  ADMIN:  'admin',
-  DRIVER: 'driver',
-};
-
-export const PERMISSIONS = {
-  // These match the exact permission strings the backend requires
-  // (returned by GET /auth/me and checked by requirePermission middleware)
-  CLIENTS_VIEW:    'CUSTOMER_MANAGE',
-  CLIENTS_MANAGE:  'CUSTOMER_MANAGE',
-  DRIVERS_VIEW:    'DRIVER_APPROVE',
-  DRIVERS_MANAGE:  'DRIVER_APPROVE',
-  VEHICLES_VIEW:   'VEHICLE_MANAGE',
-  VEHICLES_MANAGE: 'VEHICLE_MANAGE',
-  BOOKINGS_VIEW:   'BOOKING_MANAGE',
-  BOOKINGS_MANAGE: 'BOOKING_MANAGE',
-  DISPATCH_MANAGE: 'DISPATCH_MANAGE',
-  TRIPS_VIEW:      'BOOKING_MANAGE',
-  // Matches the existing, unmodified GET /admin/bookings route. Note: with
-  // backend routes left as-is, this still isn't a full fix — the page also
-  // calls GET /admin/drivers (needs DRIVER_APPROVE, which OPS lacks) and the
-  // location/GPS routes (need DISPATCH_MANAGE, which OPS has but FLEET's
-  // BOOKING_MANAGE gap means FLEET can't even pass this gate). Only ADMIN
-  // (permission bypass) gets the page fully working without a backend change.
-  PAYMENTS_VIEW:   'PAYMENT_VIEW',
-  PAYMENTS_MANAGE: 'PAYMENT_VIEW',
-  PAYMENTS_REFUND: 'PAYMENT_REFUND',
-  // Confirming a driver's cash handover — see day1-constraints additions for
-  // the review/refund/cash-handover feature. Distinct from PAYMENT_REFUND:
-  // confirming a handover moves no money and issues no refund.
-  CASH_HANDOVER_CONFIRM: 'PAYMENT_RECONCILE',
-  INVOICES_VIEW:   'PAYMENT_VIEW',
-  INVOICES_MANAGE: 'PAYMENT_VIEW',
-  REPORTS_VIEW:    'REPORT_VIEW',
-  SUPPORT_MANAGE:  'SUPPORT_MANAGE',
-  USERS_MANAGE:    'USER_MANAGE',
-  MASTERS_MANAGE:  'FARE_EDIT',
-  FARE_EDIT:       'FARE_EDIT',
-  SETTINGS_MANAGE: 'SETTINGS_MANAGE',
-  DASHBOARD_VIEW:  'REPORT_VIEW',
-  AUDIT_VIEW:      'AUDIT_VIEW',
-  BOOKING_CANCEL:  'BOOKING_CANCEL',
-  BOOKING_CREATE:  'BOOKING_CREATE',
-};
-
-// Backend permission strings granted to each staff role — copied verbatim
-// from the actual seeded grants (prisma/migrations/.../day1_constraints,
-// the INSERT INTO role_permissions block), not guessed from the role names.
-// Keyed by the real, uppercase Role enum values (ADMIN/OPS/FINANCE/FLEET/
-// SUPPORT) — this is what UsersRoles.jsx's PermissionsPanel looks up by the
-// role actually selected in that form, which is one of those 5 uppercase
-// values, not ROLES.ADMIN (lowercase, used elsewhere for auth/route-guard
-// comparisons and unrelated to this).
-export const ROLE_PERMISSIONS = {
-  // ADMIN also bypasses permission checks entirely at the backend middleware
-  // level (role === 'ADMIN' short-circuits before any permission lookup),
-  // so this list is for display only — it doesn't limit what ADMIN can do.
-  ADMIN: [
-    'CORPORATE_MANAGE', 'BOOKING_CREATE', 'BOOKING_MANAGE', 'BOOKING_CANCEL',
-    'FARE_EDIT', 'DISPATCH_MANAGE', 'VEHICLE_MANAGE', 'DRIVER_APPROVE',
-    'PAYMENT_VIEW', 'PAYMENT_REFUND', 'PAYMENT_RECONCILE', 'INVOICE_MANAGE', 'REPORT_VIEW',
-    'SETTINGS_MANAGE', 'AUDIT_VIEW',
-  ],
-  OPS: [
-    'CUSTOMER_MANAGE', 'BOOKING_CREATE', 'BOOKING_MANAGE', 'BOOKING_CANCEL',
-    'DISPATCH_MANAGE', 'REPORT_VIEW',
-  ],
-  FINANCE: [
-    'PAYMENT_VIEW', 'PAYMENT_REFUND', 'PAYMENT_RECONCILE', 'INVOICE_MANAGE', 'CORPORATE_MANAGE', 'REPORT_VIEW',
-  ],
-  FLEET: [
-    'VEHICLE_MANAGE', 'DRIVER_APPROVE', 'DISPATCH_MANAGE', 'REPORT_VIEW',
-  ],
-  SUPPORT: [
-    'CUSTOMER_MANAGE', 'BOOKING_MANAGE', 'BOOKING_CANCEL', 'PAYMENT_VIEW',
-  ],
-  [ROLES.DRIVER]: ['TRIP_MANAGE'],
-};
-
-// Real backend enum (src/models/booking.model.js) — confirmed uppercase,
-// and a genuinely different set of statuses than what was here before
-// (which used lowercase pending/confirmed/assigned/in_transit/completed/
-// cancelled — none of which ever matched a real booking's actual status
-// string, so every transition-button lookup silently returned nothing).
-export const BOOKING_STATUS = {
-  ATTEMPTED: 'ATTEMPTED',
-  PENDING:   'PENDING',
-  CONFIRMED: 'CONFIRMED',
-  ALLOCATED: 'ALLOCATED',
-  EN_ROUTE:  'EN_ROUTE',
-  REACHED:   'REACHED',
-  ONGOING:   'ONGOING',
-  ARRIVED:   'ARRIVED',
-  COMPLETED: 'COMPLETED',
-  CANCELLED: 'CANCELLED',
-  EXPIRED:   'EXPIRED',
-};
-
-export const TRIP_STATUS = {
-  ALLOCATED: 'ALLOCATED',
-  EN_ROUTE:  'EN_ROUTE',
-  ONGOING:   'ONGOING',
-  ARRIVED:   'ARRIVED',
-  COMPLETED: 'COMPLETED',
-  CANCELLED: 'CANCELLED',
-};
-
-export const PAYMENT_STATUS = {
-  CREATED:        'CREATED',
-  AUTHORISED:     'AUTHORISED',
-  CAPTURED:       'CAPTURED',
-  PARTIALLY_PAID: 'PARTIALLY_PAID',
-  FAILED:         'FAILED',
-  REFUNDED:       'REFUNDED',
-};
-
-export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Wallet', 'Cash', 'Bank Transfer', 'Cheque'];
-
-export const INVOICE_STATUS = {
-  DRAFT:     'DRAFT',
-  ISSUED:    'ISSUED',
-  PAID:      'PAID',
-  CANCELLED: 'CANCELLED',
-};
-
 /**
- * RECONSTRUCTED — another export that existed in the live codebase but
- * wasn't visible when this file was rebuilt (same situation as
- * BOOKING_TRANSITION_ACTION above). Confirmed directly against the real
- * backend's KycStatus enum (prisma/schema.prisma).
+ * Cities and towns offered for each state in the rate-card form.
+ *
+ * Picking a state lists everything here PLUS any city already saved on the
+ * server. Choosing one that is not saved yet creates it (POST /admin/cities —
+ * the backend geocodes the name and derives the service radius) at the moment
+ * the rate card is saved, so nobody has to "add a city" as a separate step.
+ *
+ * Names are what a maps provider recognises. Karnataka, Telangana, Andhra
+ * Pradesh and Maharashtra — the states the fleet operates in — list every
+ * district headquarters plus common outstation towns; the others list the
+ * main cities and tourist towns. A place missing here can still be added with
+ * the "City not listed?" link on the form.
  */
-export const KYC_STATUS = {
-  PENDING:   'PENDING',
-  VERIFIED:  'VERIFIED',
-  REJECTED:  'REJECTED',
-  SUSPENDED: 'SUSPENDED',
+export const STATE_CITIES = {
+  'Karnataka': [
+    'Bengaluru', 'Mysuru', 'Mangaluru', 'Hubballi', 'Dharwad', 'Belagavi', 'Kalaburagi', 'Ballari',
+    'Vijayapura', 'Shivamogga', 'Tumakuru', 'Davangere', 'Hassan', 'Udupi', 'Chikkamagaluru',
+    'Madikeri', 'Mandya', 'Chitradurga', 'Raichur', 'Bidar', 'Koppal', 'Gadag', 'Haveri', 'Karwar',
+    'Chamarajanagar', 'Chikkaballapur', 'Kolar', 'Ramanagara', 'Yadgir', 'Bagalkot', 'Hosapete',
+    'Sirsi', 'Gokarna', 'Bhadravati', 'Dandeli', 'Hampi', 'Sakleshpur', 'Kushalnagar',
+  ],
+  'Telangana': [
+    'Hyderabad', 'Secunderabad', 'Warangal', 'Karimnagar', 'Nizamabad', 'Khammam', 'Nalgonda',
+    'Mahabubnagar', 'Adilabad', 'Medak', 'Sangareddy', 'Siddipet', 'Suryapet', 'Vikarabad',
+    'Kamareddy', 'Jagtial', 'Peddapalli', 'Mancherial', 'Nirmal', 'Kothagudem', 'Wanaparthy',
+    'Nagarkurnool', 'Jangaon', 'Mahabubabad', 'Gadwal', 'Bhongir', 'Ramagundam', 'Sircilla',
+    'Shamshabad', 'Zaheerabad', 'Tandur', 'Bodhan', 'Miryalaguda',
+  ],
+  'Andhra Pradesh': [
+    'Visakhapatnam', 'Vijayawada', 'Guntur', 'Nellore', 'Tirupati', 'Kurnool', 'Kakinada',
+    'Rajahmundry', 'Kadapa', 'Anantapur', 'Eluru', 'Ongole', 'Chittoor', 'Machilipatnam',
+    'Srikakulam', 'Vizianagaram', 'Amaravati', 'Tenali', 'Nandyal', 'Puttaparthi', 'Hindupur',
+    'Proddatur', 'Bhimavaram', 'Tadepalligudem', 'Madanapalle', 'Dharmavaram', 'Narasaraopet',
+    'Chilakaluripet', 'Palakollu', 'Amalapuram', 'Anakapalle', 'Bapatla', 'Srikalahasti', 'Tuni',
+  ],
+  'Maharashtra': [
+    'Mumbai', 'Pune', 'Nagpur', 'Nashik', 'Aurangabad', 'Solapur', 'Kolhapur', 'Amravati', 'Thane',
+    'Navi Mumbai', 'Kalyan', 'Vasai-Virar', 'Sangli', 'Satara', 'Latur', 'Nanded', 'Jalgaon', 'Akola',
+    'Dhule', 'Ahmednagar', 'Ratnagiri', 'Chandrapur', 'Yavatmal', 'Parbhani', 'Beed', 'Osmanabad',
+    'Wardha', 'Buldhana', 'Gondia', 'Bhandara', 'Gadchiroli', 'Hingoli', 'Jalna', 'Nandurbar', 'Washim',
+    'Sindhudurg', 'Lonavala', 'Mahabaleshwar', 'Shirdi', 'Panvel', 'Pimpri-Chinchwad', 'Malegaon',
+    'Ichalkaranji', 'Alibag',
+  ],
+  'Tamil Nadu': [
+    'Chennai', 'Coimbatore', 'Madurai', 'Tiruchirappalli', 'Salem', 'Tirunelveli', 'Erode', 'Vellore',
+    'Thoothukudi', 'Hosur', 'Thanjavur', 'Dindigul', 'Kanchipuram', 'Kanyakumari', 'Nagercoil', 'Ooty',
+    'Kodaikanal', 'Karur', 'Tiruppur', 'Cuddalore', 'Krishnagiri', 'Namakkal', 'Rameswaram',
+  ],
+  'Kerala': [
+    'Thiruvananthapuram', 'Kochi', 'Kozhikode', 'Thrissur', 'Kollam', 'Kannur', 'Alappuzha', 'Kottayam',
+    'Palakkad', 'Malappuram', 'Kasaragod', 'Pathanamthitta', 'Idukki', 'Kalpetta', 'Munnar',
+  ],
+  'Goa': ['Panaji', 'Margao', 'Vasco da Gama', 'Mapusa', 'Ponda'],
+  'Gujarat': [
+    'Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Gandhinagar', 'Bhavnagar', 'Jamnagar', 'Junagadh',
+    'Anand', 'Bharuch', 'Vapi', 'Mehsana', 'Bhuj', 'Porbandar', 'Dwarka',
+  ],
+  'Rajasthan': [
+    'Jaipur', 'Jodhpur', 'Udaipur', 'Kota', 'Ajmer', 'Bikaner', 'Jaisalmer', 'Alwar', 'Bharatpur',
+    'Pushkar', 'Mount Abu', 'Chittorgarh', 'Sikar', 'Bhilwara',
+  ],
+  'Madhya Pradesh': [
+    'Bhopal', 'Indore', 'Gwalior', 'Jabalpur', 'Ujjain', 'Sagar', 'Rewa', 'Satna', 'Ratlam',
+    'Khajuraho', 'Chhindwara',
+  ],
+  'Uttar Pradesh': [
+    'Lucknow', 'Kanpur', 'Varanasi', 'Agra', 'Prayagraj', 'Ghaziabad', 'Noida', 'Meerut', 'Bareilly',
+    'Aligarh', 'Moradabad', 'Gorakhpur', 'Mathura', 'Jhansi', 'Ayodhya', 'Saharanpur', 'Firozabad',
+  ],
+  'Delhi': ['New Delhi'],
+  'Haryana': [
+    'Gurugram', 'Faridabad', 'Panipat', 'Ambala', 'Karnal', 'Hisar', 'Rohtak', 'Sonipat',
+    'Kurukshetra', 'Panchkula',
+  ],
+  'Punjab': ['Ludhiana', 'Amritsar', 'Jalandhar', 'Patiala', 'Bathinda', 'Mohali', 'Pathankot', 'Hoshiarpur'],
+  'Himachal Pradesh': ['Shimla', 'Manali', 'Dharamshala', 'Kullu', 'Solan', 'Mandi', 'Kasauli'],
+  'Uttarakhand': ['Dehradun', 'Haridwar', 'Rishikesh', 'Nainital', 'Haldwani', 'Roorkee', 'Mussoorie', 'Almora'],
+  'Jammu & Kashmir': ['Srinagar', 'Jammu', 'Anantnag', 'Baramulla', 'Katra', 'Gulmarg', 'Pahalgam'],
+  'Ladakh': ['Leh', 'Kargil'],
+  'Bihar': ['Patna', 'Gaya', 'Bhagalpur', 'Muzaffarpur', 'Darbhanga', 'Purnia', 'Arrah', 'Bihar Sharif'],
+  'Jharkhand': ['Ranchi', 'Jamshedpur', 'Dhanbad', 'Bokaro', 'Deoghar', 'Hazaribagh'],
+  'West Bengal': ['Kolkata', 'Howrah', 'Siliguri', 'Durgapur', 'Asansol', 'Darjeeling', 'Kharagpur', 'Digha'],
+  'Odisha': ['Bhubaneswar', 'Cuttack', 'Puri', 'Rourkela', 'Sambalpur', 'Berhampur', 'Balasore'],
+  'Chhattisgarh': ['Raipur', 'Bilaspur', 'Bhilai', 'Durg', 'Korba', 'Jagdalpur'],
+  'Assam': ['Guwahati', 'Dibrugarh', 'Silchar', 'Jorhat', 'Tezpur'],
+  'Arunachal Pradesh': ['Itanagar'],
+  'Manipur': ['Imphal'],
+  'Meghalaya': ['Shillong'],
+  'Mizoram': ['Aizawl'],
+  'Nagaland': ['Kohima', 'Dimapur'],
+  'Sikkim': ['Gangtok'],
+  'Tripura': ['Agartala'],
+  'Puducherry': ['Puducherry', 'Karaikal'],
 };
 
-// Vehicle classes are MODEL tiers, not size buckets, and they live in the
-// backend's `vehicle_catalog` table — fetch them with vehicleCatalogService
-// rather than reading this list. It exists only as a fallback and for tests.
-//
-// The old hardcoded ['hatchback','sedan','suv','tempo'] was already wrong:
-// migrations 20260922140000_fleet_models and 20260923120000_oneway_and_luxury
-// seeded 13 model-level classes (swift-dzire, ertiga, innova, innova-crysta,
-// innova-hycross, fortuner, mercedes-e, tempo-12, urbania-*, benz-*) and
-// RETIRED `sedan`, because it duplicated swift-dzire at the same price and the
-// app was listing the same car twice.
-export const VEHICLE_CLASSES = [
-  'swift-dzire', 'ertiga', 'innova', 'innova-crysta', 'innova-hycross',
-  'fortuner', 'mercedes-e', 'tempo-12', 'tempo-17',
-  'urbania-13', 'urbania-16', 'urbania-maharaja',
-  'benz-22', 'benz-28', 'benz-33',
-  // Generic size classes still active on the backend. `bus` and `luxury`
-  // were retired by 20260930110000_retire_bus_luxury_and_price_luxury_cars.
-  // Screens should prefer vehicleCatalogService (live list); this is only
-  // the offline fallback.
-  'hatchback', 'suv', 'tempo',
-];
-
-export const TRIP_TYPES = [
-  { value: 'ONE_WAY',    label: 'One Way' },
-  { value: 'ROUND_TRIP', label: 'Round Trip' },
-  { value: 'AIRPORT',    label: 'Airport' },
-  { value: 'HOURLY',     label: 'Hourly Rental' },
-];
-
-export const DRIVER_STATUS = {
-  ACTIVE:    'active',
-  INACTIVE:  'inactive',
-  ON_TRIP:   'on_trip',
-  SUSPENDED: 'suspended',
-};
-
-// A TEMPORARY driver is a minimal, admin-created account (email only, no
-// phone/licence/KYC) that logs into the driver app via email OTP and sees a
-// single scoped screen (their assigned vehicle + current trip) instead of
-// the normal onboarding flow and full tab app. See POST /admin/drivers/temporary
-// on the backend contract. REGULAR is the existing full-onboarding driver.
-export const DRIVER_TYPE = {
-  REGULAR:   'REGULAR',
-  TEMPORARY: 'TEMPORARY',
-};
-
-export const VEHICLE_STATUS = {
-  AVAILABLE:   'AVAILABLE',
-  ASSIGNED:    'ASSIGNED',
-  ON_TRIP:     'ON_TRIP',
-  MAINTENANCE: 'MAINTENANCE',
-  INACTIVE:    'INACTIVE',
-};
-
-export const TICKET_STATUS = {
-  OPEN:        'open',
-  IN_PROGRESS: 'in_progress',
-  RESOLVED:    'resolved',
-  CLOSED:      'closed',
-};
-
-export const STATUS_COLORS = {
-  ATTEMPTED: 'slate',
-  PENDING:   'amber',
-  CONFIRMED: 'blue',
-  ALLOCATED: 'blue',
-  EN_ROUTE:  'purple',
-  REACHED:   'purple',
-  ONGOING:   'purple',
-  ARRIVED:   'purple',
-  COMPLETED: 'green',
-  CANCELLED: 'red',
-  EXPIRED:   'slate',
-
-  AVAILABLE:   'green',
-  ASSIGNED:    'blue',
-  ON_TRIP:     'purple',
-  MAINTENANCE: 'amber',
-  INACTIVE:    'slate',
-  VERIFIED:    'green',
-  REJECTED:    'red',
-  SUSPENDED:   'red',
-  TEMPORARY:   'purple',
-  REGULAR:     'slate',
-
-  pending:     'amber',
-  confirmed:   'blue',
-  assigned:    'blue',
-  in_transit:  'purple',
-  scheduled:   'blue',
-  ongoing:     'purple',
-  completed:   'green',
-  paid:        'green',
-  active:      'green',
-  available:   'green',
-  resolved:    'green',
-  closed:      'slate',
-  cancelled:   'red',
-  failed:      'red',
-  suspended:   'red',
-  inactive:    'slate',
-  maintenance: 'amber',
-  refunded:    'slate',
-  draft:       'slate',
-  issued:      'blue',
-  overdue:     'red',
-  open:        'amber',
-  in_progress: 'blue',
-  on_trip:     'purple',
-  in_use:      'purple',
-};
-
-// Valid status transitions for bookings — confirmed directly against the
-// real backend's TRANSITIONS table (lifecycle.service.js) and CANCELLABLE
-// list (cancellation.service.js). Cancellation is only allowed up through
-// EN_ROUTE — once a trip actually starts (ONGOING) there's no cancelling
-// it anymore, only completing it. This is the exact bug that made the
-// "Cancel" button (and every other status-transition button) never show
-// up at all: the old lowercase keys here never matched a real booking's
-// actual (uppercase) status, so this lookup always returned [] regardless
-// of the booking's real state.
-export const BOOKING_TRANSITIONS = {
-  PENDING:   ['CONFIRMED', 'CANCELLED'],
-  CONFIRMED: ['ALLOCATED', 'CANCELLED'],
-  ALLOCATED: ['EN_ROUTE', 'CANCELLED'],
-  EN_ROUTE:  ['ONGOING', 'CANCELLED'],   // REACHED is driver-only, admin skips to ONGOING
-  REACHED:   ['ONGOING'],                // driver reached pickup, admin can start trip
-  ONGOING:   ['ARRIVED'],
-  ARRIVED:   ['COMPLETED'],
-  COMPLETED: [],
-  CANCELLED: [],
-  EXPIRED:   [],
-};
-
-/**
- * RECONSTRUCTED — this export existed in the live codebase but wasn't
- * visible when I rebuilt this file, so bookingOpsService.js's import
- * broke. Confirmed directly against the real backend's actual mounted
- * routes (adminBooking.routes.js) — each target status here maps to the
- * literal URL action segment PATCH /admin/bookings/:id/<action> (or POST
- * for cancel). If bookingOpsService.js expects a different shape (e.g.
- * an object with more fields per status, not just a string), let me know
- * the exact error and I'll adjust this to match.
- */
-export const BOOKING_TRANSITION_ACTION = {
-  CONFIRMED: 'confirm',
-  ALLOCATED: 'allocate',
-  EN_ROUTE:  'en-route',
-  // REACHED is driver-only (no admin route) — kept in BOOKING_STATUS for display
-  ONGOING:   'start',
-  ARRIVED:   'arrive',
-  COMPLETED: 'complete',
-  CANCELLED: 'cancel',
-  EXPIRED:   'expire',
-};
-
-export const ADMIN_NAV = [
-  { label: 'Dashboard',    to: '/admin/dashboard',  icon: 'LayoutDashboard' },
-  // Points at /admin/customers, NOT /admin/clients. Clients.jsx is only a
-  // redirect stub to /admin/customers, so linking to it meant the browser
-  // ended up on a URL that matched no nav item — and the sidebar highlight
-  // disappeared the instant the redirect fired. /admin/clients still exists
-  // as a route so old bookmarks keep working.
-  { label: 'Clients',      to: '/admin/customers', icon: 'Users',          permission: PERMISSIONS.CLIENTS_VIEW },
-  { label: 'Drivers',      to: '/admin/drivers',    icon: 'IdCard',         permission: PERMISSIONS.DRIVERS_VIEW },
-  { label: 'Vehicles',     to: '/admin/vehicles',   icon: 'Truck',          permission: PERMISSIONS.VEHICLES_VIEW },
-  { label: 'Bookings',     to: '/admin/bookings',   icon: 'CalendarCheck',  permission: PERMISSIONS.BOOKINGS_VIEW },
-  { label: 'Booking Requests', to: '/admin/booking-requests', icon: 'Inbox', permission: PERMISSIONS.BOOKINGS_VIEW },
-  { label: 'Dispatch',     to: '/admin/dispatch',   icon: 'Radio',          permission: PERMISSIONS.DISPATCH_MANAGE },
-  { label: 'Trips',        to: '/admin/trips',      icon: 'Route',          permission: PERMISSIONS.TRIPS_VIEW },
-  { label: 'Live Tracking',to: '/admin/tracking',   icon: 'MapPin',         permission: PERMISSIONS.TRIPS_VIEW },
-  { label: 'Payments',     to: '/admin/payments',   icon: 'CreditCard',     permission: PERMISSIONS.PAYMENTS_VIEW },
-  { label: 'Invoices',     to: '/admin/invoices',   icon: 'FileText',       permission: PERMISSIONS.INVOICES_VIEW },
-  { label: 'Reports',      to: '/admin/reports',    icon: 'BarChart3',      permission: PERMISSIONS.REPORTS_VIEW },
-  { label: 'Rate Cards',   to: '/admin/masters',    icon: 'Database',       permission: PERMISSIONS.MASTERS_MANAGE },
-  { label: 'Notifications',to: '/admin/notifications', icon: 'Bell' },
-  { label: 'Support & SOS',to: '/admin/support',    icon: 'LifeBuoy',       permission: PERMISSIONS.SUPPORT_MANAGE },
-  { label: 'WhatsApp',         to: '/admin/whatsapp',         icon: 'MessageCircle',  permission: PERMISSIONS.SETTINGS_MANAGE },
-  { label: 'Discounts & Offers', to: '/admin/discounts',  icon: 'Tag',            permission: PERMISSIONS.FARE_EDIT },
-  { label: 'Users & Roles',      to: '/admin/users',      icon: 'ShieldCheck',    permission: PERMISSIONS.USERS_MANAGE },
-  { label: 'Settings',           to: '/admin/settings',   icon: 'Settings',       permission: PERMISSIONS.SETTINGS_MANAGE },
-];
-
-// UNUSED. Nothing imports DRIVER_NAV, and no /driver/* routes exist in
-// AppRoutes.jsx — both links would 404 if it were wired to a Sidebar. The
-// driver-facing app is the separate React Native project, not this ERP.
-// Left here rather than deleted in case a driver web portal is planned, but
-// the routes must be added before it is used.
-export const DRIVER_NAV = [
-  { label: 'My Trips', to: '/driver/trips',   icon: 'Route' },
-  { label: 'Profile',  to: '/driver/profile', icon: 'User'  },
-];
+/** Case-insensitive name key, for matching saved cities against this list. */
+export const cityKey = (name) => String(name || '').trim().toLowerCase();
