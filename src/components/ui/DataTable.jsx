@@ -4,6 +4,10 @@
  *   status (loading|error|success), error, onRetry, onRowClick,
  *   sortBy, sortDir, onSort, page, limit, total, totalPages, onPageChange,
  *   onLimitChange, emptyTitle, emptyDescription.
+ *
+ * serial (default true) prepends a "#" column that numbers rows. It is
+ * pagination-aware — it continues across pages using page/limit — so page 2
+ * of a 10-per-page list starts at 11, not 1. Pass serial={false} to hide it.
  */
 import Paper from '@mui/material/Paper';
 import TableContainer from '@mui/material/TableContainer';
@@ -24,11 +28,16 @@ export default function DataTable({
   columns, rows, rowKey = 'id', status = 'success', error, onRetry,
   onRowClick, sortBy, sortDir, onSort,
   page, limit, total, totalPages, onPageChange, onLimitChange,
-  emptyTitle = 'No records found', emptyDescription,
+  emptyTitle = 'No records found', emptyDescription, serial = true,
 }) {
   const shell = (content) => <Paper variant="outlined" sx={{ borderRadius: 0, overflow: 'hidden' }}>{content}</Paper>;
 
-  if (status === 'loading') return shell(<TableSkeleton cols={columns.length} />);
+  // Where this page's numbering starts. Pagination-aware so serial numbers run
+  // continuously across pages (page 2 at 10/page begins at 11), falling back to
+  // a plain 1-based count for tables that don't paginate.
+  const serialStart = serial && page && limit ? (page - 1) * limit : 0;
+
+  if (status === 'loading') return shell(<TableSkeleton cols={columns.length + (serial ? 1 : 0)} />);
   if (status === 'error') return shell(<ErrorState message={error?.message} onRetry={onRetry} />);
   if (!rows?.length) return shell(<EmptyState title={emptyTitle} description={emptyDescription} />);
 
@@ -39,6 +48,9 @@ export default function DataTable({
           <Table size="medium" sx={{ minWidth: 'max-content' }}>
             <TableHead>
               <TableRow>
+                {serial && (
+                  <TableCell align="left" sx={{ width: 1, whiteSpace: 'nowrap', color: 'text.secondary' }}>#</TableCell>
+                )}
                 {columns.map((col) => (
                   <TableCell key={col.key} align={align(col)} sortDirection={sortBy === col.key ? (sortDir || 'asc') : false}>
                     {col.sortable ? (
@@ -62,6 +74,11 @@ export default function DataTable({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   sx={{ cursor: onRowClick ? 'pointer' : 'default', '&:last-of-type td': { borderBottom: 0 } }}
                 >
+                  {serial && (
+                    <TableCell align="left" sx={{ color: 'text.secondary', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      {serialStart + idx + 1}
+                    </TableCell>
+                  )}
                   {columns.map((col) => (
                     <TableCell key={col.key} align={align(col)} sx={{ fontWeight: 500, whiteSpace: col.wrap ? 'normal' : 'nowrap' }}>
                       {col.render ? col.render(row) : row[col.key]}

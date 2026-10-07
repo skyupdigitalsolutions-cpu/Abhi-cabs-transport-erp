@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Car, MapPin, ChevronDown, ChevronUp, Zap, Database, Save, Clock, Search,
+  Car, MapPin, ChevronDown, ChevronUp, Zap, Database, Save, Clock, Search, Globe,
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import Button from '../../components/ui/Button';
@@ -25,6 +25,7 @@ import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
 import { vehicleCatalogService } from '../../services';
 import { surgeService } from '../../services/surgeService';
+import ServiceStatesTab from './ServiceStatesTab';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -62,6 +63,10 @@ const EMPTY_RATE_CARD = {
 // one rate card per city, so this expands to one identical card per city.
 const ALL_CITIES = '__ALL_CITIES__';
 
+// State names are compared loosely (case/space-insensitive) so a city stored as
+// "ANDHRA PRADESH" still matches the "Andhra Pradesh" dropdown value.
+const normState = (s) => String(s || '').trim().toLowerCase();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Vehicle Rate Card Form — Simple / Advanced, matching the REAL FareConfig
 // fields (city + vehicleClass + tripType + baseFare/perKm/minimumKm, plus
@@ -82,36 +87,43 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
   const [newCityName, setNewCityName] = useState('');
   const [applyToState, setApplyToState] = useState(false);
   // When a state is picked, auto-fetch that state's cities from the server so
-  // the dropdown is always fresh and complete — not limited to the preloaded
-  // feed, and including any city added since this screen opened. Falls back
-  // silently to the preloaded `cities` while the fetch is in flight or if it
-  // fails, so the field is never empty.
+  // the dropdown is fresh and complete — not limited to the preloaded feed, and
+  // including any city added since this screen opened. A failed fetch surfaces a
+  // message (no silent swallow) and still falls back to the preloaded list.
   const [fetchedCities, setFetchedCities] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesError, setCitiesError] = useState(null);
 
   useEffect(() => {
     const stateName = form._state;
+    setCitiesError(null);
     if (!stateName) { setFetchedCities([]); return undefined; }
     let cancelled = false;
     setCitiesLoading(true);
     cityService.list({ state: stateName })
       .then((list) => { if (!cancelled) setFetchedCities(Array.isArray(list) ? list : []); })
-      .catch(() => { if (!cancelled) setFetchedCities([]); }) // keep the preloaded fallback
+      .catch((e) => { if (!cancelled) { setFetchedCities([]); setCitiesError(e); } })
       .finally(() => { if (!cancelled) setCitiesLoading(false); });
     return () => { cancelled = true; };
   }, [form._state]);
 
-  // The working set of cities for this form: the freshly fetched state list
-  // when we have one, otherwise the preloaded list filtered to the state.
-  const cityPool = form._state
-    ? (fetchedCities.length ? fetchedCities : cities.filter((c) => c.state === form._state))
-    : cities;
+  // Working set of cities for the chosen state: the server-fetched list (already
+  // filtered by state, case-insensitively) UNIONED with any preloaded cities for
+  // that state, deduped by id. Union — not either/or — so a case/spacing
+  // mismatch between the stored state and the dropdown value can't hide a city,
+  // and a failed fetch still falls back to whatever was preloaded.
+  const cityPool = useMemo(() => {
+    if (!form._state) return cities;
+    const target = normState(form._state);
+    const preloadedForState = cities.filter((c) => normState(c.state) === target);
+    const byId = new Map();
+    [...fetchedCities, ...preloadedForState].forEach((c) => { if (c && c.id != null) byId.set(String(c.id), c); });
+    return [...byId.values()];
+  }, [form._state, fetchedCities, cities]);
 
   // Real cities (saved on the server) in the chosen state: what "All cities in
   // <State>" expands to. Cities that only exist on this screen are left out.
-  const stateCityList = form._state
-    ? cityPool.filter((c) => c.state === form._state && Number(c.id) < 1000000)
-    : [];
+  const stateCityList = form._state ? cityPool.filter((c) => Number(c.id) < 1000000) : [];
 
   /**
    * Add a city.
@@ -356,11 +368,19 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
                       ...(stateCityList.length > 0
                         ? [{ value: ALL_CITIES, label: `All cities in ${form._state} (${stateCityList.length})` }]
                         : []),
-                      ...cityPool
-                        .filter((c) => !form._state || c.state === form._state)
-                        .map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
+                      ...cityPool.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
                     ]}
                   />
+                  {citiesError ? (
+                    <p style={{ fontSize: 11.5, color: '#DC2626', marginTop: 4 }}>
+                      Couldn’t load cities{form._state ? ` for ${form._state}` : ''}
+                      {citiesError.status === 404 ? ' — the city API (/admin/cities) isn’t deployed on this backend yet.' : ` — ${citiesError.message || 'please retry.'}`}
+                    </p>
+                  ) : (form._state && !citiesLoading && cityPool.length === 0 && (
+                    <p style={{ fontSize: 11.5, color: '#92400E', marginTop: 4 }}>
+                      No cities in {form._state} yet — add one below.
+                    </p>
+                  ))}
                   <button onClick={() => setAddingCity(true)}
                     style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                     + Add new city
@@ -1406,6 +1426,7 @@ export default function Masters() {
   const TABS = [
     { key: 'rates', label: 'Rate Cards', icon: Database },
     { key: 'surge', label: 'Surge Pricing', icon: Zap },
+    { key: 'states', label: 'Service States', icon: Globe },
   ];
   return (
     <div>
@@ -1413,6 +1434,7 @@ export default function Masters() {
       <PageTabs tabs={TABS} value={tab} onChange={setTab} />
       {tab === 'rates' && <VehicleRatesTab />}
       {tab === 'surge' && <SurgePricingTab />}
+      {tab === 'states' && <ServiceStatesTab />}
     </div>
   );
 }
