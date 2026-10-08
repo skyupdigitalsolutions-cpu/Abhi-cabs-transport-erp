@@ -11,7 +11,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal         from '../../components/ui/Modal';
 import FilterBar     from '../../components/ui/FilterBar';
 import DataTable     from '../../components/ui/DataTable';
-import VehicleFormDrawer from '../../components/vehicle/VehicleFormDrawer';
+import VehicleFormDrawer, { fuelLabel } from '../../components/vehicle/VehicleFormDrawer';
 import { useResourceList } from '../../hooks/useResourceList';
 import { useApi }    from '../../hooks/useApi';
 import { vehicleService } from '../../services';
@@ -143,7 +143,7 @@ function PendingVehicleModal({ vehicle, onClose, onSetOperationalStatus, actionL
     <div style={{ position:'fixed',inset:0,zIndex:50,backgroundColor:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:16 }} onClick={onClose}>
       <div style={{ backgroundColor:'#fff',borderRadius:16,width:'100%',maxWidth:680,maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding:'20px 24px',borderBottom:'1px solid #F3F4F6',display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-          <div><h2 style={{ fontWeight:700,fontSize:18,color:'#1F2937' }}>Vehicle — {vehicle.registrationNumber}</h2><p style={{ fontSize:13,color:'#6B7280',marginTop:2 }}>{vehicle.makeModel} · {titleCase(vehicle.vehicleClass)} · {vehicle.seatingCapacity} seats</p></div>
+          <div><h2 style={{ fontWeight:700,fontSize:18,color:'#1F2937' }}>Vehicle — {vehicle.registrationNumber}</h2><p style={{ fontSize:13,color:'#6B7280',marginTop:2 }}>{vehicle.makeModel} · {titleCase(vehicle.vehicleClass)}{vehicle.documents?.fuelType ? ` · ${fuelLabel(vehicle.documents.fuelType)}` : ''} · {vehicle.seatingCapacity} seats</p></div>
           <Badge tone="slate">Operational: {titleCase(vehicle.status)}</Badge>
         </div>
         <div style={{ padding:'20px 24px' }}>
@@ -258,7 +258,7 @@ function FleetTab({ canManage, canDelete }) {
 
   const columns = [
     { key: 'registrationNumber', header: 'Reg. No.', sortable: true, render: (r) => <p style={{ fontWeight: 700, color: '#1F2937', fontFamily: 'monospace' }}>{r.registrationNumber}</p> },
-    { key: 'vehicle', header: 'Vehicle', render: (r) => (<div style={{ maxWidth: 200 }}><p className="truncate" style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 2 }}>{titleCase(r.vehicleClass)}{r.year ? ` · ${r.year}` : ''}</p></div>) },
+    { key: 'vehicle', header: 'Vehicle', render: (r) => (<div style={{ maxWidth: 200 }}><p className="truncate" style={{ fontWeight: 600, color: '#1F2937', fontSize: 13 }}>{r.makeModel || '—'}</p><p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 2 }}>{titleCase(r.vehicleClass)}{r.documents?.fuelType ? ` · ${fuelLabel(r.documents.fuelType)}` : ''}{r.year ? ` · ${r.year}` : ''}</p></div>) },
     { key: 'seatingCapacity', header: 'Seats', sortable: true, render: (r) => <span className="flex items-center gap-1 text-sm font-semibold" style={{ color: '#1F2937' }}><Users size={13} style={{ color: '#6B7280' }} />{r.seatingCapacity}</span> },
     { key: 'odometerKm', header: 'Odometer', sortable: true, render: (r) => <span style={{ color: '#6B7280', fontSize: 13 }}>{Number(r.odometerKm || 0).toLocaleString('en-IN')} km</span> },
     { key: 'compliance', header: 'Doc Status', render: (r) => <button onClick={(e) => { e.stopPropagation(); openDocs(r); }} disabled={detailLoading === r.id} className="focus-ring rounded"><ComplianceChips vehicle={r} /></button> },

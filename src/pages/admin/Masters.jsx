@@ -20,6 +20,7 @@ import Switch from '../../components/ui/Switch';
 import PageTabs from '../../components/ui/PageTabs';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
+import MapCityPicker from '../../components/ui/MapCityPicker';
 import { cityService } from '../../services/cityService';
 import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
@@ -65,7 +66,9 @@ const ALL_CITIES = '__ALL_CITIES__';
 
 // State names are compared loosely (case/space-insensitive) so a city stored as
 // "ANDHRA PRADESH" still matches the "Andhra Pradesh" dropdown value.
-const normState = (s) => String(s || '').trim().toLowerCase();
+// Also ignores spaces/punctuation and treats "&" as "and", so "Andhra-Pradesh",
+// "ANDHRA PRADESH" and "Jammu and Kashmir" / "Jammu & Kashmir" all match.
+const normState = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vehicle Rate Card Form — Simple / Advanced, matching the REAL FareConfig
@@ -83,8 +86,6 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
   const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
-  const [addingCity, setAddingCity] = useState(false);
-  const [newCityName, setNewCityName] = useState('');
   const [applyToState, setApplyToState] = useState(false);
   // When a state is picked, auto-fetch that state's cities from the server so
   // the dropdown is fresh and complete — not limited to the preloaded feed, and
@@ -138,52 +139,40 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
    * derives a service radius wide enough to cover any airport outside the
    * city's administrative boundary, so the admin never has to find a centroid.
    */
-  const handleAddCity = async () => {
-    if (!newCityName.trim() || !form._state) return;
-    const stateName = form._state;
+  // Called by MapCityPicker when the admin picks a city from the map that is
+  // not saved yet. Returns the saved city (or null if it failed).
+  const createCity = async ({ name, state: stateName }) => {
     try {
-      const { city, resolved, warning } = await cityService.create({
-        name: newCityName.trim(),
-        state: stateName,
-      });
+      const { city, resolved, warning } = await cityService.create({ name, state: stateName });
 
       // Hand the real, server-saved city back to the parent so it refreshes
-      // the list from the server (and picks up the row's _count) instead of
-      // this form mutating a prop array in place. The selection below is held
-      // in form state, so it sticks regardless of when the refresh resolves.
+      // the list from the server, and add it to this form's list right away so
+      // it is selectable without waiting for the re-fetch.
       onCityAdded?.(city);
-      // Reflect the new city in this form's state-scoped list right away too,
-      // so it's selectable without waiting for the state re-fetch.
       setFetchedCities((prev) => (prev.some((c) => String(c.id) === String(city.id)) ? prev : [...prev, city]));
-      set('cityId', String(city.id));
+      setErrors((er) => ({ ...er, cityId: undefined }));
 
-      // Say what was chosen on the admin's behalf. A radius that appeared from
-      // nowhere is one they either trust blindly or override arbitrarily.
       toast.success(
         resolved
           ? `${city.name}, ${city.state} added — ${resolved.explanation}`
           : `${city.name}, ${city.state} added`,
       );
-
-      /*
-       * A city in a state that is not on the service-state allowlist is fully
-       * configured and still refuses every pickup with OUTSIDE_SERVICE_STATES.
-       * Shown as a separate warning because it is not a failure of this action
-       * and it is not fixed on this screen.
-       */
+      // A city in a state outside the service-state allowlist still refuses
+      // every pickup, so say so — it is not fixed on this screen.
       if (warning) toast.error(warning, { duration: 10000 });
+      return city;
     } catch (e) {
-      // No pretend city. The old fallback minted one with `id: Date.now()`,
-      // and a rate card can never be saved against an id the server has never
-      // seen — that is what produced "Invalid request data" one step later.
+      // No pretend city: a rate card can't be saved against an id the server
+      // has never seen.
       toast.error(
         e.status === 403
-          ? 'Adding a city needs the SETTINGS_MANAGE permission. Ask an admin to add it, or pick an existing city.'
-          : `Couldn't add the city: ${e.message || 'unknown error'}`,
+          ? 'Adding a city needs the SETTINGS_MANAGE permission. Ask an admin to add it, or pick a saved city.'
+          : e.code === 'CONFLICT' || e.status === 409
+            ? `${name} is already saved — pick it from the saved cities.`
+            : `Couldn't add ${name}: ${e.message || 'unknown error'}`,
       );
-      return; // keep the box open
+      return null;
     }
-    setAddingCity(false); setNewCityName('');
   };
 
   // Vehicle classes come from the backend's vehicle_catalog, never a
@@ -240,7 +229,7 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
         nextErrors.cityId = "That city was only added on this screen and isn't saved on the server. Pick an existing city.";
       }
     }
-    if (form.perKm === '') nextErrors.perKm = 'Per-KM rate is required.';
+    if (form.perKm === '' || form.perKm === null) nextErrors.perKm = 'Per-KM rate is required.';
     if (!isEdit && !form.vehicleClass) nextErrors.vehicleClass = 'Pick a vehicle class.';
     if (!isEdit && pairType && form.pairEnabled && form.pairPerKm === '') {
       nextErrors.pairPerKm = `Enter the ${pairLabel.toLowerCase()} per-KM rate, or untick the box.`;
@@ -259,26 +248,32 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
       // database defaults it to 0, meaning no minimum distance is enforced.
       // baseFare, minimumFare and returnEmptyPct are retired on the backend
       // (Zod strips them), so they are no longer sent at all.
+      // Optional numeric fields. On CREATE a blank field is left out (the DB
+      // default 0 = "rule off" applies). On EDIT a blank field is sent as 0:
+      // PATCH only touches fields it receives, so leaving it out used to keep
+      // the OLD value on the server — clearing a field looked saved but wasn't.
+      const blank = (v) => v === '' || v === null || v === undefined;
+      const opt = (k) => (blank(form[k]) ? (isEdit ? { [k]: 0 } : {}) : { [k]: Number(form[k]) });
       const base = {
         perKm: Number(form.perKm),
-        ...(form.minimumKm !== '' && { minimumKm: Number(form.minimumKm) }),
-        // Driver allowance is optional and available in BOTH Simple and Advanced
-        // modes — left blank it is simply not sent (DB defaults to 0 = none).
-        ...(form.driverAllowance !== '' && { driverAllowance: Number(form.driverAllowance) }),
+        ...opt('minimumKm'),
+        // Driver allowance is optional and available in BOTH Simple and Advanced modes.
+        ...opt('driverAllowance'),
       };
       const advanced = mode === 'advanced' ? {
-        ...(form.perMinute !== ''        && { perMinute: Number(form.perMinute) }),
-        ...(form.cancellationFee !== ''  && { cancellationFee: Number(form.cancellationFee) }),
-        ...(form.maxSurge !== ''         && { maxSurge: Number(form.maxSurge) }),
-        ...(form.minKmPerDay !== ''      && { minKmPerDay: Number(form.minKmPerDay) }),
-        ...(form.waitingPerHour !== ''   && { waitingPerHour: Number(form.waitingPerHour) }),
-        ...(form.freeWaitingMin !== ''   && { freeWaitingMin: Number(form.freeWaitingMin) }),
-        ...(form.nightAllowance !== ''   && { nightAllowance: Number(form.nightAllowance) }),
-        ...(form.nightChargePct !== ''   && { nightChargePct: Number(form.nightChargePct) }),
+        ...opt('perMinute'),
+        ...opt('cancellationFee'),
+        // Surge cap is 1–2 (2 = default), so 0 is not a valid "off" value: blank is just not sent.
+        ...(!blank(form.maxSurge) && { maxSurge: Number(form.maxSurge) }),
+        ...opt('minKmPerDay'),
+        ...opt('waitingPerHour'),
+        ...opt('freeWaitingMin'),
+        ...opt('nightAllowance'),
+        ...opt('nightChargePct'),
         nightStartHour: Number(form.nightStartHour), nightStartMinute: Number(form.nightStartMinute),
         nightEndHour: Number(form.nightEndHour), nightEndMinute: Number(form.nightEndMinute),
-        ...(form.airportSurcharge !== '' && { airportSurcharge: Number(form.airportSurcharge) }),
-        ...(form.hourlyRate !== ''       && { hourlyRate: Number(form.hourlyRate) }),
+        ...opt('airportSurcharge'),
+        ...opt('hourlyRate'),
         hourlyKmPerHour: Number(form.hourlyKmPerHour || 10),
       } : {};
 
@@ -341,50 +336,29 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
                 ]}
               />
             </FormField>
-            <FormField label="City" required={!isEdit} error={errors.cityId} hint={addingCity ? 'Type new city name' : form.cityId === ALL_CITIES ? `Creates one identical rate card for each of the ${stateCityList.length} cities in ${form._state}.` : form._state ? `Pick one city, or "All cities in ${form._state}" to price the whole state.` : 'Pick a state first to price a whole state at once.'}>
+            <FormField label="City" required={!isEdit} error={errors.cityId} hint={form.cityId === ALL_CITIES ? `Creates one identical rate card for each of the ${stateCityList.length} cities in ${form._state}.` : form._state ? `Type to search the map. Pick one city, or "All cities in ${form._state}" to price the whole state.` : 'Type a city name to search the map, or pick a state first.'}>
               {isEdit ? (
                 <Input disabled value={cities.find((c) => c.id === form.cityId)?.name || 'All cities'} />
-              ) : addingCity ? (
-                <div className="space-y-2">
-                  <Input value={newCityName} onChange={(e) => setNewCityName(e.target.value)}
-                    placeholder="e.g. Mysuru" autoFocus />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddCity}
-                      disabled={!newCityName.trim() || !(form._state)}>
-                      Add City
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => setAddingCity(false)}>Cancel</Button>
-                  </div>
-                  {!form._state && <p style={{ fontSize: 11, color: '#EF4444' }}>Select a state first</p>}
-                </div>
               ) : (
                 <div>
-                  <Select
+                  <MapCityPicker
                     value={form.cityId}
-                    onChange={(e) => { set('cityId', e.target.value); setErrors((er) => ({ ...er, cityId: undefined })); }}
-                    placeholder={citiesLoading ? 'Loading cities…' : 'Select a city'}
-                    searchable
-                    options={[
-                      ...(stateCityList.length > 0
-                        ? [{ value: ALL_CITIES, label: `All cities in ${form._state} (${stateCityList.length})` }]
-                        : []),
-                      ...cityPool.map((c) => ({ value: c.id, label: `${c.name}, ${c.state}` })),
-                    ]}
+                    onChange={(v) => { set('cityId', v); setErrors((er) => ({ ...er, cityId: undefined })); }}
+                    state={form._state}
+                    savedCities={cityPool.filter((c) => Number(c.id) < 1000000)}
+                    extraOptions={stateCityList.length > 0
+                      ? [{ value: ALL_CITIES, label: `All cities in ${form._state} (${stateCityList.length})`, kind: 'all' }]
+                      : []}
+                    onCreateCity={createCity}
+                    error={errors.cityId}
+                    placeholder={citiesLoading ? 'Loading cities…' : 'Search a city'}
                   />
-                  {citiesError ? (
+                  {citiesError && (
                     <p style={{ fontSize: 11.5, color: '#DC2626', marginTop: 4 }}>
-                      Couldn’t load cities{form._state ? ` for ${form._state}` : ''}
+                      Couldn’t load saved cities{form._state ? ` for ${form._state}` : ''}
                       {citiesError.status === 404 ? ' — the city API (/admin/cities) isn’t deployed on this backend yet.' : ` — ${citiesError.message || 'please retry.'}`}
                     </p>
-                  ) : (form._state && !citiesLoading && cityPool.length === 0 && (
-                    <p style={{ fontSize: 11.5, color: '#92400E', marginTop: 4 }}>
-                      No cities in {form._state} yet — add one below.
-                    </p>
-                  ))}
-                  <button onClick={() => setAddingCity(true)}
-                    style={{ fontSize: 11.5, fontWeight: 600, color: '#3B65DB', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                    + Add new city
-                  </button>
+                  )}
                 </div>
               )}
             </FormField>

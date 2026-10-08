@@ -33,6 +33,27 @@ function unwrap(res) {
   return body && body.data !== undefined ? body.data : body;
 }
 
+/**
+ * Pull the city array out of whatever shape arrived. apiClient turns any
+ * paginated reply ({ items, pagination }) into { data: [...], meta }, and the
+ * local unwrap() then strips that to a bare array — so reading `.cities` on it
+ * gave undefined and the dropdown was always empty even when the server
+ * returned cities. Accept every shape the backend / apiClient can produce.
+ */
+export function extractCities(res) {
+  if (Array.isArray(res)) return res;
+  if (!res || typeof res !== 'object') return [];
+  for (const k of ['cities', 'items', 'data', 'rows']) {
+    const v = res[k];
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object') {
+      const inner = extractCities(v);
+      if (inner.length) return inner;
+    }
+  }
+  return [];
+}
+
 export const cityService = {
   /**
    * GET /admin/cities — payload: { cities, total }
@@ -43,10 +64,10 @@ export const cityService = {
    * failed booking.
    */
   async list(params = {}) {
-    const data = unwrap(await apiClient.get('/admin/cities', {
-      params: { includeInactive: true, ...params },
-    }));
-    return data.cities || [];
+    const res = await apiClient.get('/admin/cities', {
+      params: { includeInactive: true, limit: 500, ...params },
+    });
+    return extractCities(res);
   },
 
   /** GET /admin/cities/:id — payload: { city } */

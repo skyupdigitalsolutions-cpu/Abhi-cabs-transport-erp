@@ -49,6 +49,12 @@ const VEHICLE_CLASS_SUGGESTIONS = [
   'tempo-12', 'tempo-17', 'urbania-13', 'urbania-16', 'urbania-maharaja', 'benz-22', 'benz-28', 'benz-33',
 ];
 
+// Fuel type — offered only for sedans. The backend has no fuel column, so it
+// is kept in the vehicle's free-form `documents` JSON as documents.fuelType.
+export const SEDAN_FUEL_TYPES = ['DIESEL', 'CNG'];
+export const isSedanClass = (cls) => /sedan|dzire/i.test(cls || '');
+export const fuelLabel = (f) => (f === 'CNG' ? 'CNG' : f === 'DIESEL' ? 'Diesel' : '');
+
 const DOC_CONFIG = [
   {
     key: 'rc', docType: 'RC', label: 'Registration Certificate (RC)', short: 'RC', icon: ScrollText,
@@ -117,7 +123,7 @@ const DOC_CONFIG = [
 
 const EMPTY_VEHICLE = {
   registrationNumber: '', vehicleClass: '', makeModel: '', year: '', colour: '',
-  seatingCapacity: 4, status: 'AVAILABLE',
+  seatingCapacity: 4, status: 'AVAILABLE', fuelType: '',
 };
 
 function expiryStatus(dateStr) {
@@ -271,6 +277,7 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
     colour: v.colour || '',
     seatingCapacity: v.seatingCapacity ?? 4,
     status: v.status || 'AVAILABLE',
+    fuelType: v.documents?.fuelType || '',
   } : EMPTY_VEHICLE;
 
   const { values, errors, touched, submitting, submitError, setValue, setFieldTouched, handleSubmit, setValues } = useForm({
@@ -278,6 +285,7 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
     schema: {
       registrationNumber: [required('Registration number')],
       vehicleClass: [required('Vehicle class')],
+      fuelType: [(v, all) => (isSedanClass(all?.vehicleClass) && !v ? 'Fuel type is required for a sedan' : undefined)],
     },
     onSubmit: async (vals) => {
       // FIX: this previously only ever recorded whether a file was picked
@@ -297,6 +305,8 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
         acc[cfg.key] = cfg.fields.reduce((f, field) => { f[field.key] = docValues[field.key] || ''; return f; }, {});
         return acc;
       }, {});
+      // Fuel type only applies to sedans; drop it if the class was changed.
+      if (isSedanClass(vals.vehicleClass) && vals.fuelType) documents.fuelType = vals.fuelType;
 
       const vehicle = await onSubmit({
         registrationNumber: vals.registrationNumber,
@@ -429,6 +439,13 @@ export default function VehicleFormDrawer({ open, onClose, initial, onSubmit }) 
           <FormField label="Vehicle class" required error={touched.vehicleClass && errors.vehicleClass} hint="Must match a class used by rate cards and bookings, e.g. swift-dzire, ertiga, innova-crysta. A vehicle can only be dispatched to bookings of its own class.">
             <ComboInput suggestions={classSuggestions} value={values.vehicleClass} onChange={(e) => setValue('vehicleClass', e.target.value.toLowerCase())} onBlur={() => setFieldTouched('vehicleClass')} placeholder="sedan" />
           </FormField>
+          {isSedanClass(values.vehicleClass) && (
+            <FormField label="Fuel type" required error={touched.fuelType && errors.fuelType}>
+              <Select value={values.fuelType} onChange={(e) => setValue('fuelType', e.target.value)}
+                placeholder="Select fuel type…"
+                options={SEDAN_FUEL_TYPES.map((f) => ({ value: f, label: fuelLabel(f) }))} />
+            </FormField>
+          )}
           <FormField label="Make & model">
             <Input value={values.makeModel} onChange={(e) => setValue('makeModel', e.target.value)} placeholder="e.g. Maruti Suzuki Dzire" maxLength={80} />
           </FormField>

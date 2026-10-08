@@ -26,6 +26,7 @@
  * apiClient's behaviour changes.
  */
 import { apiClient } from './apiClient';
+import { extractCities } from './cityService';
 
 /**
  * Return the payload object regardless of how far apiClient already unwrapped.
@@ -48,8 +49,7 @@ export const fareConfigService = {
    * Payload: { cities, total }
    */
   async cities() {
-    const data = unwrap(await apiClient.get('/admin/fare-configs/cities'));
-    return data.cities || [];
+    return extractCities(await apiClient.get('/admin/fare-configs/cities'));
   },
 
   /**
