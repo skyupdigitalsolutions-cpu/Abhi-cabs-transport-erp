@@ -75,7 +75,7 @@ const normState = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').repl
 // fields (city + vehicleClass + tripType + baseFare/perKm/minimumKm, plus
 // optional outstation/round-trip/night/airport/hourly/surge fields).
 // ─────────────────────────────────────────────────────────────────────────────
-function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubmit, onClose, onCityAdded }) {
+function VehicleRateForm({ initial, cities, rates = [], stateSiblings = [], findCard, onSubmit, onClose, onCityAdded }) {
   const isEdit = !!initial;
   const toast = useToast();
   const [form, setForm] = useState(() => {
@@ -142,8 +142,22 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
   // Called by MapCityPicker when the admin picks a city from the map that is
   // not saved yet. Returns the saved city (or null if it failed).
   const createCity = async ({ name, state: stateName }) => {
+    // Same price across the state: seed the new city with the rate cards of the
+    // saved city in that state that has the most live cards (the backend copies
+    // them, plus rental packages, in the same transaction via copyFromCityId).
+    // A state with no priced city yet gets no copy — there is nothing to copy.
+    const target = normState(stateName);
+    const liveCount = (cityId) => rates.filter((r) => r.isActive && String(r.cityId) === String(cityId)).length;
+    const source = [...cities, ...fetchedCities]
+      .filter((c) => Number(c.id) < 1000000 && normState(c.state) === target)
+      .map((c) => ({ c, n: liveCount(c.id) || c._count?.fareConfigs || 0 }))
+      .filter((x) => x.n > 0)
+      .sort((a, b) => b.n - a.n)[0]?.c;
     try {
-      const { city, resolved, warning } = await cityService.create({ name, state: stateName });
+      const { city, resolved, warning, copied } = await cityService.create({
+        name, state: stateName,
+        ...(source && { copyFromCityId: Number(source.id) }),
+      });
 
       // Hand the real, server-saved city back to the parent so it refreshes
       // the list from the server, and add it to this form's list right away so
@@ -152,10 +166,15 @@ function VehicleRateForm({ initial, cities, stateSiblings = [], findCard, onSubm
       setFetchedCities((prev) => (prev.some((c) => String(c.id) === String(city.id)) ? prev : [...prev, city]));
       setErrors((er) => ({ ...er, cityId: undefined }));
 
+      const copiedCards = typeof copied === 'number' ? copied
+        : (copied?.fareConfigs ?? copied?.fareConfigCount ?? (Array.isArray(copied) ? copied.length : null));
+      const copyNote = source
+        ? ` — ${copiedCards != null ? `${copiedCards} rate card${copiedCards === 1 ? '' : 's'}` : 'rate cards'} copied from ${source.name}`
+        : '';
       toast.success(
         resolved
-          ? `${city.name}, ${city.state} added — ${resolved.explanation}`
-          : `${city.name}, ${city.state} added`,
+          ? `${city.name}, ${city.state} added${copyNote}. ${resolved.explanation}`
+          : `${city.name}, ${city.state} added${copyNote}`,
       );
       // A city in a state outside the service-state allowlist still refuses
       // every pickup, so say so — it is not fixed on this screen.
@@ -1049,6 +1068,7 @@ function VehicleRatesTab() {
           key={editing ? `edit-${editing.id}` : 'new'}
           initial={editing}
           cities={cities}
+          rates={rates}
           stateSiblings={stateSiblings}
           findCard={findCard}
           onSubmit={handleSubmit}
