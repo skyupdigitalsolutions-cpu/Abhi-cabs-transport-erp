@@ -21,7 +21,7 @@ const norm = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/
 
 export default function MapCityPicker({
   value, onChange, state, savedCities = [], extraOptions = [],
-  onCreateCity, error, placeholder = 'Search a city', disabled,
+  onCreateCity, onAddAllFromMap, error, placeholder = 'Search a city', disabled,
 }) {
   const [input, setInput] = useState('');
   const [mapResults, setMapResults] = useState([]);
@@ -72,11 +72,27 @@ export default function MapCityPicker({
     return () => clearTimeout(t);
   }, [input, state, savedKey, extraKey]);
 
-  const options = useMemo(() => [...extraOptions, ...savedOptions, ...mapResults], [extraOptions, savedOptions, mapResults]);
+  // "Add all <State> cities from map" — saves the state's cities in one go so
+  // "All cities in <State>" can price them together.
+  const mapAllOption = useMemo(() => (state && MAPS_KEY && onAddAllFromMap
+    ? [{
+      value: '__MAP_ALL__',
+      label: savedCities.length ? `Add more ${state} cities from map` : `Add all ${state} cities from map`,
+      kind: 'mapAll',
+    }]
+    : []), [state, onAddAllFromMap, savedCities.length]);
+
+  const options = useMemo(() => [...extraOptions, ...mapAllOption, ...savedOptions, ...mapResults],
+    [extraOptions, mapAllOption, savedOptions, mapResults]);
   const selected = options.find((o) => String(o.value) === String(value ?? '')) || null;
 
   const handleChange = async (_e, opt) => {
     if (!opt) return;
+    if (opt.kind === 'mapAll') {
+      setCreating(true);
+      try { await onAddAllFromMap(); } finally { setCreating(false); setInput(''); }
+      return;
+    }
     if (opt.kind !== 'map') { onChange(opt.value); return; }
     setCreating(true);
     try {
@@ -101,24 +117,27 @@ export default function MapCityPicker({
         filterOptions={(opts, { inputValue }) => {
           const q = norm(inputValue);
           // Map results are already matched by Google; filter the saved list locally.
-          return opts.filter((o) => o.kind === 'map' || !q || norm(o.label).includes(q) || (selected && o.value === selected.value));
+          return opts.filter((o) => o.kind === 'map' || !q || (selected && o.value === selected.value)
+            || (o.kind !== 'mapAll' && norm(o.label).includes(q)));
         }}
-        groupBy={(o) => (o.kind === 'map' ? 'From map (will be added)' : 'Saved cities')}
+        groupBy={(o) => (o.kind === 'map' ? 'From map (will be added)' : o.kind === 'saved' ? 'Saved cities' : 'Whole state')}
         popupIcon={<ChevronDown size={16} />}
         getOptionLabel={(o) => (o ? String(o.label ?? '') : '')}
         isOptionEqualToValue={(o, v) => String(o.value) === String(v.value)}
         getOptionKey={(o) => String(o.value)}
         inputValue={input}
         onInputChange={(_e, v) => setInput(v)}
-        noOptionsText={input.trim().length < 2 ? 'Type a city name to search the map' : (searching ? 'Searching…' : 'No matching city found')}
+        noOptionsText={input.trim().length < 2
+          ? (state ? `No saved cities in ${state} yet — type a city name to search the map` : 'Pick a state, or type a city name to search the map')
+          : (searching ? 'Searching…' : 'No matching city found')}
         loadingText="Searching map…"
         onChange={handleChange}
         renderOption={(props, o) => {
           const { key, ...rest } = props;
           return (
             <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {o.kind === 'map' && <MapPin size={14} style={{ color: '#3B65DB', flexShrink: 0 }} />}
-              <span>{o.label}</span>
+              {(o.kind === 'map' || o.kind === 'mapAll') && <MapPin size={14} style={{ color: '#3B65DB', flexShrink: 0 }} />}
+              <span style={o.kind === 'mapAll' || o.kind === 'all' ? { fontWeight: 600, color: o.kind === 'mapAll' ? '#3B65DB' : undefined } : undefined}>{o.label}</span>
             </li>
           );
         }}
@@ -143,7 +162,7 @@ export default function MapCityPicker({
         )}
       />
       {mapError && <p style={{ fontSize: 11.5, color: '#92400E', marginTop: 4 }}>{mapError}</p>}
-      {creating && <p style={{ fontSize: 11.5, color: '#3B65DB', marginTop: 4 }}>Adding this city…</p>}
+      {creating && <p style={{ fontSize: 11.5, color: '#3B65DB', marginTop: 4 }}>Adding cities… this can take a few seconds.</p>}
     </div>
   );
 }

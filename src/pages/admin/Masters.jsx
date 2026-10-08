@@ -21,6 +21,7 @@ import PageTabs from '../../components/ui/PageTabs';
 import { useToast } from '../../hooks/useToast';
 import { fareConfigService } from '../../services';
 import MapCityPicker from '../../components/ui/MapCityPicker';
+import { listCitiesInState } from '../../utils/googleMaps';
 import { cityService } from '../../services/cityService';
 import LoadingState from '../../components/ui/LoadingState';
 import { TRIP_TYPES } from '../../constants';
@@ -139,6 +140,75 @@ function VehicleRateForm({ initial, cities, rates = [], stateSiblings = [], find
    * derives a service radius wide enough to cover any airport outside the
    * city's administrative boundary, so the admin never has to find a centroid.
    */
+  // The saved city in a state with the most live rate cards — new cities in
+  // that state copy its prices so the whole state stays on one price.
+  const priceSourceFor = (stateName) => {
+    const target = normState(stateName);
+    const liveCount = (cityId) => rates.filter((r) => r.isActive && String(r.cityId) === String(cityId)).length;
+    return [...cities, ...fetchedCities]
+      .filter((c) => Number(c.id) < 1000000 && normState(c.state) === target)
+      .map((c) => ({ c, n: liveCount(c.id) || c._count?.fareConfigs || 0 }))
+      .filter((x) => x.n > 0)
+      .sort((a, b) => b.n - a.n)[0]?.c;
+  };
+
+  // "Add all <State> cities from map": find the state's cities on Google Maps,
+  // save the ones not saved yet, then select "All cities in <State>".
+  const addAllCitiesFromMap = async () => {
+    const stateName = form._state;
+    if (!stateName) return;
+    let found;
+    try {
+      found = await listCitiesInState(stateName);
+    } catch (e) {
+      toast.error(`Couldn't search the map: ${e.message || 'unknown error'}`);
+      return;
+    }
+    const savedNames = new Set(cityPool.map((c) => normState(c.name)));
+    const fresh = found.filter((c) => !savedNames.has(normState(c.name)));
+    if (fresh.length === 0) {
+      toast.success(found.length ? `All ${stateName} cities found on the map are already saved.` : `No cities found on the map for ${stateName}.`);
+      if (stateCityList.length) set('cityId', ALL_CITIES);
+      return;
+    }
+    const ok = confirm(
+      `Add these ${fresh.length} cities in ${stateName}?\n\n${fresh.map((c) => c.name).join(', ')}` +
+      '\n\nYou can still add any missing city later by typing its name.',
+    );
+    if (!ok) return;
+
+    const source = priceSourceFor(stateName);
+    const created = [];
+    const failed = [];
+    for (const c of fresh) {
+      try {
+        const { city } = await cityService.create({
+          name: c.name, state: stateName,
+          ...(source && { copyFromCityId: Number(source.id) }),
+        });
+        if (city) created.push(city);
+      } catch (e) {
+        failed.push(`${c.name} (${e.message || 'failed'})`);
+        // No permission: every other city would fail the same way.
+        if (e.status === 401 || e.status === 403) {
+          toast.error('Adding cities needs the SETTINGS_MANAGE permission.');
+          break;
+        }
+      }
+    }
+    if (created.length) {
+      setFetchedCities((prev) => {
+        const ids = new Set(prev.map((c) => String(c.id)));
+        return [...prev, ...created.filter((c) => !ids.has(String(c.id)))];
+      });
+      onCityAdded?.(created[created.length - 1]); // parent re-fetches the full list once
+      set('cityId', ALL_CITIES);
+      setErrors((er) => ({ ...er, cityId: undefined }));
+      toast.success(`${created.length} ${stateName} cit${created.length === 1 ? 'y' : 'ies'} added${source ? ` with ${source.name}'s prices` : ''} — "All cities in ${stateName}" selected.`);
+    }
+    if (failed.length) toast.error(`Not added: ${failed.join(', ')}`);
+  };
+
   // Called by MapCityPicker when the admin picks a city from the map that is
   // not saved yet. Returns the saved city (or null if it failed).
   const createCity = async ({ name, state: stateName }) => {
@@ -146,13 +216,7 @@ function VehicleRateForm({ initial, cities, rates = [], stateSiblings = [], find
     // saved city in that state that has the most live cards (the backend copies
     // them, plus rental packages, in the same transaction via copyFromCityId).
     // A state with no priced city yet gets no copy — there is nothing to copy.
-    const target = normState(stateName);
-    const liveCount = (cityId) => rates.filter((r) => r.isActive && String(r.cityId) === String(cityId)).length;
-    const source = [...cities, ...fetchedCities]
-      .filter((c) => Number(c.id) < 1000000 && normState(c.state) === target)
-      .map((c) => ({ c, n: liveCount(c.id) || c._count?.fareConfigs || 0 }))
-      .filter((x) => x.n > 0)
-      .sort((a, b) => b.n - a.n)[0]?.c;
+    const source = priceSourceFor(stateName);
     try {
       const { city, resolved, warning, copied } = await cityService.create({
         name, state: stateName,
@@ -369,6 +433,7 @@ function VehicleRateForm({ initial, cities, rates = [], stateSiblings = [], find
                       ? [{ value: ALL_CITIES, label: `All cities in ${form._state} (${stateCityList.length})`, kind: 'all' }]
                       : []}
                     onCreateCity={createCity}
+                    onAddAllFromMap={addAllCitiesFromMap}
                     error={errors.cityId}
                     placeholder={citiesLoading ? 'Loading cities…' : 'Search a city'}
                   />

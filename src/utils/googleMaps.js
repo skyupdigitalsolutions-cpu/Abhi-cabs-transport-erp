@@ -97,3 +97,67 @@ export async function searchCities(input, { state } = {}) {
 
   throw new Error('Google Places search is not available for this API key.');
 }
+
+const normState = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
+
+/**
+ * Cities/towns of a whole state from Google Maps, for "add all cities in
+ * <State>". Google has no "list every city in a state" call, so this runs a few
+ * text searches and keeps only results whose state really matches. Each search
+ * returns at most 20, so expect the main cities and towns, not every village.
+ *
+ * Returns [{ placeId, name, state }] sorted by name, deduped.
+ */
+export async function listCitiesInState(state) {
+  const wanted = normState(state);
+  if (!wanted) return [];
+  const places = await loadPlaces();
+  const queries = [
+    `cities in ${state}, India`,
+    `towns in ${state}, India`,
+    `district headquarters in ${state}, India`,
+  ];
+  const out = new Map();
+  const add = (placeId, name, st) => {
+    if (!name || normState(st) !== wanted) return;
+    const k = normState(name);
+    if (!out.has(k)) out.set(k, { placeId, name: name.trim(), state });
+  };
+
+  if (places.Place?.searchByText) {
+    for (const textQuery of queries) {
+      try {
+        const { places: found = [] } = await places.Place.searchByText({
+          textQuery,
+          fields: ['id', 'displayName', 'addressComponents'],
+          includedType: 'locality',
+          maxResultCount: 20,
+          region: 'in',
+        });
+        found.forEach((p) => {
+          const comps = p.addressComponents || [];
+          const st = comps.find((c) => (c.types || []).includes('administrative_area_level_1'))?.longText;
+          const name = comps.find((c) => (c.types || []).includes('locality'))?.longText || p.displayName;
+          add(p.id, name, st);
+        });
+      } catch { /* try the next query */ }
+    }
+  } else if (places.PlacesService) {
+    const svc = new places.PlacesService(document.createElement('div'));
+    for (const query of queries) {
+      const results = await new Promise((resolve) => {
+        svc.textSearch({ query, type: 'locality', region: 'in' }, (res) => resolve(res || []));
+      });
+      results.forEach((r) => {
+        const parts = String(r.formatted_address || '').split(',').map((x) => x.trim())
+          .filter((x) => x && !/^india$/i.test(x));
+        const st = (parts[parts.length - 1] || '').replace(/\s*\d{6}$/, '');
+        add(r.place_id, r.name, st);
+      });
+    }
+  } else {
+    throw new Error('Google Places search is not available for this API key.');
+  }
+
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
