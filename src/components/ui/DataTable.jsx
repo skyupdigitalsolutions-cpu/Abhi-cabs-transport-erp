@@ -49,7 +49,7 @@ export default function DataTable({
             <TableHead>
               <TableRow>
                 {serial && (
-                  <TableCell align="left" sx={{ width: 1, whiteSpace: 'nowrap', color: 'text.secondary' }}>#</TableCell>
+                  <TableCell align="left" sx={{ width: 48, whiteSpace: 'nowrap', color: 'text.secondary' }}>#</TableCell>
                 )}
                 {columns.map((col) => (
                   <TableCell key={col.key} align={align(col)} sortDirection={sortBy === col.key ? (sortDir || 'asc') : false}>
